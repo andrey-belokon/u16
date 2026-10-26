@@ -1,0 +1,82 @@
+// t15: a parameter read only before the first call stays in its argument register (sect. 13.6, item 1.8).
+// Correctness matters here: the parameter value before the call, after the call, in the call arguments, in a loop,
+// with an early return, for long and ulong, in functions with 1-4 parameters.
+// test: also -fcopy-params
+include "console.b16"
+
+var unit at $FF30: byte          // port: the write must not break anything on this machine
+var g, g2, g3: uint
+var gl: ulong
+
+fn cmd(c: uint): uint { g3 += c; return c + 100 }
+fn mix(a, b: uint): uint { return a * 10 + b }
+
+// wrapper: d is needed only before the call
+fn wrap(d: uint): uint {
+    g = d
+    return cmd(3)
+}
+// both parameters are read in the call arguments in reverse order: R0-R3 are overwritten along the way
+fn swap_call(a, b: uint): uint {
+    g = a + b
+    return mix(b, a)
+}
+// ulong in the prefix, not needed afterwards
+fn wide(a: ulong, k: uint): uint {
+    gl = a + 1
+    g2 = k
+    return cmd(7)
+}
+// the parameter changes in the prefix
+fn modify(a: uint, b: uint): uint {
+    a = a + b
+    g = a
+    return cmd(1)
+}
+// the parameter is also read after the call: must survive the call
+fn after(a: uint, b: uint): uint {
+    g = a
+    cmd(2)
+    return a + b
+}
+// a prefix with a loop and a condition
+fn loopy(n: uint, step: uint): uint {
+    var i: uint = 0
+    var s: uint = 0
+    while i < n { s += step; i++ }
+    if s > 100 { g = s }
+    return cmd(s) - 100
+}
+// early return in the prefix
+fn early(a: uint, b: uint): uint {
+    if a == 0 { return b }
+    g = a ^ b
+    return cmd(5)
+}
+// four parameters, two of them only in the prefix
+fn four(a, b, c, d: uint): uint {
+    g = a + b
+    g2 = c - d
+    return cmd(9) + d
+}
+// long: low and high words in the prefix
+fn wl(a: long, b: uint): uint {
+    gl = ulong(a) + ulong(b)
+    return cmd(11)
+}
+
+fn main() {
+    putu(wrap(77)); putc(' '); putu(g); putc(' '); putu(g3); putnl()
+    putu(swap_call(3, 4)); putc(' '); putu(g); putnl()
+    g3 = 0
+    putu(wide($12345678, 55)); putc(' '); putul(gl); putc(' '); putu(g2); putc(' '); putu(g3); putnl()
+    putu(modify(10, 5)); putc(' '); putu(g); putnl()
+    g3 = 0
+    putu(after(7, 8)); putc(' '); putu(g); putc(' '); putu(g3); putnl()
+    putu(loopy(30, 4)); putc(' '); putu(g); putc(' '); putu(g3); putnl()
+    g3 = 0
+    putu(early(0, 9)); putc(' '); putu(early(6, 3)); putc(' '); putu(g); putc(' '); putu(g3); putnl()
+    g3 = 0
+    putu(four(1, 2, 30, 4)); putc(' '); putu(g); putc(' '); putu(g2); putc(' '); putu(g3); putnl()
+    putu(wl(-5, 10)); putc(' '); putul(gl); putnl()
+}

@@ -1,0 +1,15 @@
+// Overlays: calls from different overlays mixed together, a runtime error inside an overlay
+fn work(n: int): string {
+    var parts = "a,b,c".split(",")                  // the str overlay
+    var p = path.join("A:/x", str(n))               // the fs overlay
+    var t, e = fs.read_text("/none")                // fs: an error value
+    return $"{|str.join(parts, "")|} {|p|} {|e.code()|} {|e.where() != null|}"
+}
+var i = 0
+while i < 3 { println(work(i)); i++ }
+println(proc.name() + " " + "Abc".upper())          // proc, str
+var arr = [3, 1, 2]
+arr.sort()
+println(arr[0])
+fn bad() { var f = fs.open("/t/x", "rw") }
+bad()

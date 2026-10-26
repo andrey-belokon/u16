@@ -1,0 +1,43 @@
+// t9: arithmetic on long and ulong: + - & | ^ - ~, signed and unsigned comparisons, shifts by a constant, ++, --, +=, conditions
+var OUT at $FF20: byte
+var A: [9]long = {0, 1, -1, 65535, 65536, $7FFFFFFF, -2147483648, -100000, 100000}
+var t32: ulong
+fn putc(c: byte) { OUT = c }
+fn hex(w: uint) { var i = 0; while i < 4 { var d = (w >> 12) & 15; if d < 10 { putc(byte(d + 48)) } else { putc(byte(d + 55)) }; w <<= 4; i++ } }
+fn show(v: ulong) { var pw: ptr uint = ptr uint(&v); hex(pw[1]); hex(pw[0]); putc(' ') }
+fn flag(b: int) { putc(byte(48 + b)) }
+fn main() {
+    var i: uint = 0
+    while i < 9 {
+        var j: uint = 0
+        while j < 9 {
+            var a = A[i]
+            var b = A[j]
+            show(ulong(a + b)); show(ulong(a - b)); show(ulong(a & b)); show(ulong(a | b)); show(ulong(a ^ b))
+            flag(a < b); flag(a <= b); flag(a > b); flag(a >= b); flag(a == b); flag(a != b)
+            flag(ulong(a) < ulong(b)); flag(ulong(a) <= ulong(b)); flag(ulong(a) > ulong(b)); flag(ulong(a) >= ulong(b))
+            putc(10)
+            j++
+        }
+        i++
+    }
+    i = 0
+    while i < 9 {
+        var a = A[i]
+        var c = ulong(a)
+        show(ulong(-a)); show(ulong(~a)); show(ulong(a << 1)); show(ulong(a << 7)); show(ulong(a << 16)); show(ulong(a << 20)); show(ulong(a << 31)); show(ulong(a << 40))
+        show(ulong(a >> 1)); show(ulong(a >> 7)); show(ulong(a >> 16)); show(ulong(a >> 20)); show(ulong(a >> 31)); show(ulong(a >> 32))
+        show(c >> 1); show(c >> 7); show(c >> 16); show(c >> 20); show(c >> 31)
+        putc(10)
+        var d = a
+        d++; show(ulong(d)); d--; d--; show(ulong(d)); d += 65535; show(ulong(d)); d -= a; show(ulong(d)); d += -100000; show(ulong(d))
+        var e = a
+        show(ulong(e++)); show(ulong(e)); show(ulong(--e)); show(ulong(++e))
+        if a { putc('T') } else { putc('F') }
+        if !a { putc('T') } else { putc('F') }
+        if a && c { putc('T') } else { putc('F') }
+        if a || 0 { putc('T') } else { putc('F') }
+        putc(10)
+        i++
+    }
+}

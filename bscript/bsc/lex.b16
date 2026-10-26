@@ -1,0 +1,606 @@
+// lex.b16 - the BScript lexer (the specification, sect. 2): reading files, include, EOS, strings.
+
+// ---- tokens -------------------------------------------------------------------------------------
+const T_EOF = 0
+const T_EOS = 1
+const T_IDENT = 2
+const T_NUM = 3
+const T_STR = 4
+const T_ISTR = 5           // a part of an interpolated string; tiend = 1 - the last one
+// keywords: the order is as in kw_names
+const T_BREAK = 10
+const T_CASE = 11
+const T_CONST = 12
+const T_CONTINUE = 13
+const T_DEFAULT = 14
+const T_ELSE = 15
+const T_FAIL = 16
+const T_FALSE = 17
+const T_FN = 18
+const T_FOR = 19
+const T_IF = 20
+const T_IN = 21
+const T_INCLUDE = 22
+const T_LOOP = 23
+const T_NULL = 24
+const T_RETURN = 25
+const T_SWITCH = 26
+const T_TRUE = 27
+const T_VAR = 28
+const T_WHILE = 29
+const NKW = 20
+// operators
+const T_PLUS = 40
+const T_MINUS = 41
+const T_STAR = 42
+const T_SLASH = 43
+const T_PCT = 44
+const T_AMP = 45
+const T_BAR = 46
+const T_CARET = 47
+const T_TILDE = 48
+const T_BANG = 49
+const T_SHL = 50
+const T_SHR = 51
+const T_USHR = 52
+const T_EQ = 53
+const T_NE = 54
+const T_LT = 55
+const T_GT = 56
+const T_LE = 57
+const T_GE = 58
+const T_ANDAND = 59
+const T_OROR = 60
+const T_QQ = 61
+const T_INC = 62
+const T_DEC = 63
+const T_ASSIGN = 64
+// compound assignments: T_PLUS + 30 ... in the same order as the operations
+const T_ADDA = 70
+const T_SUBA = 71
+const T_MULA = 72
+const T_DIVA = 73
+const T_MODA = 74
+const T_ANDA = 75
+const T_ORA = 76
+const T_XORA = 77
+const T_SHLA = 80
+const T_SHRA = 81
+const T_USHRA = 82
+const T_LPAREN = 90
+const T_RPAREN = 91
+const T_LBRACK = 92
+const T_RBRACK = 93
+const T_LBRACE = 94
+const T_RBRACE = 95
+const T_COMMA = 96
+const T_COLON = 97
+const T_DOT = 98
+
+var kw_names: [NKW]ptr byte = {
+    "break", "case", "const", "continue", "default", "else", "fail", "false", "fn", "for",
+    "if", "in", "include", "loop", "null", "return", "switch", "true", "var", "while" }
+
+const TBUFMAX = 512
+var tok: uint                   // current token
+var tval: uint                  // number
+var tbig: uint                  // 1 - decimal 32768
+var tbuf: [TBUFMAX]byte         // text of a string or name
+var tlen: uint
+var tiend: uint
+var tline, tcol, tfile: uint    // start of the token
+var pline, pfile: uint          // previous token (for the string table)
+
+// ---- files -----------------------------------------------------------------------------------
+const IBUF = 512
+var ibuf: [IBUF]byte
+var ipos, ilen: uint
+var ieof: uint
+var ifd: uint
+var fbase: ulong                // offset of ibuf[0] in the file
+var line, col: uint
+var curfile: uint
+
+// program sources (the .bsc source table)
+const MAXFILES = 32
+const SRCPOOL = 768
+var srcpool: [SRCPOOL]byte
+var srcoff: [MAXFILES]uint
+var srcmt: [MAXFILES]ulong
+var nfiles: uint
+var srcused: uint
+
+// include stack
+const MAXDEPTH = 8
+var inc_fd: [MAXDEPTH]uint
+var inc_file: [MAXDEPTH]uint
+var inc_pos: [MAXDEPTH]ulong
+var inc_line: [MAXDEPTH]uint
+var inc_col: [MAXDEPTH]uint
+var depth: uint
+var decl_seen: uint             // the current file already had declarations or statements
+
+// lexer state
+var trig: uint                  // the last token allows EOS
+var nest: uint                  // depth of ( [
+var interp: uint                // 1 - inside a {| |} substitution
+var iquote: uint                // the quote of the interpolated string
+var inest: uint                 // bracket depth inside a substitution
+
+fn src_path(k: uint): ptr byte { return &srcpool[srcoff[k]] }
+
+// ---- error messages (sect. 11.2): file:line:column: text ---------------------------
+fn err_at(f: uint, l: uint, c: uint, msg: ptr byte, arg: ptr byte) {
+    if f < nfiles { fputs(STDERR, src_path(f)) } else { fputs(STDERR, "bsc") }
+    fputs(STDERR, ":")
+    fputu(STDERR, l)
+    fputs(STDERR, ":")
+    fputu(STDERR, c)
+    fputs(STDERR, ": ")
+    fputs(STDERR, msg)
+    if arg != 0 { fputs(STDERR, arg) }
+    fputs(STDERR, "\n")
+    sys_exit(1)
+}
+
+fn err(msg: ptr byte) { err_at(tfile, tline, tcol, msg, 0) }
+fn err2(msg: ptr byte, arg: ptr byte) { err_at(tfile, tline, tcol, msg, arg) }
+fn lerr(msg: ptr byte) { err_at(curfile, line, col, msg, 0) }
+
+fn fatal(msg: ptr byte, arg: ptr byte, e: uint) {
+    fputs(STDERR, "bsc: ")
+    if arg != 0 { fputs(STDERR, arg); fputs(STDERR, ": ") }
+    fputs(STDERR, msg)
+    if e != 0 {
+        var t = err_text(e)
+        if t != 0 { fputs(STDERR, t) } else { fputs(STDERR, "error "); fputu(STDERR, e) }
+    }
+    fputs(STDERR, "\n")
+    sys_exit(2)
+}
+
+fn err_text(e: uint): ptr byte {
+    if e == E_NOENT { return "no such file or directory" }
+    if e == E_EXIST { return "already exists" }
+    if e == E_NOTDIR { return "not a directory" }
+    if e == E_ISDIR { return "is a directory" }
+    if e == E_RDONLY { return "read-only" }
+    if e == E_NOSPC { return "no space left" }
+    if e == E_BADNAME { return "invalid name" }
+    if e == E_BADPATH { return "invalid path" }
+    if e == E_NODEV { return "volume not mounted" }
+    if e == E_IO { return "I/O error" }
+    if e == E_MFILE { return "too many open files" }
+    if e == E_NOEXEC { return "not an executable" }
+    if e == E_BADVER { return "unsupported program version" }
+    if e == E_ARGS { return "bad arguments" }
+    if e == E_NOMEM { return "not enough memory" }
+    if e == E_NOPROC { return "too many nested programs" }
+    return 0
+}
+
+// ---- reading -------------------------------------------------------------------------------------
+// The buffer holds at least n bytes after ipos (or the end of the file).
+fn fill(n: uint) {
+    if ilen - ipos >= n || ieof != 0 { return }
+    var k: uint = ilen - ipos
+    memcpy(&ibuf[0], &ibuf[ipos], k)
+    fbase += ulong(ipos)
+    ipos = 0
+    ilen = k
+    while ilen < n && ieof == 0 {
+        var e, r: uint
+        e, r = sys_read(ifd, &ibuf[ilen], IBUF - ilen)
+        if e != OK { fatal("", src_path(curfile), e) }
+        if r == 0 { ieof = 1 }
+        ilen += r
+    }
+}
+
+const EOFCH = $100
+
+fn pc(k: uint): uint {
+    if ilen - ipos <= k { fill(k + 1); if ilen - ipos <= k { return EOFCH } }
+    return uint(ibuf[ipos + k])
+}
+
+fn adv() { ipos++; col++ }
+
+// Open a source: the path is absolute, file is the number in the source table.
+fn open_src(k: uint) {
+    var e, h: uint
+    e, h = sys_open(src_path(k), O_READ, 0)
+    if e != OK { fatal("", src_path(k), e) }
+    ifd = h
+    ipos = 0; ilen = 0; ieof = 0; fbase = 0
+    line = 1; col = 1
+    curfile = k
+}
+
+// Add a file to the source table; the result is the number, $FFFF - it was already there.
+fn add_src(p: ptr byte): uint {
+    var k: uint = 0
+    while k < nfiles {
+        if strieq(src_path(k), p) != 0 { return $FFFF }
+        k++
+    }
+    if nfiles >= MAXFILES { err("too many source files") }
+    var n: uint = strlen(p) + 1
+    if srcused + n > SRCPOOL { err("too many source files") }
+    srcoff[nfiles] = srcused
+    strcpy(&srcpool[srcused], p)
+    srcused += n
+    var st: Stat
+    var e: uint = sys_stat(p, &st)
+    if e != OK { err_at(tfile, tline, tcol, "cannot open ", p) }
+    if uint(st.size >> 16) & A_DIR != 0 { err_at(tfile, tline, tcol, "is a directory: ", p) }
+    srcmt[nfiles] = st.mtime
+    nfiles++
+    return nfiles - 1
+}
+
+// include "path": called when the current token is EOS after the path string.
+fn push_include(rel: ptr byte) {
+    var dir: [PATHMAX]byte
+    var full: [PATHMAX]byte
+    dir_of(&dir[0], src_path(curfile))
+    if make_abs(&full[0], &dir[0], rel) == 0 { err2("invalid include path: ", rel) }
+    var k: uint = add_src(&full[0])
+    if k == $FFFF { return }
+    if depth >= MAXDEPTH { err("include nesting too deep") }
+    inc_fd[depth] = ifd
+    inc_file[depth] = curfile
+    inc_pos[depth] = fbase + ulong(ipos)
+    inc_line[depth] = line
+    inc_col[depth] = col
+    depth++
+    open_src(k)
+}
+
+fn pop_include() {
+    decl_seen = 0
+    ign = sys_close(ifd)
+    depth--
+    ifd = inc_fd[depth]
+    curfile = inc_file[depth]
+    line = inc_line[depth]
+    col = inc_col[depth]
+    var e: uint
+    var p: ulong
+    e, p = sys_seek(ifd, long(inc_pos[depth]), SEEK_SET)
+    fbase = inc_pos[depth]
+    ipos = 0; ilen = 0; ieof = 0
+}
+
+fn close_all() {
+    while depth > 0 { pop_include() }
+    ign = sys_close(ifd)
+}
+
+// ---- tokens ------------------------------------------------------------------------------------
+// character classes: 1 - a letter or _, 2 - a digit (lex_init)
+var cclass: [257]byte
+fn is_alpha(c: uint): uint { return uint(cclass[c]) & 1 }
+fn is_digit(c: uint): uint { return uint(cclass[c]) >> 1 }
+
+// the name hash (as in sym.b16, without a mask) and the keyword table by hash
+var thash: uint
+const KWH = 64
+var kwh: [KWH]byte              // the keyword number + 1, open addressing
+
+fn name_hash(s: ptr byte, n: uint): uint {
+    var h: uint = 0
+    while n != 0 { h = h * 31 + *s; s++; n-- }
+    return h
+}
+
+fn lex_init() {
+    var c: uint = 0
+    while c < 256 {
+        if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' { cclass[c] = 1 }
+        else if c >= '0' && c <= '9' { cclass[c] = 2 }
+        c++
+    }
+    var k: uint = 0
+    while k < NKW {
+        var s = kw_names[k]
+        var i = name_hash(s, strlen(s)) & (KWH - 1)
+        while kwh[i] != 0 { i = (i + 1) & (KWH - 1) }
+        kwh[i] = byte(k + 1)
+        k++
+    }
+}
+fn hexval(c: uint): uint {
+    if c >= '0' && c <= '9' { return c - '0' }
+    if c >= 'a' && c <= 'f' { return c - 'a' + 10 }
+    if c >= 'A' && c <= 'F' { return c - 'A' + 10 }
+    return $FFFF
+}
+
+// Skip blanks and comments, not newlines.
+fn skip_space() {
+    loop {
+        while ipos < ilen && (ibuf[ipos] == ' ' || ibuf[ipos] == 9) { ipos++; col++ }
+        var c = pc(0)
+        if c == ' ' || c == 9 || c == 13 { adv(); continue }
+        if c == '/' && pc(1) == '/' {
+            while pc(0) != 10 && pc(0) != EOFCH { adv() }
+            continue
+        }
+        if c == '/' && pc(1) == '*' {
+            adv(); adv()
+            loop {
+                var d = pc(0)
+                if d == EOFCH { lerr("unterminated comment") }
+                if d == '*' && pc(1) == '/' { adv(); adv(); break }
+                if d == 10 { line++; col = 0 }
+                adv()
+            }
+            continue
+        }
+        return
+    }
+}
+
+// an escape sequence after '\' (sect. 2.6): the byte code
+fn escape(): uint {
+    adv()
+    var c = pc(0)
+    adv()
+    if c == 'n' { return 10 }
+    if c == 'r' { return 13 }
+    if c == 't' { return 9 }
+    if c == 'e' { return 27 }
+    if c == '0' { return 0 }
+    if c == '\\' || c == 39 || c == '"' || c == '`' || c == '{' { return c }
+    if c == 'x' {
+        var v = hexval(pc(0))
+        if v == $FFFF { lerr("bad \\x escape") }
+        adv()
+        var w = hexval(pc(0))
+        if w != $FFFF { adv(); v = v * 16 + w }
+        return v
+    }
+    lerr("unknown escape sequence")
+    return 0
+}
+
+fn tput(c: uint) {
+    if tlen >= TBUFMAX { lerr("string literal too long") }
+    tbuf[tlen] = byte(c)
+    tlen++
+}
+
+// The text of a string up to the closing quote q. ist = 1 - interpolated: it stops at {|.
+fn read_text(q: uint, ist: uint) {
+    tlen = 0
+    loop {
+        var c = pc(0)
+        if c == EOFCH || c == 10 { lerr("unterminated string") }
+        if c == q { adv(); tiend = 1; return }
+        if c == '\\' { tput(escape()); continue }
+        if ist != 0 && c == '{' && pc(1) == '|' {
+            adv(); adv()
+            tiend = 0
+            return
+        }
+        tput(c)
+        adv()
+    }
+}
+
+fn number() {
+    var v: uint = 0
+    var c = pc(0)
+    var base: uint = 10
+    if c == '$' { adv(); base = 16 }
+    else if c == '0' && (pc(1) == 'x' || pc(1) == 'X') { adv(); adv(); base = 16 }
+    else if c == '0' && (pc(1) == 'b' || pc(1) == 'B') { adv(); adv(); base = 2 }
+    var nd: uint = 0
+    var big: uint = 0
+    loop {
+        c = pc(0)
+        var d: uint = hexval(c)
+        if d == $FFFF || d >= base { break }
+        if base == 10 {
+            if v > 3276 || v == 3276 && d > 8 { big = 2 }
+            v = v * 10 + d
+        } else if base == 16 {
+            if v > $0FFF { big = 2 }
+            v = v * 16 + d
+        } else {
+            if v > $7FFF { big = 2 }
+            v = v * 2 + d
+        }
+        nd++
+        adv()
+    }
+    if nd == 0 { lerr("malformed number") }
+    if is_alpha(c) != 0 || is_digit(c) != 0 { lerr("malformed number") }
+    if big == 2 { lerr("number too large") }
+    tbig = 0
+    if base == 10 && v == 32768 { tbig = 1 }
+    tval = v
+    tok = T_NUM
+}
+
+fn kw_lookup(): uint {
+    var i = thash & (KWH - 1)
+    loop {
+        var k = uint(kwh[i])
+        if k == 0 { return T_IDENT }
+        var s = kw_names[k - 1]
+        if s[0] == tbuf[0] && strlen(s) == tlen && memeq(s, &tbuf[0], tlen) != 0 { return T_BREAK + k - 1 }
+        i = (i + 1) & (KWH - 1)
+    }
+    return T_IDENT
+}
+
+// Is the next word after blanks and comments else?
+fn else_follows(): uint {
+    return uint(pc(0) == 'e' && pc(1) == 'l' && pc(2) == 's' && pc(3) == 'e' && is_alpha(pc(4)) == 0 && is_digit(pc(4)) == 0)
+}
+
+fn op2(c2: uint, t2: uint, t1: uint): uint {
+    if pc(1) == c2 { adv(); adv(); return t2 }
+    adv()
+    return t1
+}
+
+fn next() {
+    pline = tline
+    pfile = tfile
+    loop {
+        skip_space()
+        var c = pc(0)
+        if c == 10 {
+            if interp != 0 { lerr("newline in interpolated string") }
+            adv(); line++; col = 1
+            if trig != 0 && nest == 0 {
+                // EOS if the next non-empty token is not else
+                loop {
+                    skip_space()
+                    if pc(0) != 10 { break }
+                    adv(); line++; col = 1
+                }
+                if else_follows() != 0 { trig = 0; continue }
+                tline = line; tcol = col; tfile = curfile
+                tok = T_EOS
+                trig = 0
+                return
+            }
+            continue
+        }
+        if c == EOFCH {
+            if interp != 0 { lerr("unterminated string") }
+            if trig != 0 {
+                tline = line; tcol = col; tfile = curfile
+                tok = T_EOS; trig = 0; return
+            }
+            if depth > 0 { pop_include(); continue }
+            tline = line; tcol = col; tfile = curfile
+            tok = T_EOF
+            return
+        }
+        break
+    }
+    tline = line; tcol = col; tfile = curfile
+    var c = pc(0)
+    // the end of a {| ... |} substitution
+    if interp != 0 && inest == 0 && c == '|' && pc(1) == '}' {
+        adv(); adv()
+        read_text(iquote, 1)
+        tok = T_ISTR
+        if tiend != 0 { interp = 0 }
+        trig = 1
+        return
+    }
+    trig = 0
+    if is_alpha(c) != 0 {
+        tlen = 0
+        var h: uint = 0
+        loop {
+            if ipos >= ilen { fill(1); if ipos >= ilen { break } }
+            var d = uint(ibuf[ipos])
+            if cclass[d] == 0 { break }
+            if tlen >= 63 { lerr("name too long") }
+            tbuf[tlen] = byte(d); tlen++
+            h = h * 31 + d
+            ipos++; col++
+        }
+        tbuf[tlen] = 0
+        thash = h
+        tok = kw_lookup()
+        if tok == T_IDENT || tok == T_TRUE || tok == T_FALSE || tok == T_NULL || tok == T_BREAK ||
+           tok == T_CONTINUE || tok == T_RETURN { trig = 1 }
+        return
+    }
+    if is_digit(c) != 0 || c == '$' && hexval(pc(1)) != $FFFF {
+        number()
+        trig = 1
+        return
+    }
+    if c == '"' || c == '`' {
+        adv()
+        read_text(c, 0)
+        tok = T_STR
+        trig = 1
+        return
+    }
+    if c == '$' && (pc(1) == '"' || pc(1) == '`') {
+        if interp != 0 { lerr("nested interpolated string") }
+        var q = pc(1)
+        adv(); adv()
+        read_text(q, 1)
+        tok = T_ISTR
+        if tiend == 0 { interp = 1; iquote = q; inest = 0 } else { trig = 1 }
+        return
+    }
+    if c == 39 {
+        adv()
+        var v: uint
+        var d = pc(0)
+        if d == 39 || d == 10 || d == EOFCH { lerr("bad character literal") }
+        if d == '\\' { v = escape() } else { v = d; adv() }
+        if pc(0) != 39 { lerr("bad character literal") }
+        adv()
+        tok = T_NUM; tval = v; tbig = 0
+        trig = 1
+        return
+    }
+    // operators
+    var t: uint = 0
+    var d = pc(1)
+    if c == '(' { adv(); t = T_LPAREN; nest++ }
+    else if c == ')' { adv(); t = T_RPAREN; if nest > 0 { nest-- }; trig = 1 }
+    else if c == '[' { adv(); t = T_LBRACK; nest++ }
+    else if c == ']' { adv(); t = T_RBRACK; if nest > 0 { nest-- }; trig = 1 }
+    else if c == '{' { adv(); t = T_LBRACE }
+    else if c == '}' { adv(); t = T_RBRACE; trig = 1 }
+    else if c == ',' { adv(); t = T_COMMA }
+    else if c == ';' {
+        adv()
+        tok = T_EOS
+        return
+    }
+    else if c == ':' { adv(); t = T_COLON }
+    else if c == '.' { adv(); t = T_DOT }
+    else if c == '+' {
+        if d == '+' { adv(); adv(); t = T_INC; trig = 1 } else { t = op2('=', T_ADDA, T_PLUS) }
+    }
+    else if c == '-' {
+        if d == '-' { adv(); adv(); t = T_DEC; trig = 1 } else { t = op2('=', T_SUBA, T_MINUS) }
+    }
+    else if c == '*' { t = op2('=', T_MULA, T_STAR) }
+    else if c == '/' { t = op2('=', T_DIVA, T_SLASH) }
+    else if c == '%' { t = op2('=', T_MODA, T_PCT) }
+    else if c == '^' { t = op2('=', T_XORA, T_CARET) }
+    else if c == '~' { adv(); t = T_TILDE }
+    else if c == '&' {
+        if d == '&' { adv(); adv(); t = T_ANDAND } else { t = op2('=', T_ANDA, T_AMP) }
+    }
+    else if c == '|' {
+        if d == '|' { adv(); adv(); t = T_OROR } else { t = op2('=', T_ORA, T_BAR) }
+    }
+    else if c == '!' { t = op2('=', T_NE, T_BANG) }
+    else if c == '=' { t = op2('=', T_EQ, T_ASSIGN) }
+    else if c == '?' {
+        if d != '?' { lerr("unexpected character") }
+        adv(); adv(); t = T_QQ
+    }
+    else if c == '<' {
+        if d == '<' { adv(); t = op2('=', T_SHLA, T_SHL) } else { t = op2('=', T_LE, T_LT) }
+    }
+    else if c == '>' {
+        if d == '>' {
+            adv()
+            if pc(1) == '>' { adv(); t = op2('=', T_USHRA, T_USHR) } else { t = op2('=', T_SHRA, T_SHR) }
+        } else { t = op2('=', T_GE, T_GT) }
+    }
+    else { lerr("unexpected character") }
+    if interp != 0 {
+        if t == T_LPAREN || t == T_LBRACK || t == T_LBRACE { inest++ }
+        if (t == T_RPAREN || t == T_RBRACK || t == T_RBRACE) && inest > 0 { inest-- }
+    }
+    tok = t
+}

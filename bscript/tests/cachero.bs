@@ -1,0 +1,2 @@
+// run: mkdir /ro ; cp /t/child.bs /ro/child.bs ; attr +r /ro ; bs /ro/child.bs ro ; ls /tmp ; ls /ro
+println("unused")

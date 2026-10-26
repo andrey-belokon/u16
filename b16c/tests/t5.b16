@@ -1,0 +1,30 @@
+// t5: option data = $8000 - data moved away from the code (program in ROM, data in RAM):
+// the startup code copies initialized variables from the image, and zeroes bss.
+option data = $8000
+include "console.b16"
+
+var greeting = "hello from RAM"
+var counts: [4]uint = { 1, 2, 3 }
+var total: uint
+var zeros: [16]byte
+var ptrs: [2]ptr uint = { &counts[1], &total }
+var big: ulong = $DEADBEEF               // an initialized double word is copied by the startup code
+var wide: [2]long = { -100000, 70000 }
+var zl: long                             // bss: zeroed
+
+fn main() {
+    puts(&greeting[0]); putnl()
+    greeting[0] = 'H'
+    puts(&greeting[0]); putnl()
+    var i: uint = 0
+    while i < 4 { total += counts[i]; i++ }
+    putu(total); putc(' '); putu(*ptrs[0]); putc(' '); putu(*ptrs[1]); putc(' ')
+    var nz: uint = 0
+    i = 0
+    while i < 16 { nz += zeros[i]; i++ }
+    putu(nz); putc(' ')
+    if uint(&greeting[0]) >= $8000 { puts("in RAM") }
+    putnl()
+    big += wide[1]; zl = wide[0] + 1
+    putul(big); putc(' '); putl(wide[0]); putc(' '); putl(zl); putc(' '); putul(ulong(uint(&big)) >> 15); putnl()
+}

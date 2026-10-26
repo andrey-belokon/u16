@@ -1,0 +1,8 @@
+// The parameters of main do not trigger unused-parameter warnings (sect. 12.2): the signature is set by the startup
+// convention, and it is impossible to take only argv and skip argc. Other functions still get the warning.
+fn run(p: ptr ptr byte): int { return int(p) }
+fn spare(a, b: uint): uint { return b }
+fn main(argc: uint, argv: ptr ptr byte): int {
+    spare(1, 2)
+    return run(argv)
+}

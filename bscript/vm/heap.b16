@@ -1,0 +1,786 @@
+// heap.b16 - the bsvm heap (the specification, sect. 12.3, 12.10): the near heap with handles, far
+// memory in extended-memory frames, the collector, object access functions.
+//
+// ACCESS RULE. Outside heap.b16 and map.b16 an object's data is accessed only by the functions
+// of this file: hgw/hsw (a word), hgb/hsb (a byte), hget/hput (exchange with near memory),
+// hmove, hcmp, hfind, hfill (between objects), aget/aput (array elements). An address from hp()
+// is valid only until the next call of any heap function: between hp() and the last access
+// through that address there are no other heap calls, and the address of only one object is used at a time.
+// Near memory (the value stack, globals, file buffers, local arrays)
+// is not an object.
+//
+// REFERENCES (16 bits; the same in values and inside objects):
+//   near, bit 15 = 0   a handle number; htab[h] is the address, hseg[h] is where the object is:
+//                         HS_NEAR - the near heap or a static module object,
+//                         HS_OWN5 - the page 5 own frame (after the switch to
+//                                   extended mode; visible in the window with XM_OWN),
+//                         HS_FWD  - the data has been moved: htab[h] is a far reference
+//   far, bit 15 = 1   bits 14..8 - the segment (an extended-memory frame), 7..0 - the index in
+//                         the segment table (the first 512 bytes of the frame): the object's offset in the frame
+//                         or a forwarding (bit 0 = 1: (reference & $7FFF) << 1 | 1)
+// Near references do not change while the object is near; far ones never change. Moving
+// live near objects to far memory (promote) changes references and is done only at
+// safe points between commands (safe_point), where all references are in the roots and objects.
+//
+// MODES. Ordinary: the whole heap is near, up to $C000. Extended (far_on) is switched on when a collection
+// found no room: the page 5 objects stay in place as the segment of the "own frame", and
+// page 5 becomes the data window. New objects are created in the near heap (up to $A000);
+// survivors are moved to far memory. Ordinary collection does not scan far objects:
+// a write of a reference to a near object into a far container is remembered (the write barrier, rem_add).
+
+var htab: ptr uint
+var hseg: ptr byte
+var nhand: uint
+var hfree: uint
+var heap_lo, heap_top, heap_hi: uint
+var gc_count: uint
+
+const HS_NEAR = 0
+const HS_OWN5 = 1
+const HS_FWD = $FF
+
+// temporary roots (sect. 12.3): handles of objects not yet reachable from the roots
+var troots: [TRMAX]uint
+var ntr: uint
+var cur_err: uint               // the "current error" register
+
+fn tpush(h: uint) {
+    if ntr >= TRMAX { rt_err("internal: temporary roots") }
+    troots[ntr] = h
+    ntr++
+}
+
+// ---- far memory ---------------------------------------------------------------------------
+const W5_BASE = $A000           // data window: page 5
+const W5_PAGE = 5
+const SEG_MAX = 128             // segments 1..127: at most 1 MB (sect. 12.10)
+const FAR_TAB = 512             // segment table: 256 entries
+const FAR_MAXOBJ = $2000 - FAR_TAB - OBJ_HDR
+
+var far_on: uint                // extended mode
+var fastpath: uint = 1          // all objects are near: access functions without a segment check
+var w5_cur: uint                // the frame in the data window; XM_OWN - its own
+var seg_frame: [SEG_MAX]uint    // the segment's frame, 0 - none
+var seg_top: [SEG_MAX]uint      // used from the start of the frame (at least FAR_TAB)
+var seg_hint: [SEG_MAX]byte     // where to look for a free table entry
+var seg_static: [SEG_MAX]byte   // 1 - module constants: not collected
+var seg_nobj: [SEG_MAX]uint     // occupied entries of the segment table
+var seg_cur: uint               // the segment for new objects
+var own5_lo, own5_top: uint     // objects of the page 5 own frame
+var promote_pending: uint       // moving at a safe point
+var far_frames: uint            // frames allocated (the limit is SEG_MAX - 1)
+var seg_limit: uint = SEG_MAX   // at most this many segments (FAR_TEST: 64, to test full collection)
+
+fn w5map(f: uint) {
+    if f == w5_cur { return }
+    var e, old: uint
+    e, old = sys_xmap(W5_PAGE, f)
+    if e != OK { rt_err("internal: data window") }
+    w5_cur = f
+}
+
+// an object in the data window (far or in the page 5 own frame)
+fn windowed(r: uint): uint {
+    if fastpath != 0 { return 0 }
+    return uint(r & $8000 != 0 || hseg[r] != HS_NEAR)
+}
+
+// The address of the header of object r. A far object is placed in the window; the address is valid until the next call.
+fn oaddr(r: uint): uint {
+    if r & $8000 == 0 {
+        var s = uint(hseg[r])
+        if s == HS_NEAR { return htab[r] }
+        if s == HS_OWN5 { w5map(XM_OWN); return htab[r] }
+        r = htab[r]
+    }
+    var sg = (r >> 8) & $7F
+    w5map(seg_frame[sg])
+    var e = *ptr uint(W5_BASE + (r & $FF) * 2)
+    if e & 1 != 0 {
+        r = e >> 1
+        sg = (r >> 8) & $7F
+        w5map(seg_frame[sg])
+        e = *ptr uint(W5_BASE + (r & $FF) * 2)
+    }
+    return W5_BASE + e
+}
+
+// ---- access -------------------------------------------------------------------------------------
+fn hp(h: uint): uint {
+    if fastpath != 0 { return htab[h] + OBJ_HDR }        // ordinary mode: all objects are near
+    if h & $8000 == 0 && hseg[h] == HS_NEAR { return htab[h] + OBJ_HDR }
+    return oaddr(h) + OBJ_HDR
+}
+// frequent access functions: in ordinary mode the address comes straight from the table, without calling hp
+fn htype(h: uint): uint { return *ptr uint(hp(h) - OBJ_HDR) & F_TYPE }
+fn hsize(h: uint): uint {
+    if fastpath != 0 { return *ptr uint(htab[h] + 2) }
+    return *ptr uint(hp(h) - 4)
+}
+fn slen(h: uint): uint {
+    if fastpath != 0 { return *ptr uint(htab[h] + 2) }
+    return *ptr uint(hp(h) - 4)
+}
+
+fn hgw(h: uint, off: uint): uint {
+    if fastpath != 0 { return *ptr uint(htab[h] + OBJ_HDR + off) }
+    return *ptr uint(hp(h) + off)
+}
+fn hsw(h: uint, off: uint, w: uint) {
+    if fastpath != 0 { *ptr uint(htab[h] + OBJ_HDR + off) = w; return }
+    *ptr uint(hp(h) + off) = w
+}
+fn hgb(h: uint, off: uint): uint {
+    if fastpath != 0 { return uint(*ptr byte(htab[h] + OBJ_HDR + off)) }
+    return uint(*ptr byte(hp(h) + off))
+}
+fn hsb(h: uint, off: uint, b: uint) { *ptr byte(hp(h) + off) = byte(b) }
+
+// exchange with near memory
+fn hget(h: uint, off: uint, p: ptr byte, n: uint) { memcpy(p, ptr byte(hp(h) + off), n) }
+fn hput(h: uint, off: uint, p: ptr byte, n: uint) { memcpy(ptr byte(hp(h) + off), p, n) }
+
+// Both objects are visible at once: not both in the window, or the same frame in the window. The result is
+// the data addresses (after the call the window holds the needed frame) or 0, 0 - an intermediate buffer is needed.
+fn hpair(a: uint, b: uint): (uint, uint) {
+    if fastpath != 0 {
+        var na = htab[a] + OBJ_HDR
+        var nb = htab[b] + OBJ_HDR
+        return na, nb
+    }
+    var wa = windowed(a)
+    var wb = windowed(b)
+    if wa == 0 || wb == 0 {
+        if wa != 0 { var pb = hp(b); return hp(a), pb }
+        var pa = hp(a)
+        return pa, hp(b)
+    }
+    var pa = hp(a)
+    var fa = w5_cur
+    var pb = hp(b)
+    if w5_cur != fa { return 0, 0 }
+    return pa, pb
+}
+
+const BOUNCE = 128
+var bounce: [BOUNCE]byte
+
+// copying between objects (and inside an object, with overlap)
+fn hmove(d: uint, doff: uint, s: uint, soff: uint, n: uint) {
+    if n == 0 { return }
+    var dp, sp: uint
+    dp, sp = hpair(d, s)
+    if dp == 0 {
+        while n != 0 {
+            var k = n
+            if k > BOUNCE { k = BOUNCE }
+            hget(s, soff, &bounce[0], k)
+            hput(d, doff, &bounce[0], k)
+            doff += k; soff += k; n -= k
+        }
+        return
+    }
+    dp += doff
+    sp += soff
+    if dp > sp && dp < sp + n {
+        var dq: ptr byte = ptr byte(dp + n)
+        var sq: ptr byte = ptr byte(sp + n)
+        while n != 0 { dq--; sq--; *dq = *sq; n-- }
+        return
+    }
+    memcpy(ptr byte(dp), ptr byte(sp), n)
+}
+
+// byte comparison: -1, 0, 1
+fn hcmp(a: uint, ao: uint, b: uint, bo: uint, n: uint): int {
+    var pa, pb: uint
+    pa, pb = hpair(a, b)
+    if pa == 0 {
+        while n != 0 {
+            var k = n
+            if k > BOUNCE { k = BOUNCE }
+            hget(a, ao, &bounce[0], k)
+            var q: ptr byte = ptr byte(hp(b) + bo)
+            var i: uint = 0
+            while i < k {
+                if bounce[i] != q[i] { if bounce[i] < q[i] { return -1 }; return 1 }
+                i++
+            }
+            ao += k; bo += k; n -= k
+        }
+        return 0
+    }
+    var p: ptr byte = ptr byte(pa + ao)
+    var q: ptr byte = ptr byte(pb + bo)
+    while n != 0 {
+        if *p != *q { if *p < *q { return -1 }; return 1 }
+        p++; q++; n--
+    }
+    return 0
+}
+
+fn hfill(h: uint, off: uint, c: uint, n: uint) {
+    var p: ptr byte = ptr byte(hp(h) + off)
+    while n != 0 { *p = byte(c); p++; n-- }
+}
+
+// string b in string a from position from: the position or $FFFF. The first byte of b is looked for by a pass over
+// string a, a full comparison is made only at positions where the first byte matched.
+fn hfind(a: uint, b: uint, from: uint): uint {
+    var la = slen(a)
+    var lb = slen(b)
+    if lb > la { return $FFFF }
+    if lb == 0 { if from <= la { return from }; return $FFFF }
+    var c = hgb(b, 0)
+    var last = la - lb
+    var i = from
+    while i <= last {
+        var p: ptr byte = ptr byte(hp(a))
+        while i <= last && uint(p[i]) != c { i++ }
+        if i > last { break }
+        if lb == 1 || hcmp(a, i + 1, b, 1, lb - 1) == 0 { return i }
+        i++
+    }
+    return $FFFF
+}
+
+fn hhash(h: uint): uint {
+    var n = slen(h)
+    var p: ptr byte = ptr byte(hp(h))
+    var x: uint = 5381
+    while n != 0 { x = (x << 5) + x + *p; p++; n-- }
+    return x
+}
+
+// ---- write barrier ------------------------------------------------------------------------------
+// Far objects (and objects of the page 5 own frame) into which a reference to a
+// near object was written: in ordinary collection their references are roots, when moving their references are fixed.
+const REMMAX = 128
+const F_REM = $1000             // the object is already in the list
+const F_DEAD = $0800            // the data has been moved, the place is garbage (do not free the handle)
+var rem: [REMMAX]uint
+var nrem: uint
+var rem_all: uint               // the list overflowed: scan all far objects
+
+// a reference to a near-heap object (its write into a far object is remembered)
+fn young(v: uint): uint {
+    if v & $8000 != 0 { return 0 }
+    var s = uint(hseg[v])
+    if s == HS_FWD { return 1 }
+    return uint(s == HS_NEAR && htab[v] >= heap_lo)
+}
+
+fn rem_add(c: uint) {
+    var o: ptr uint = ptr uint(oaddr(c))
+    if o[0] & F_REM != 0 { return }
+    o[0] |= F_REM
+    if nrem < REMMAX { rem[nrem] = c; nrem++ } else { rem_all = 1 }
+}
+
+// the value (t, v) is written into object c
+fn wbar(c: uint, t: uint, v: uint) {
+    if far_on != 0 && t >= TAG_STR && windowed(c) != 0 && young(v) != 0 { rem_add(c) }
+}
+
+// an object's reference field (error, file)
+fn hset_ref(c: uint, off: uint, r: uint) {
+    hsw(c, off, r)
+    if r != 0 { wbar(c, TAG_STR, r) }
+}
+
+// ---- allocation ---------------------------------------------------------------------------------
+fn heap_init(lo: uint, hi: uint, nh: uint) {
+    htab = ptr uint(lo)
+    hseg = ptr byte(lo + nh * 2)
+    nhand = nh
+    // handle 0 is not used; free entries are (next << 1) | 1
+    var i: uint = 1
+    while i < nh { htab[i] = ((i + 1) << 1) | 1; hseg[i] = 0; i++ }
+    htab[nh - 1] = 1
+    htab[0] = 0
+    hseg[0] = 0
+    hfree = 1
+    heap_lo = (lo + nh * 3 + 1) & $FFFE
+    heap_top = heap_lo
+    heap_hi = hi
+    w5_cur = XM_OWN
+}
+
+// a handle for the object at address a (module constants)
+fn hstatic(a: uint): uint {
+    if hfree == 0 { rt_err("out of memory") }
+    var h = hfree
+    hfree = htab[h] >> 1
+    htab[h] = a
+    hseg[h] = HS_NEAR
+    var o = ptr Obj(a)
+    o.fl |= F_STATIC
+    o.h = h
+    return h
+}
+
+fn hfree_one(h: uint) {
+    htab[h] = (hfree << 1) | 1
+    hseg[h] = HS_NEAR
+    hfree = h
+}
+
+const GC_STRESS = 0             // 1 - a collection before every allocation (checks rule 12.3)
+const FAR_TEST = 0              // 1 - extended mode at once, a 2 KB near heap (a check)
+
+fn alloc(ty: uint, size: uint): uint {
+    var need: uint = OBJ_HDR + ((size + 1) & $FFFE)
+    if GC_STRESS != 0 { gc() }
+    if heap_hi - heap_top < need || hfree == 0 {
+        gc()
+        if heap_hi - heap_top < need || hfree == 0 {
+            if far_on == 0 { ign = g_activate() }
+            if far_on != 0 && (heap_hi - heap_top < need || hfree == 0) {
+                promote_pending = 1
+                return far_alloc(ty, size)
+            }
+            if heap_hi - heap_top < need || hfree == 0 { rt_err("out of memory") }
+        }
+    }
+    var h = hfree
+    hfree = htab[h] >> 1
+    hseg[h] = HS_NEAR
+    var o = ptr Obj(heap_top)
+    o.fl = ty
+    o.size = size
+    o.h = h
+    htab[h] = heap_top
+    heap_top += need
+    return h
+}
+
+// a new object in the same place as h: far for a far one (container growth)
+fn alloc_near(h: uint, ty: uint, size: uint): uint {
+    if far_on != 0 && windowed(h) != 0 { return far_alloc(ty, size) }
+    return alloc(ty, size)
+}
+
+
+
+var promoting: uint
+
+
+// Swap the data of two objects (growth of an array and a dictionary): a gets b's data.
+fn hswap(a: uint, b: uint) {
+    if a & $8000 == 0 && b & $8000 == 0 {
+        // both references are handles: swap the table entries; the headers of near objects and objects of the
+        // own frame keep their handle
+        var t = htab[a]
+        htab[a] = htab[b]
+        htab[b] = t
+        var s = hseg[a]
+        hseg[a] = hseg[b]
+        hseg[b] = s
+        if hseg[a] != HS_FWD { ptr Obj(oaddr(a)).h = a }
+        if hseg[b] != HS_FWD { ptr Obj(oaddr(b)).h = b }
+        return
+    }
+    // a's old data is garbage; a is forwarded to b's data
+    var o: ptr uint = ptr uint(oaddr(a))
+    o[0] |= F_DEAD
+    if a & $8000 == 0 {
+        if b & $8000 == 0 { rt_err("internal: hswap") }
+        hseg[a] = HS_FWD
+        htab[a] = b
+        return
+    }
+    var tgt = b
+    if tgt & $8000 == 0 {
+        if hseg[tgt] != HS_FWD { rt_err("internal: hswap") }
+        tgt = htab[tgt]
+    }
+    w5map(seg_frame[(a >> 8) & $7F])
+    *ptr uint(W5_BASE + (a & $FF) * 2) = ((tgt & $7FFF) << 1) | 1
+}
+
+// ---- garbage collection ---------------------------------------------------------------------------
+const MSMAX = 48
+var mstack: [MSMAX]uint
+var nms: uint
+var full_mark: uint             // 1 - full collection: far objects are marked too
+
+fn mark(h: uint) {
+    if h & $8000 == 0 {
+        var s = uint(hseg[h])
+        if s == HS_NEAR && htab[h] < heap_lo { return }       // a static module object
+        if full_mark == 0 && s != HS_NEAR { return }           // far: ordinary collection does not scan them
+    } else {
+        if full_mark == 0 || seg_static[(h >> 8) & $7F] != 0 { return }
+    }
+    var o: ptr uint = ptr uint(oaddr(h))
+    if o[0] & F_MARK != 0 { return }
+    o[0] |= F_MARK
+    var ty = o[0] & F_TYPE
+    if ty == TY_STR || ty == TY_BCH { return }
+    if nms < MSMAX { mstack[nms] = h; nms++ } else { o[0] |= F_SCAN }
+}
+
+fn markv(v: ptr Val) { if v.t >= TAG_STR { mark(v.v) } }
+
+// mark the object's references
+fn scan(r: uint) {
+    var t = htype(r)
+    if t == TY_ARR || t == TY_MAP {
+        var fixed: uint = A_VALS
+        if t == TY_MAP { fixed = M_ENTS }
+        if chunked(r) != 0 {
+            var n = hgw(r, fixed)
+            var i: uint = 0
+            while i < n { var c = hgw(r, fixed + 2 + i * 2); if c != 0 { mark(c) }; i++ }
+            return
+        }
+        if t == TY_ARR {
+            var n = alen(r)
+            var i: uint = 0
+            while i < n {
+                var et, ev: uint
+                et, ev = aget(r, i)
+                if et >= TAG_STR { mark(ev) }
+                i++
+            }
+        } else { scan_ents(r, M_ENTS, hgw(r, M_USED)) }
+    } else if t == TY_VCH {
+        var i: uint = 0
+        while i < CHUNK {
+            var p: ptr uint = ptr uint(hp(r) + i)
+            if p[1] >= TAG_STR { mark(p[0]) }
+            i += 4
+        }
+    } else if t == TY_ECH {
+        scan_ents(r, 0, CHUNK / 8)
+    } else if t == TY_ERR {
+        mark(hgw(r, E_TEXT))
+        var ob = hgw(r, E_OBJ)
+        if ob != 0 { mark(ob) }
+    } else if t == TY_FILE {
+        mark(hgw(r, FO_PATH))
+    }
+}
+
+// dictionary entries (key, hash, value) from byte off of object r
+fn scan_ents(r: uint, off: uint, n: uint) {
+    var i: uint = 0
+    while i < n {
+        var p: ptr uint = ptr uint(hp(r) + off + i * 8)
+        var k = p[0]
+        var vt = p[3]
+        var vv = p[2]
+        if k != 0 {
+            mark(k)
+            if vt >= TAG_STR { mark(vv) }
+        }
+        i++
+    }
+}
+
+fn drain() {
+    while nms != 0 { nms--; scan(mstack[nms]) }
+}
+
+fn gc_roots() {
+    var v: ptr Val = vs
+    while v < vsp { markv(v); v++ }
+    v = glob
+    var n = nglob
+    while n != 0 { markv(v); v++; n-- }
+    var i: uint = 0
+    while i < ntr { if troots[i] != 0 { mark(troots[i]) }; i++ }
+    if cur_err != 0 { mark(cur_err) }
+    if bld_h != 0 { mark(bld_h) }
+}
+
+fn obj_size(a: uint): uint { return OBJ_HDR + ((ptr Obj(a).size + 1) & $FFFE) }
+
+var it_found: uint
+
+// near-heap objects that did not fit in the overflowed mark stack
+fn rescan_all() {
+    loop {
+        drain()
+        it_found = 0
+        var a = heap_lo
+        while a < heap_top {
+            var o = ptr Obj(a)
+            if o.fl & F_SCAN != 0 {
+                o.fl &= $BFFF
+                it_found = 1
+                scan(o.h)
+                drain()
+            }
+            a += obj_size(a)
+        }
+        if it_found == 0 { break }
+    }
+}
+
+// compaction of the near heap (marked objects are shifted down)
+fn compact_near() {
+    var src = heap_lo
+    var dst = heap_lo
+    while src < heap_top {
+        var o = ptr Obj(src)
+        var sz = obj_size(src)
+        if o.fl & F_MARK != 0 {
+            o.fl &= $7FFF
+            if dst != src {
+                var d: ptr uint = ptr uint(dst)
+                var s: ptr uint = ptr uint(src)
+                var n = sz >> 1
+                while n != 0 { *d = *s; d++; s++; n-- }
+            }
+            htab[ptr Obj(dst).h] = dst
+            dst += sz
+        } else if o.fl & F_DEAD == 0 {
+            if o.fl & F_TYPE == TY_FILE { file_finalize(*ptr uint(src + OBJ_HDR + FO_SLOT)) }
+            hfree_one(o.h)
+        }
+        src += sz
+    }
+    heap_top = dst
+}
+
+// Ordinary collection: the near heap. In extended mode the roots are supplemented by the references of remembered
+// far objects (or of all far ones if the list overflowed).
+fn gc() {
+    gc_count++
+    nms = 0
+    full_mark = 0
+    gc_roots()
+    if far_on != 0 {
+        if rem_all != 0 { ign = g_scan_far() } else {
+            var i: uint = 0
+            while i < nrem { scan(rem[i]); drain(); i++ }
+        }
+    }
+    rescan_all()
+    compact_near()
+}
+
+// A safe point: between bytecode commands (jumps, calls, return from built-ins).
+fn safe_point() {
+    if promote_pending != 0 { ign = g_promote() }
+}
+
+// ---- strings ------------------------------------------------------------------------------------
+fn new_str(n: uint): uint {
+    if n > 32767 { rt_err("too large") }
+    return alloc(TY_STR, n)
+}
+
+// a string from near memory
+fn str_from(p: ptr byte, n: uint): uint {
+    var h = new_str(n)
+    hput(h, 0, p, n)
+    return h
+}
+
+fn str_c(s: ptr byte): uint { return str_from(s, strlen(s)) }
+
+// substring [lo, hi) of string h
+fn sub_str(h: uint, lo: uint, hi: uint): uint {
+    tpush(h)
+    var r = new_str(hi - lo)
+    ntr--
+    hmove(r, 0, h, lo, hi - lo)
+    return r
+}
+
+fn str_eq(a: uint, b: uint): uint {
+    if a == b { return 1 }
+    var n = slen(a)
+    if n != slen(b) { return 0 }
+    return uint(hcmp(a, 0, b, 0, n) == 0)
+}
+
+fn str_order(a: uint, b: uint): int {
+    var la = slen(a)
+    var lb = slen(b)
+    var n = la
+    if lb < n { n = lb }
+    var r = hcmp(a, 0, b, 0, n)
+    if r != 0 { return r }
+    if la < lb { return -1 }
+    if la > lb { return 1 }
+    return 0
+}
+
+// ---- array and dictionary data -----------------------------------------------------------------
+// The data (array values; dictionary entries and buckets) up to CHUNK bytes lie in the object itself after the
+// permanent fields; larger - in chunks of CHUNK bytes (F_CHUNK): after the permanent fields come the number of
+// chunks and their references. A chunk is a separate object (TY_VCH, TY_ECH, TY_BCH) and may lie in its own
+// extended-memory frame; array growth adds a chunk without copying.
+const CHUNK = 4096
+const F_CHUNK = $0400
+const TY_VCH = 8                // an array value chunk: 1024 values
+const TY_ECH = 9                // a dictionary entry chunk: 512 entries
+const TY_BCH = 10               // a dictionary bucket chunk
+const ACH_MAX = 32              // array chunks: 32767 values
+
+// Element i of size 1 << sh of the data of object h: the permanent fields are fixed bytes; for an object without
+// chunks the element data is from byte foff of the data, for an object with chunks - from chunk bch. The address is valid
+// until the next call. The offset is computed from the element number: the data can be larger than 64 KB.
+fn delem(h: uint, fixed: uint, foff: uint, bch: uint, i: uint, sh: uint): uint {
+    var p = hp(h)
+    if *ptr uint(p - OBJ_HDR) & F_CHUNK == 0 { return p + fixed + foff + (i << sh) }
+    var c = *ptr uint(p + fixed + 2 + (bch + (i >> (12 - sh))) * 2)
+    return hp(c) + ((i << sh) & $FFF)
+}
+
+// the object that holds the element (for the write barrier)
+fn dobj(h: uint, fixed: uint, bch: uint, i: uint, sh: uint): uint {
+    var p = hp(h)
+    if *ptr uint(p - OBJ_HDR) & F_CHUNK == 0 { return h }
+    return *ptr uint(p + fixed + 2 + (bch + (i >> (12 - sh))) * 2)
+}
+
+fn chunked(h: uint): uint { return uint(*ptr uint(hp(h) - OBJ_HDR) & F_CHUNK != 0) }
+
+// a new chunk of type ty, zeroed; like - where to place it (far for a far one)
+fn chunk_new(like: uint, ty: uint): uint {
+    var c: uint
+    if like != 0 { c = alloc_near(like, ty, CHUNK) } else { c = alloc(ty, CHUNK) }
+    hfill(c, 0, 0, CHUNK)
+    return c
+}
+
+// ---- arrays -----------------------------------------------------------------------------------
+fn alen(h: uint): uint { return hgw(h, A_LEN) }
+fn aset_len(h: uint, n: uint) { hsw(h, A_LEN, n) }
+fn acap(h: uint): uint {
+    if chunked(h) != 0 { return hgw(h, A_VALS) * (CHUNK / 4) }
+    return (hsize(h) - A_VALS) >> 2
+}
+
+// element i: (tag, value)
+fn aget(h: uint, i: uint): (uint, uint) {
+    var p: ptr uint = ptr uint(delem(h, A_VALS, 0, 0, i, 2))
+    return p[1], p[0]
+}
+
+fn aput_raw(h: uint, i: uint, t: uint, v: uint) {
+    var p: ptr uint = ptr uint(delem(h, A_VALS, 0, 0, i, 2))
+    p[0] = v
+    p[1] = t
+}
+
+fn aput(h: uint, i: uint, t: uint, v: uint) {
+    aput_raw(h, i, t, v)
+    if far_on != 0 && t >= TAG_STR { wbar(dobj(h, A_VALS, 0, i, 2), t, v) }
+}
+
+// elements from the value stack
+fn aput_n(h: uint, i: uint, s: ptr Val, n: uint) {
+    if fastpath != 0 && chunked(h) == 0 { hput(h, A_VALS + i * 4, ptr byte(s), n * 4); return }
+    while n != 0 { aput(h, i, s.t, s.v); s++; i++; n-- }
+}
+
+// n elements from array s into array d (overlap within one array is allowed)
+fn amove(d: uint, di: uint, s: uint, si: uint, n: uint) {
+    if n == 0 { return }
+    if chunked(d) == 0 && chunked(s) == 0 {
+        hmove(d, A_VALS + di * 4, s, A_VALS + si * 4, n * 4)
+        if far_on != 0 && windowed(d) != 0 { rem_add(d) }
+        return
+    }
+    if d == s && di > si {
+        var k = n
+        while k != 0 { k--; var t, v: uint; t, v = aget(s, si + k); aput(d, di + k, t, v) }
+        return
+    }
+    var k: uint = 0
+    while k < n { var t, v: uint; t, v = aget(s, si + k); aput(d, di + k, t, v); k++ }
+}
+
+fn arr_alloc(like: uint, cap: uint): uint {
+    if cap == 0 { cap = 2 }
+    if cap > 32767 { rt_err("too large") }
+    var h: uint
+    if cap * 4 <= CHUNK {
+        if like != 0 { h = alloc_near(like, TY_ARR, A_VALS + cap * 4) } else { h = alloc(TY_ARR, A_VALS + cap * 4) }
+        aset_len(h, 0)
+        return h
+    }
+    ga_a = like
+    ga_b = cap
+    return g_arr_chunked()
+}
+
+// array h has at least nch chunks (F_CHUNK) (the gc overlay)
+fn arr_grow_chunks(h: uint, nch: uint) {
+    ga_a = h
+    ga_b = nch
+    ign = g_arr_grow()
+}
+
+// allocation in far memory (the gc overlay)
+var ga_a, ga_b, ga_c: uint      // arguments of the gc overlay entries
+fn far_alloc(ty: uint, size: uint): uint {
+    ga_a = ty
+    ga_b = size
+    return g_far_alloc()
+}
+
+
+fn new_arr(cap: uint): uint { return arr_alloc(0, cap) }
+
+// room for n elements
+fn arr_reserve(h: uint, n: uint) {
+    if n <= acap(h) { return }
+    if n > 32767 { rt_err("too large") }
+    if chunked(h) != 0 {
+        arr_grow_chunks(h, (n + CHUNK / 4 - 1) / (CHUNK / 4))
+        return
+    }
+    var c = acap(h) * 2
+    if c < n { c = n }
+    if c > 32767 { c = 32767 }
+    tpush(h)
+    var h2 = arr_alloc(h, c)
+    ntr--
+    var len = alen(h)
+    tpush(h2)
+    amove(h2, 0, h, 0, len)
+    ntr--
+    aset_len(h2, len)
+    hswap(h, h2)
+    if far_on != 0 && windowed(h) != 0 && len != 0 { rem_add(h) }
+}
+
+// append the value (t, v) to the end of array h
+fn arr_push(h: uint, t: uint, v: uint) {
+    // fast path: an array without chunks, there is room
+    var p = hp(h)
+    var o: ptr uint = ptr uint(p - OBJ_HDR)
+    var n = *ptr uint(p)
+    if o[0] & F_CHUNK == 0 && n < (o[1] - A_VALS) >> 2 {
+        var e: ptr uint = ptr uint(p + A_VALS + n * 4)
+        e[0] = v
+        e[1] = t
+        *ptr uint(p) = n + 1
+        if far_on != 0 && t >= TAG_STR { wbar(h, t, v) }
+        return
+    }
+    if n >= acap(h) {
+        if t >= TAG_STR { tpush(v) }
+        arr_reserve(h, n + 1)
+        if t >= TAG_STR { ntr-- }
+    }
+    aput(h, n, t, v)
+    aset_len(h, n + 1)
+}
+
+// a copy of elements [lo, hi)
+fn arr_slice(h: uint, lo: uint, hi: uint): uint {
+    tpush(h)
+    var r = new_arr(hi - lo)
+    tpush(r)
+    amove(r, 0, h, lo, hi - lo)
+    ntr -= 2
+    aset_len(r, hi - lo)
+    return r
+}

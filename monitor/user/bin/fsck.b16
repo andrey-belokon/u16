@@ -1,0 +1,570 @@
+// fsck N [-n] - check and repair the FS16 volume on disk N ("FS16 File System",
+// sect. 8 and 10). It works with sectors through DISK_IO, so the volume must be not
+// mounted or mounted read-only; -n - check only, no writes.
+//
+// Repair per sect. 10 of FS16: a walk of the tree from ROOT building a new map; an address outside the
+// data area or an already occupied cluster - the file is truncated before it (if the file
+// begins with it - a duplicate after a move, the entry is zeroed); extra addresses past the size
+// are zeroed; the new map is written over the old one, FREE is recomputed, DIRTY is cleared.
+// Invalid names are only reported. An entry whose name matches the name of an earlier
+// directory entry ignoring case is renamed: the number 2, 3, ... is appended to the name.
+//
+// Exit code: 0 - the volume is intact or repaired, 1 - errors remain (-n, a damaged
+// superblock, a disk error), 2 - wrong arguments.
+include "ulib.b16"
+option max_top = $A000         // 40 KB: the volume's new map and cluster buffers ("Shell", sect. 8.1)
+
+struct DEnt {
+    name: [32]byte
+    size: ulong
+    mtime: ulong
+    addr: [12]uint
+}
+
+const SZ = $07FFFFFF
+
+var drv: uint
+var check_only: uint
+var dreq: DiskReq
+var sb: [512]byte               // superblock
+var nclu: uint                  // N
+var mapc: uint                  // B
+var nmap: [8192]byte            // the new map: bit c = 1 - the cluster is occupied
+var cb: [2048]byte              // cluster (index)
+var cb2: [2048]byte             // the DIND cluster
+var sec: [512]byte              // directory sector
+var bmb: [512]byte              // index sector for bmap
+var problems: uint              // violations found
+var fixed: uint                 // fixes
+var ioerr: uint
+
+// ---- disk -------------------------------------------------------------------------------
+fn dio(op: uint, lba: ulong, buf: ptr, count: uint): uint {
+    if op == DIO_WRITE && check_only != 0 { return OK }
+    dreq.op = op
+    dreq.drive = drv
+    dreq.count = count
+    dreq.buf = buf
+    dreq.lba = lba
+    var e: uint = sys_disk_io(&dreq)
+    if e != OK && ioerr == 0 {
+        ioerr = e
+        fail("disk", e)
+    }
+    return e
+}
+
+fn clu_lba(c: uint): ulong { return ulong(c) << 2 }
+
+// ---- the new map ----------------------------------------------------------------------------
+fn marked(c: uint): uint { return uint(nmap[c >> 3] >> (c & 7)) & 1 }
+fn mark(c: uint) { nmap[c >> 3] |= byte(1 << (c & 7)) }
+fn unmark(c: uint) { nmap[c >> 3] &= byte(~(1 << (c & 7))) }
+
+// Occupy cluster c for a reference: 0 - the address is outside the data area or already occupied.
+fn take(c: uint): uint {
+    if c <= mapc || c >= nclu || marked(c) != 0 { return 0 }
+    mark(c)
+    return 1
+}
+
+// ---- the path for messages -----------------------------------------------------------------------
+const MAXD = 64
+struct Frame {
+    ent: DEnt                   // directory entry
+    k: uint                     // directory cluster number
+    e: uint                     // entry number in the cluster 0..31
+}
+var fr: [MAXD]Frame
+var depth: uint
+var pathb: [300]byte
+
+fn name_of(n: ptr DEnt, out: ptr byte) {
+    var i: uint = 0
+    while i < 32 && n.name[i] != 0 { out[i] = n.name[i]; i++ }
+    out[i] = 0
+}
+
+fn path_of(n: ptr DEnt): ptr byte {
+    var len: uint = 0
+    pathb[0] = 0
+    var i: uint = 1             // frame 0 is the root
+    while i < depth && len < 250 {
+        pathb[len] = '/'
+        len++
+        name_of(&fr[i].ent, &pathb[len])
+        len = strlen(&pathb[0])
+        i++
+    }
+    pathb[len] = '/'
+    len++
+    if len < 260 { name_of(n, &pathb[len]) } else { pathb[len] = 0 }
+    return &pathb[0]
+}
+
+fn report(n: ptr DEnt, text: ptr byte) {
+    puts("fsck: ")
+    if n != 0 { puts(path_of(n)); puts(": ") }
+    puts(text)
+    putnl()
+    problems++
+}
+
+// ---- entry addresses ---------------------------------------------------------------------------------
+fn ncl(size: ulong): uint { return uint((size + 2047) >> 11) }
+
+// Cluster k of entry n (read only; the addresses are already checked).
+fn bmap(n: ptr DEnt, k: uint): uint {
+    if k < 10 { return n.addr[k] }
+    var w: ptr uint = ptr uint(&bmb[0])
+    if k < 1034 {
+        var i: uint = k - 10
+        if dio(DIO_READ, clu_lba(n.addr[10]) + (i >> 8), &bmb[0], 1) != OK { return 0 }
+        return w[i & 255]
+    }
+    var j: uint = k - 1034
+    if dio(DIO_READ, clu_lba(n.addr[11]) + (j >> 18), &bmb[0], 1) != OK { return 0 }
+    var l2: uint = w[(j >> 10) & 255]
+    if dio(DIO_READ, clu_lba(l2) + ((j & 1023) >> 8), &bmb[0], 1) != OK { return 0 }
+    return w[j & 255]
+}
+
+// Zero the elements [from, 1024) of index cluster c (in buffer b), write it if they changed.
+fn idx_tail(c: uint, b: ptr byte, from: uint): uint {
+    var w: ptr uint = ptr uint(b)
+    var ch: uint = 0
+    var i: uint = from
+    while i < 1024 { if w[i] != 0 { w[i] = 0; ch = 1 }; i++ }
+    if ch != 0 { ign = dio(DIO_WRITE, clu_lba(c), b, 4); fixed++ }
+    return ch
+}
+
+// Checking the addresses of entry n (sect. 8, items 1, 3, 4) marking its clusters in the new map.
+// Result: 0 - no change, 1 - the entry was changed (size or addresses), 2 - a duplicate: zero the entry.
+fn check_node(n: ptr DEnt): uint {
+    var ch: uint = 0
+    var hi: uint = uint(n.size >> 16)
+    if hi & $0800 != 0 { n.size &= ~ulong($08000000); ch = 1; report(n, "SIZE bit 27 cleared") }
+    var size: ulong = n.size & SZ
+    var isdir: uint = hi & $8000
+    if isdir != 0 && uint(size) & 2047 != 0 {
+        size &= ~ulong(2047)
+        report(n, "directory size rounded down")
+        ch = 1
+    }
+    var c: uint = ncl(size)
+    var cn: uint = c            // clusters after the check
+    var k: uint = 0
+    var dup: uint = 0
+    var ind_t: uint = 0
+    var dind_t: uint = 0
+    var l2n: uint = 0           // second-level clusters taken
+    // direct addresses
+    while k < c && k < 10 {
+        var a: uint = n.addr[k]
+        if take(a) == 0 { if a != 0 && a > mapc && a < nclu { dup = 1 }; cn = k; break }
+        k++
+    }
+    var wi: ptr uint = ptr uint(&cb[0])
+    // IND
+    if cn == c && c > 10 {
+        if take(n.addr[10]) == 0 { cn = 10 } else {
+            ind_t = 1
+            if dio(DIO_READ, clu_lba(n.addr[10]), &cb[0], 4) != OK { return 0 }
+            while k < c && k < 1034 {
+                if take(wi[k - 10]) == 0 { cn = k; break }
+                k++
+            }
+        }
+    }
+    // DIND
+    var wd: ptr uint = ptr uint(&cb2[0])
+    if cn == c && c > 1034 {
+        if take(n.addr[11]) == 0 { cn = 1034 } else {
+            dind_t = 1
+            if dio(DIO_READ, clu_lba(n.addr[11]), &cb2[0], 4) != OK { return 0 }
+            while cn == c && k < c {
+                var j: uint = (k - 1034) >> 10
+                if take(wd[j]) == 0 { cn = k; break }
+                l2n++
+                if dio(DIO_READ, clu_lba(wd[j]), &cb[0], 4) != OK { return 0 }
+                var g: uint = k
+                while k < c && k < g + 1024 {
+                    if take(wi[k - g]) == 0 { cn = k; break }
+                    k++
+                }
+            }
+        }
+    }
+    if cn == 0 && dup != 0 && c != 0 { return 2 }
+    var trunc: uint = 0
+    if cn < c {
+        size = ulong(cn) << 11
+        report(n, "truncated: bad or shared cluster address")
+        ch = 1
+        trunc = 1
+    }
+    var ch0: uint = ch
+    // extra addresses past the size (sect. 8, item 4)
+    k = cn
+    while k < 10 { if n.addr[k] != 0 { n.addr[k] = 0; ch = 1 }; k++ }
+    if cn <= 10 {
+        if ind_t != 0 { unmark(n.addr[10]) }
+        if n.addr[10] != 0 { n.addr[10] = 0; ch = 1 }
+    } else if ind_t != 0 {
+        if dio(DIO_READ, clu_lba(n.addr[10]), &cb[0], 4) == OK {
+            var to: uint = cn - 10
+            if to > 1024 { to = 1024 }
+            if idx_tail(n.addr[10], &cb[0], to) != 0 { ch = 1 }
+        }
+    }
+    if cn <= 1034 {
+        if dind_t != 0 {
+            var j2: uint = 0
+            while j2 < l2n { unmark(wd[j2]); j2++ }
+            unmark(n.addr[11])
+        }
+        if n.addr[11] != 0 { n.addr[11] = 0; ch = 1 }
+    } else if dind_t != 0 {
+        var g2: uint = (cn - 1034 + 1023) >> 10        // second-level clusters needed
+        var j3: uint = g2
+        while j3 < l2n { unmark(wd[j3]); j3++ }
+        var last: uint = wd[g2 - 1]
+        if dio(DIO_READ, clu_lba(last), &cb[0], 4) == OK {
+            if idx_tail(last, &cb[0], cn - 1034 - ((g2 - 1) << 10)) != 0 { ch = 1 }
+        }
+        if dio(DIO_READ, clu_lba(n.addr[11]), &cb2[0], 4) == OK {
+            if idx_tail(n.addr[11], &cb2[0], g2) != 0 { ch = 1 }
+        }
+    }
+    if ch != 0 && ch0 == 0 && trunc == 0 { report(n, "addresses beyond the size cleared") }
+    if ch != 0 {
+        n.size = (n.size & ~ulong(SZ)) | size
+        fixed++
+    }
+    return ch
+}
+
+// The entry name per sect. 7 of FS16: 0 - valid.
+fn bad_name(n: ptr DEnt): uint {
+    var len: uint = 0
+    while len < 32 && n.name[len] != 0 { len++ }
+    var i: uint = len
+    while i < 32 { if n.name[i] != 0 { return 1 }; i++ }
+    if len == 0 { return 1 }
+    if n.name[0] == '.' && (len == 1 || len == 2 && n.name[1] == '.') { return 1 }
+    i = 0
+    while i < len {
+        if n.name[i] < $20 || n.name[i] == '/' || n.name[i] == ':' { return 1 }
+        i++
+    }
+    return 0
+}
+
+// The names of entries a and b (32 bytes) are equal ignoring letter case (sect. 7.1 of FS16).
+fn name_ieq(a: ptr byte, b: ptr byte): uint {
+    var i: uint = 0
+    while i < 32 {
+        if chfold(a[i]) != chfold(b[i]) { return 0 }
+        if a[i] == 0 { return 1 }
+        i++
+    }
+    return 1
+}
+
+// Whether directory d has, before entry (k, e), an entry with the same name ignoring case.
+// The directory is reread from the start: no extra memory, at the cost of reads on large directories.
+var dsec: [512]byte
+fn dup_before(d: ptr DEnt, k: uint, e: uint, n: ptr DEnt): uint {
+    var kk: uint = 0
+    while kk <= k {
+        var c: uint = bmap(d, kk)
+        var s: uint = 0
+        while s < 4 {
+            if kk == k && (s << 3) >= e { return 0 }
+            if dio(DIO_READ, clu_lba(c) + s, &dsec[0], 1) != OK { return 0 }
+            var i: uint = 0
+            while i < 8 {
+                if kk == k && (s << 3) + i >= e { return 0 }
+                var p: ptr byte = &dsec[i << 6]
+                if p[0] != 0 && name_ieq(p, &n.name[0]) != 0 { return 1 }
+                i++
+            }
+            s++
+        }
+        kk++
+    }
+    return 0
+}
+
+// Whether directory d has an entry named nm ignoring case, other than entry (k, e).
+fn name_used(d: ptr DEnt, k: uint, e: uint, nm: ptr byte): uint {
+    var cn: uint = ncl(d.size & SZ)
+    var kk: uint = 0
+    while kk < cn {
+        var c: uint = bmap(d, kk)
+        var s: uint = 0
+        while s < 4 {
+            if dio(DIO_READ, clu_lba(c) + s, &dsec[0], 1) != OK { return 1 }
+            var i: uint = 0
+            while i < 8 {
+                var p: ptr byte = &dsec[i << 6]
+                if p[0] != 0 && (kk != k || (s << 3) + i != e) && name_ieq(p, nm) != 0 { return 1 }
+                i++
+            }
+            s++
+        }
+        kk++
+    }
+    return 0
+}
+
+// A new unique name for entry tmp at position (k, e) of directory d: the name with the number 2, 3, ...
+// at the end (if 32 bytes are not enough, the name is shortened) - into nname. 0 - no name was found.
+var nname: [33]byte
+fn uniq_name(d: ptr DEnt, k: uint, e: uint): uint {
+    var len: uint = 0
+    while len < 32 && tmp.name[len] != 0 { len++ }
+    var num: uint = 2
+    while num < 10000 {
+        var ds: [6]byte
+        var dn: uint = 0
+        var v: uint = num
+        var rev: [6]byte
+        while v != 0 { rev[dn] = byte('0' + v % 10); v /= 10; dn++ }
+        var i: uint = 0
+        while i < dn { ds[i] = rev[dn - 1 - i]; i++ }
+        var bl: uint = len
+        if bl + dn > 32 { bl = 32 - dn }
+        i = 0
+        while i < 33 { nname[i] = 0; i++ }
+        i = 0
+        while i < bl { nname[i] = tmp.name[i]; i++ }
+        var j: uint = 0
+        while j < dn { nname[bl + j] = ds[j]; j++ }
+        if name_used(d, k, e, &nname[0]) == 0 { return 1 }
+        if ioerr != 0 { return 0 }
+        num++
+    }
+    return 0
+}
+
+// The rename message: the text and the new name go into rmsg.
+var rmsg: [120]byte
+fn rmsg_build() {
+    if check_only != 0 { strcpy(&rmsg[0], "name differs only in letter case from another entry, would be renamed to ") }
+    else { strcpy(&rmsg[0], "name differs only in letter case from another entry, renamed to ") }
+    strcat(&rmsg[0], &nname[0])
+}
+
+// ---- walking the tree ------------------------------------------------------------------------------------
+var tmp: DEnt
+
+fn zero64(p: ptr byte): uint {
+    var i: uint = 0
+    while i < 64 { if p[i] != 0 { return 0 }; i++ }
+    return 1
+}
+
+fn walk() {
+    while depth != 0 && ioerr == 0 {
+        var f = &fr[depth - 1]
+        if f.k >= ncl(f.ent.size & SZ) { depth--; continue }
+        var c: uint = bmap(&f.ent, f.k)
+        var lba: ulong = clu_lba(c) + (f.e >> 3)
+        var off: uint = (f.e & 7) << 6
+        var pk: uint = f.k
+        var pe: uint = f.e
+        f.e++
+        if f.e == 32 { f.e = 0; f.k++ }
+        if dio(DIO_READ, lba, &sec[0], 1) != OK { return }
+        var ent: ptr byte = &sec[off]
+        if zero64(ent) != 0 { continue }
+        if ent[0] == 0 {
+            var i: uint = 0
+            while i < 64 { ent[i] = 0; i++ }
+            ign = dio(DIO_WRITE, lba, &sec[0], 1)
+            report(0, "non-zero free directory entry cleared")
+            fixed++
+            continue
+        }
+        kcopy64(ptr byte(&tmp), ent)
+        if bad_name(&tmp) != 0 { report(&tmp, "invalid name (left as is)") }
+        else if dup_before(&f.ent, pk, pe, &tmp) != 0 {
+            if uniq_name(&f.ent, pk, pe) != 0 {
+                rmsg_build()
+                report(&tmp, &rmsg[0])
+                var q: uint = 0
+                while q < 32 { tmp.name[q] = nname[q]; q++ }
+                if dio(DIO_READ, lba, &sec[0], 1) != OK { return }
+                q = 0
+                while q < 32 { sec[off + q] = nname[q]; q++ }
+                ign = dio(DIO_WRITE, lba, &sec[0], 1)
+                fixed++
+            } else {
+                report(&tmp, "name differs only in letter case from another entry, no free name found (left as is)")
+            }
+        }
+        var r: uint = check_node(&tmp)
+        if r != 0 {
+            if dio(DIO_READ, lba, &sec[0], 1) != OK { return }
+            if r == 2 {
+                var j: uint = 0
+                while j < 64 { sec[off + j] = 0; j++ }
+                report(&tmp, "duplicate entry removed")
+                fixed++
+            } else {
+                kcopy64(&sec[off], ptr byte(&tmp))
+            }
+            ign = dio(DIO_WRITE, lba, &sec[0], 1)
+        }
+        if r != 2 && uint(tmp.size >> 16) & $8000 != 0 && tmp.size & SZ != 0 {
+            if depth == MAXD { report(&tmp, "directory too deep, not checked"); continue }
+            kcopy64(ptr byte(&fr[depth].ent), ptr byte(&tmp))
+            fr[depth].k = 0
+            fr[depth].e = 0
+            depth++
+        }
+    }
+}
+
+fn kcopy64(d: ptr byte, s: ptr byte) {
+    var i: uint = 0
+    while i < 64 { d[i] = s[i]; i++ }
+}
+
+// ---- the map and the superblock --------------------------------------------------------------------------------
+fn sb_word(off: uint): uint { return ptr uint(&sb[off])[0] }
+
+fn bitcount0(b: uint): uint {
+    var n: uint = 0
+    var i: uint = 0
+    while i < 8 { if b & (1 << i) == 0 { n++ }; i++ }
+    return n
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "fsck"
+    if argc < 2 || argc > 3 { return usage("A-H [-n]") }
+    drv = drive_arg(argv[1])
+    if drv == $FFFF { return usage("A-H [-n]") }
+    if argc == 3 {
+        if streq(argv[2], "-n") == 0 { return usage("A-H [-n]") }
+        check_only = 1
+    }
+    var vi: VolInfo
+    if sys_volinfo(drv, &vi) == OK && vi.flags & MNT_RDONLY == 0 && check_only == 0 {
+        eputs("fsck: volume ")
+        fputdrv(STDERR, drv)
+        eputs(" is mounted read-write; unmount it or use -n\n")
+        return 1
+    }
+    // the volume is checked for writing only with -n; first SYNC, so that FREE and the map on disk are current
+    if sys_volinfo(drv, &vi) == OK && vi.flags & MNT_RDONLY == 0 { ign = sys_sync() }
+    if dio(DIO_READ, 0, &sb[0], 1) != OK { return 1 }
+    var w: ptr uint = ptr uint(&sb[0])
+    var sum: uint = 0
+    var i: uint = 0
+    while i < 256 { sum += w[i]; i++ }
+    if w[0] != $5346 || w[1] != $3631 || w[2] != 1 || sum != 0 {
+        eputs("fsck: no valid FS16 superblock on drive ")
+        fputdrv(STDERR, drv)
+        eputs("\n")
+        return 1
+    }
+    nclu = sb_word(6)
+    mapc = sb_word(8)
+    if nclu < 3 || mapc != (nclu + 16383) >> 14 {
+        eputs("fsck: bad CLUSTERS/MAPLEN in the superblock\n")
+        return 1
+    }
+    // system clusters and bits past the end of the volume are occupied
+    i = 0
+    while i < 8192 { nmap[i] = 0; i++ }
+    var c: uint = 0
+    while c <= mapc { mark(c); c++ }
+    var bits: ulong = ulong(mapc) << 14
+    var cl: ulong = ulong(nclu)
+    while cl < bits { mark(uint(cl)); cl++ }
+    // root
+    kcopy64(ptr byte(&tmp), &sb[36])
+    if uint(tmp.size >> 16) & $8000 == 0 {
+        eputs("fsck: ROOT is not a directory\n")
+        return 1
+    }
+    depth = 0
+    var r: uint = check_node(&tmp)
+    if r == 2 { r = 1 }
+    if r != 0 { kcopy64(&sb[36], ptr byte(&tmp)) }
+    kcopy64(ptr byte(&fr[0].ent), ptr byte(&tmp))
+    fr[0].k = 0
+    fr[0].e = 0
+    depth = 1
+    walk()
+    if ioerr != 0 { return 1 }
+    // comparing the maps and writing the new one
+    var leak: uint = 0
+    var used: uint = 0
+    var s: uint = 0
+    while s < mapc << 2 {
+        if dio(DIO_READ, ulong(4 + s), &sec[0], 1) != OK { return 1 }
+        var ch: uint = 0
+        i = 0
+        while i < 512 {
+            var ob: uint = sec[i]
+            var nb: uint = nmap[(s << 9) + i]
+            if ob != nb {
+                var b: uint = 0
+                while b < 8 {
+                    var m: uint = 1 << b
+                    if ob & m != 0 && nb & m == 0 { leak++ }
+                    if ob & m == 0 && nb & m != 0 { used++ }
+                    b++
+                }
+                ch = 1
+            }
+            i++
+        }
+        if ch != 0 { ign = dio(DIO_WRITE, ulong(4 + s), &nmap[s << 9], 1) }
+        s++
+    }
+    if leak != 0 { puts("fsck: "); putdec(leak); puts(" leaked cluster(s) freed\n"); problems++; fixed++ }
+    if used != 0 { puts("fsck: "); putdec(used); puts(" used cluster(s) were free in the map\n"); problems++; fixed++ }
+    var free: uint = 0
+    c = 0
+    while c < nclu { if marked(c) == 0 { free++ }; c++ }
+    var wasdirty: uint = sb_word(14) & 1
+    if sb_word(10) != free {
+        puts("fsck: FREE corrected: ")
+        putdec(sb_word(10))
+        puts(" -> ")
+        putdec(free)
+        putnl()
+        problems++
+    }
+    w[5] = free                 // FREE
+    w[6] = mapc + 1             // HINT
+    w[7] = sb_word(14) & $FFFE  // DIRTY = 0
+    w[255] = 0
+    sum = 0
+    i = 0
+    while i < 256 { sum += w[i]; i++ }
+    w[255] = -sum
+    ign = dio(DIO_WRITE, 0, &sb[0], 1)
+    if ioerr != 0 { return 1 }
+    puts("fsck: volume ")
+    fputdrv(STDOUT, drv)
+    if problems == 0 {
+        puts(" consistent")
+    } else if check_only != 0 {
+        puts(" ")
+        putdec(problems)
+        puts(" problem(s) found, nothing changed")
+    } else {
+        puts(" repaired")
+    }
+    if wasdirty != 0 && check_only == 0 { puts(", DIRTY cleared") }
+    putnl()
+    if check_only != 0 && problems != 0 { return 1 }
+    return 0
+}

@@ -1,0 +1,66 @@
+// sysboot X [file] - write the volume boot code into sectors 1-3 of disk X (A-H or 0-7) ("CPU16 Monitor: Disk Boot",
+// sect. 6). The default is A:/sys/fsboot.bin. The disk must hold an FS16 volume; to be able to boot
+// from it, it needs /sys/monitor.sys, /sys/shell.cx and the utilities.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var code: [1536]byte
+var sec: [512]byte
+var dreq: DiskReq
+var mpath = "A:/sys/monitor.sys"
+var st: Stat
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "sysboot"
+    if argc < 2 || argc > 3 { return usage("A-H [file]") }
+    var d: uint = drive_arg(argv[1])
+    if d == $FFFF { return usage("A-H [file]") }
+    var src: ptr byte = "A:/sys/fsboot.bin"
+    if argc == 3 { src = argv[2] }
+    // the boot code
+    var e, h, n, x: uint
+    e, h = sys_open(src, O_READ, 0)
+    if e != OK { fail(src, e); return 1 }
+    var i: uint = 0
+    while i < 1536 { code[i] = 0; i++ }
+    e, n = sys_read(h, &code[0], 1536)
+    var more: uint
+    e, more = sys_read(h, &sec[0], 1)
+    x = sys_close(h)
+    if more != 0 || n < 8 || code[0] != 'C' || code[1] != 'X' || code[2] != 'B' || code[3] != 'T' || code[4] != 1 || code[5] != 0 {
+        eputs("sysboot: ")
+        eputs(src)
+        eputs(": not FS16 boot code (CXBT, version 1, up to 1536 bytes)\n")
+        return 1
+    }
+    // the disk must hold an FS16 volume
+    dreq.op = DIO_READ
+    dreq.drive = d
+    dreq.count = 1
+    dreq.buf = &sec[0]
+    dreq.lba = 0
+    e = sys_disk_io(&dreq)
+    if e != OK { fail(argv[1], e); return 1 }
+    if sec[0] != 'F' || sec[1] != 'S' || sec[2] != '1' || sec[3] != '6' {
+        eputs("sysboot: drive ")
+        fputdrv(STDERR, d)
+        eputs(" no FS16 volume\n")
+        return 1
+    }
+    dreq.op = DIO_WRITE
+    dreq.count = 3
+    dreq.buf = &code[0]
+    dreq.lba = 1
+    e = sys_disk_io(&dreq)
+    if e != OK { fail(argv[1], e); return 1 }
+    puts("sysboot: boot code installed on drive ")
+    fputdrv(STDOUT, d)
+    putnl()
+    mpath[0] = byte('A' + d)
+    if sys_stat(&mpath[0], &st) != OK {
+        puts("sysboot: warning: ")
+        puts(&mpath[0])
+        puts(" not found, the disk will not boot\n")
+    }
+    return 0
+}

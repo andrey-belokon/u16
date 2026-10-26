@@ -1,0 +1,10 @@
+// Declaration errors: assert, export/static, static main.
+struct S { a: byte; b: uint }
+assert sizeof(S) == 4
+assert sizeof(S) == 3, "S must take 3 bytes"
+assert offsetof(S, b) == 1
+export static fn bad1() { }
+static export fn bad2() { }
+export var v: int
+static const K = 1
+static fn main() { }

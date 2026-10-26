@@ -1,0 +1,140 @@
+// value.b16 - values: types, equality, str(x), errors (the specification, sect. 4, 6, 9.1).
+
+var type_names: [8]ptr byte = { "null", "bool", "int", "string", "array", "map", "file", "error" }
+
+fn tid(t: uint): uint {
+    if t >= TAG_STR { return t - TAG_STR + TY_STR }
+    return t - TAG_NULL
+}
+
+fn ttag(ty: uint): uint {
+    if ty >= TY_STR { return TAG_STR + ty - TY_STR }
+    return TAG_NULL + ty
+}
+
+fn tname(v: ptr Val): ptr byte { return type_names[tid(v.t)] }
+
+fn setv(d: ptr Val, t: uint, v: uint) { d.t = t; d.v = v }
+fn push(t: uint, v: uint) {
+    if vsp >= vlim { rt_err("stack overflow") }
+    vsp.t = t; vsp.v = v; vsp++
+}
+
+// equality (sect. 4.4)
+fn veq(a: ptr Val, b: ptr Val): uint {
+    if a.t != b.t { return 0 }
+    if a.t == TAG_STR { return str_eq(a.v, b.v) }
+    if a.t == TAG_ERR { return uint(hgw(a.v, E_CODE) == hgw(b.v, E_CODE)) }
+    if a.t == TAG_NULL { return 1 }
+    return uint(a.v == b.v)
+}
+
+// ---- number text -------------------------------------------------------------------------------
+var nbuf: [8]byte
+
+fn fmt_int(x: uint): ptr byte {
+    var i: uint = 7
+    nbuf[7] = 0
+    var neg: uint = 0
+    if int(x) < 0 { neg = 1; x = 0 - x }
+    loop {
+        i--
+        nbuf[i] = byte('0' + x % 10)
+        x /= 10
+        if x == 0 { break }
+    }
+    if neg != 0 { i--; nbuf[i] = '-' }
+    return &nbuf[i]
+}
+
+// ---- str(x) -------------------------------------------------------------------------------------
+// The string for value v (v on the stack or in the roots). The result is a handle.
+fn to_str(v: ptr Val): uint {
+    var t = v.t
+    if t == TAG_STR { return v.v }
+    if t == TAG_INT { return str_c(fmt_int(v.v)) }
+    if t == TAG_BOOL { if v.v != 0 { return str_c("true") }; return str_c("false") }
+    if t == TAG_NULL { return str_c("null") }
+    if t == TAG_ERR { return err_str(v.v) }
+    if t == TAG_FILE { return str_c("<file>") }
+    var buf: [16]byte
+    if t == TAG_ARR { strcpy(&buf[0], "<array ") } else { strcpy(&buf[0], "<map ") }
+    var n: uint
+    if t == TAG_ARR { n = alen(v.v) } else { n = mcount(v.v) }
+    var p = fmt_int(n)
+    var l = strlen(&buf[0])
+    strcpy(&buf[l], p)
+    l = strlen(&buf[0])
+    buf[l] = '>'
+    return str_from(&buf[0], l + 1)
+}
+
+// "object: text" or "text"
+fn err_str(h: uint): uint {
+    var a = hgw(h, E_OBJ)
+    var b = hgw(h, E_TEXT)
+    if a == 0 { return b }
+    var la = slen(a)
+    var lb = slen(b)
+    tpush(h)
+    var r = new_str(la + 2 + lb)
+    ntr--
+    a = hgw(h, E_OBJ)
+    b = hgw(h, E_TEXT)
+    hmove(r, 0, a, 0, la)
+    hput(r, la, ": ", 2)
+    hmove(r, la + 2, b, 0, lb)
+    return r
+}
+
+// ---- errors (sect. 6.6) -------------------------------------------------------------------------
+// error texts: a code byte, the text, 0; the end of the table is byte 0
+var err_texts = "\x02invalid argument\0\x04no such file or directory\0\x05already exists\0\x06not a directory\0\x07is a directory\0\x08directory not empty\0\x09read-only\0\x0Ano space left\0\x0Binvalid name\0\x0Cinvalid path\0\x0Etoo many open files\0\x0Fvolume not mounted\0\x10I/O error\0\x11not an executable\0\x12unsupported program version\0\x13bad arguments\0\x14not enough memory\0\x15too many nested programs\0\x17busy\0\x19different volumes\0\x1Ano file system\0\x64failed\0\x65too large\0\x66invalid number\0\x67same file\0\x68file closed\0"
+
+fn err_text(e: uint): ptr byte {
+    var p = &err_texts[0]
+    while *p != 0 {
+        var c = uint(*p)
+        p++
+        if c == e { return p }
+        while *p != 0 { p++ }
+        p++
+    }
+    return 0
+}
+
+fn new_err(code: uint, text: uint, ob: uint, wpc: uint): uint {
+    tpush(text)
+    tpush(ob)
+    var h = alloc(TY_ERR, 8)
+    ntr -= 2
+    hsw(h, E_CODE, code)
+    hset_ref(h, E_TEXT, text)
+    hset_ref(h, E_OBJ, ob)
+    hsw(h, E_WPC, wpc)
+    return h
+}
+
+// the text of a monitor or BScript error by code
+fn code_text(code: uint): uint {
+    var t = err_text(code)
+    if t != 0 { return str_c(t) }
+    var buf: [16]byte
+    strcpy(&buf[0], "error ")
+    strcpy(&buf[6], fmt_int(code))
+    return str_c(&buf[0])
+}
+
+// A call error: a monitor or BScript code, the object is a string handle or 0. The result 1 -
+// a built-in function returns it to its dispatcher.
+fn fail_code(code: uint, ob: uint): uint {
+    if code == E_FAULT || code == E_BADF || code == E_NOSYS || code == E_AGAIN {
+        rt_err2("internal error: monitor code ", fmt_int(code))
+    }
+    if code == E_INTR { do_exit(EXIT_BREAK) }
+    tpush(ob)
+    var t = code_text(code)
+    ntr--
+    cur_err = new_err(code, t, ob, cur_pc())
+    return 1
+}

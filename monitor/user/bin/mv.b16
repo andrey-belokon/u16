@@ -1,0 +1,55 @@
+// mv from to - rename or move; between volumes - copy and delete.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var buf: [4096]byte
+var dpath: [300]byte
+
+// The destination path: a directory - append the source's name. If dst names the source itself
+// in another letter case (mv dir DIR), this is a change of the name's spelling, not a move into a directory.
+fn target(src: ptr byte, dst: ptr byte): ptr byte {
+    if is_dir(dst) == 0 || strieq(src, dst) != 0 { return dst }
+    if strlen(dst) + strlen(basename(src)) + 2 > 255 { return dst }
+    strcpy(&dpath[0], dst)
+    var n: uint = strlen(&dpath[0])
+    if n != 0 && dpath[n - 1] != '/' && dpath[n - 1] != ':' { strcat(&dpath[0], "/") }
+    strcat(&dpath[0], basename(src))
+    return &dpath[0]
+}
+
+fn copy_file(src: ptr byte, dst: ptr byte): (uint, ptr byte) {
+    var e, hi, ho, n, w: uint
+    e, hi = sys_open(src, O_READ, 0)
+    if e != OK { return e, src }
+    e, ho = sys_open(dst, O_WRITE | O_CREATE | O_EXCL, 0)
+    if e != OK { w = sys_close(hi); return e, dst }
+    var obj: ptr byte = 0
+    loop {
+        e, n = sys_read(hi, &buf[0], 4096)
+        if e != OK { obj = src; break }
+        if n == 0 { break }
+        e, w = sys_write(ho, &buf[0], n)
+        if e != OK { obj = dst; break }
+    }
+    w = sys_close(hi)
+    w = sys_close(ho)
+    return e, obj
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "mv"
+    if argc != 3 { return usage("source dest") }
+    var dst = target(argv[1], argv[2])
+    var e: uint = sys_rename(argv[1], dst)
+    if e == E_XDEV {
+        if is_dir(argv[1]) != 0 { fail(argv[1], E_XDEV); return 1 }
+        var obj: ptr byte
+        e, obj = copy_file(argv[1], dst)
+        if e != OK { fail(obj, e); return 1 }
+        e = sys_delete(argv[1])
+        if e != OK { fail(argv[1], e); return 1 }
+        return 0
+    }
+    if e != OK { fail(argv[1], e); return 1 }
+    return 0
+}

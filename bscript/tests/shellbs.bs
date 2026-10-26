@@ -1,0 +1,3 @@
+// run: child q r
+// A script from the shell by a name without an extension (sect. 11.4)
+println("unused")

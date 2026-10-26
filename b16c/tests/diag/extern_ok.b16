@@ -1,0 +1,14 @@
+// extern fn: the function is defined outside B16 (in an assembly module), no warning.
+// A prototype without extern and without a definition gives a warning: the function body was forgotten.
+extern fn memfill(p: ptr byte, n: uint, v: byte)
+extern interrupt fn asm_tick()
+fn forgotten(x: int): int
+fn twice(x: int): int
+fn twice(x: int): int { return x * 2 }
+fn main() {
+    var b: [4]byte
+    memfill(&b[0], 4, 0)
+    var vec: ptr interrupt fn() = asm_tick
+    vec = vec
+    b[0] = byte(twice(1))
+}

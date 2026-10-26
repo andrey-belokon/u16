@@ -1,0 +1,9 @@
+tests/diag/option.b16:4: error: option max_top is already set at line 3
+tests/diag/option.b16:5: error: option min_free must be even
+tests/diag/option.b16:6: error: option code: value 65536 is out of range $0000..$FFFE
+tests/diag/option.b16:7: error: unknown option stack (expected target, code, data, min_free, max_top)
+tests/diag/option.b16:8: error: option target must be std or kernel
+tests/diag/option.b16:9: error: unknown name LATER
+tests/diag/option.b16:11: error: option name expected (target, code, data, min_free, max_top)
+tests/inc/option_lib.b16:2: error: option is allowed only in the main source file
+rc 1

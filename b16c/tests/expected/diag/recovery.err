@@ -1,0 +1,9 @@
+tests/diag/recovery.b16:4: error: expression expected
+tests/diag/recovery.b16:4: error: invalid character '$'
+tests/diag/recovery.b16:5: error: unknown name y
+tests/diag/recovery.b16:6: error: expression expected
+tests/diag/recovery.b16:7: error: unknown name y
+tests/diag/recovery.b16:9: error: expression expected
+tests/diag/recovery.b16:10: error: unknown name unknown
+tests/diag/recovery.b16:10: error: unknown name z
+rc 1

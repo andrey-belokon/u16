@@ -1,0 +1,356 @@
+// tfs.b16 - the fs script (shell): files, directories, volumes.
+// Disks: 0 - the system volume with /data (files of the gen_byte generator), 1 - a small volume,
+// 2 - a volume with DIRTY, 3 - a write-protected volume, 4 - a disk without FS16.
+include "tlib.b16"
+
+// The file content generator is the same as in tools/fs16tool.py.
+fn gen_byte(seed: uint, pos: ulong): uint {
+    var lo: uint = uint(pos)
+    var hi: uint = uint(pos >> 16)
+    var v: uint = lo + (lo >> 8) * 3 + hi * 101 + seed * 17
+    return (v ^ (v >> 5)) & $FF
+}
+
+var big: [9000]byte             // crosses a page boundary
+var st: Stat
+var vi: VolInfo
+var dreq: DiskReq
+
+fn gen_fill(seed: uint, pos: ulong, n: uint) {
+    var i: uint = 0
+    while i < n { big[i] = byte(gen_byte(seed, pos + i)); i++ }
+}
+
+fn gen_check(seed: uint, pos: ulong, n: uint): uint {
+    var i: uint = 0
+    while i < n {
+        if big[i] != byte(gen_byte(seed, pos + i)) { return 0 }
+        i++
+    }
+    return 1
+}
+
+fn zero_check(n: uint): uint {
+    var i: uint = 0
+    while i < n { if big[i] != 0 { return 0 }; i++ }
+    return 1
+}
+
+// A whole file through the buffer big: whether it matches the generator, and the size.
+fn file_ok(path: ptr byte, seed: uint, size: ulong, chunk: uint): uint {
+    var e, h, n: uint
+    e, h = sys_open(path, O_READ, 0)
+    if e != OK { return 0 }
+    var pos: ulong = 0
+    var ok: uint = 1
+    loop {
+        e, n = sys_read(h, &big[0], chunk)
+        if e != OK { ok = 0; break }
+        if n == 0 { break }
+        if gen_check(seed, pos, n) == 0 { ok = 0; break }
+        pos += n
+    }
+    e = sys_close(h)
+    if pos != size { return 0 }
+    return ok
+}
+
+fn fsize(path: ptr byte): ulong {
+    if sys_stat(path, &st) != OK { return $FFFFFFFF }
+    return st.size & SIZE_MASK
+}
+
+fn count_dir(path: ptr byte): uint {
+    var e, h, got: uint
+    e, h = sys_open(path, O_READ, 0)
+    if e != OK { return $FFFF }
+    var n: uint = 0
+    loop {
+        e, got = sys_readdir(h, &st)
+        if e != OK || got == 0 { break }
+        n++
+    }
+    e = sys_close(h)
+    return n
+}
+
+var nbuf: [32]byte
+fn kname(pre: ptr byte, i: uint) {
+    var k: uint = 0
+    while pre[k] != 0 { nbuf[k] = pre[k]; k++ }
+    nbuf[k] = byte('0' + i / 10)
+    nbuf[k + 1] = byte('0' + i % 10)
+    nbuf[k + 2] = 0
+}
+
+fn main(): int {
+    var e, h, h2, n, r, k, m: uint
+    var pos: ulong
+
+    // --- volumes ---
+    check(sys_volinfo(0, &vi) == OK && vi.clusters > 0 && vi.flags == 0, "vol: VOLINFO 0, mounted for writing")
+    check(sys_volinfo(2, &vi) == OK && vi.flags == MNT_RDONLY | MNT_DIRTY, "vol: DIRTY volume is read-only (MNT_DIRTY)")
+    check(sys_volinfo(3, &vi) == OK && vi.flags == MNT_RDONLY | MNT_PROTECT, "vol: protected disk is read-only (MNT_PROTECT)")
+    check(sys_volinfo(4, &vi) == E_NODEV, "vol: disk without FS16 is not mounted")
+    e, m = sys_mount(4, 0)
+    check(e == E_NOTFS, "vol: MOUNT of a disk without FS16 -> NOTFS")
+    e, m = sys_mount(0, 0)
+    check(e == E_BUSY, "vol: MOUNT of a mounted volume -> BUSY")
+    e, h = sys_open("C:/x", O_WRITE | O_CREATE, 0)
+    check(e == E_RDONLY, "vol: create on a read-only volume -> RDONLY")
+
+    // --- reading ---
+    check(sys_stat("A:/", &st) == OK && uint(st.size >> 16) & A_DIR != 0 && st.name[0] == 0, "stat: root is a directory with an empty name")
+    check(fsize("A:/data/ind") == 25000 && fsize("/data/big") == 70000, "stat: sizes")
+    check(file_ok("A:/data/small", 1, 100, 512), "read: small file")
+    check(file_ok("A:/data/clu", 2, 2048, 300), "read: one cluster in 300-byte pieces")
+    check(file_ok("A:/data/ind", 3, 25000, 1000), "read: file with an index cluster")
+    check(file_ok("A:/data/big", 4, 70000, 9000), "read: 70000 bytes, buffer across a page boundary")
+    e, h = sys_open("A:/data/big", O_READ, 0)
+    e, pos = sys_seek(h, 65528, SEEK_SET)
+    e, n = sys_read(h, &big[0], 16)
+    check(e == OK && n == 16 && gen_check(4, 65528, 16) != 0, "seek: read across 64 KB")
+    e, pos = sys_seek(h, 0, SEEK_END)
+    check(e == OK && pos == 70000, "seek: SEEK_END")
+    e, pos = sys_seek(h, -100, SEEK_CUR)
+    check(e == OK && pos == 69900, "seek: negative SEEK_CUR")
+    e, pos = sys_seek(h, 1, SEEK_END)
+    check(e == E_INVAL, "seek: beyond the end -> INVAL")
+    e, n = sys_write(h, "x", 1)
+    check(e == E_BADF, "write: read-only handle -> BADF")
+    e = sys_close(h)
+
+    // --- creating and writing ---
+    check(sys_mkdir("A:/tmp") == OK, "mkdir: /tmp")
+    check(sys_mkdir("A:/tmp") == E_EXIST, "mkdir: existing -> EXIST")
+    e, h = sys_open("A:/tmp/a", O_WRITE | O_CREATE, 0)
+    gen_fill(7, 0, 5000)
+    e, n = sys_write(h, &big[0], 5000)
+    check(e == OK && n == 5000, "write: 5000 bytes to a new file")
+    e = sys_close(h)
+    check(file_ok("A:/tmp/a", 7, 5000, 777), "write: read back")
+    e, h = sys_open("A:/tmp/a", O_WRITE | O_CREATE | O_EXCL, 0)
+    check(e == E_EXIST, "open: CREATE | EXCL on existing -> EXIST")
+    e, h = sys_open("A:/tmp/none", O_READ, 0)
+    check(e == E_NOENT, "open: missing file -> NOENT")
+    e, h = sys_open("A:/tmp/a", O_WRITE | O_APPEND, 0)
+    gen_fill(7, 5000, 100)
+    e, n = sys_write(h, &big[0], 100)
+    e = sys_close(h)
+    check(file_ok("A:/tmp/a", 7, 5100, 4096), "write: APPEND")
+
+    // a shared node: a write through one open is visible to the other
+    e, h = sys_open("A:/tmp/a", O_READ | O_WRITE, 0)
+    e, h2 = sys_open("A:/tmp/a", O_READ, 0)
+    e, pos = sys_seek(h, 0, SEEK_END)
+    e, n = sys_write(h, "zz", 2)
+    check(sys_fstat(h2, &st) == OK && st.size & SIZE_MASK == 5102, "share: size seen through another open")
+    e, pos = sys_seek(h2, 5100, SEEK_SET)
+    e, n = sys_read(h2, &big[0], 10)
+    check(e == OK && n == 2 && big[0] == 'z', "share: data seen through another open")
+    check(sys_delete("A:/tmp/a") == E_BUSY, "delete: open file -> BUSY")
+    e = sys_close(h)
+    e = sys_close(h2)
+
+    // SETSIZE
+    e, h = sys_open("A:/tmp/a", O_READ | O_WRITE | O_TRUNC, 0)
+    check(e == OK && fsize("A:/tmp/a") == 0, "open: TRUNC")
+    check(sys_setsize(h, 30000, SZ_ZERO) == OK && fsize("A:/tmp/a") == 30000, "setsize: grow to 30000 with zeros")
+    e, pos = sys_seek(h, 20000, SEEK_SET)
+    e, n = sys_read(h, &big[0], 9000)
+    check(e == OK && n == 9000 && zero_check(9000) != 0, "setsize: added bytes are zero")
+    check(sys_setsize(h, 40000, 0) == OK && fsize("A:/tmp/a") == 40000, "setsize: grow without zeros")
+    check(sys_setsize(h, 10, 0) == OK && fsize("A:/tmp/a") == 10, "setsize: shrink")
+    e, pos = sys_seek(h, 0, SEEK_CUR)
+    check(pos == 10, "setsize: position moved to the new end")
+    check(sys_setsize(h, 1, 2) == E_INVAL, "setsize: unknown flag -> INVAL")
+    e = sys_close(h)
+
+    // writing through 64 KB
+    e, h = sys_open("A:/tmp/w", O_WRITE | O_CREATE, 0)
+    pos = 0
+    r = 0
+    while pos < 70000 {
+        gen_fill(9, pos, 7000)
+        e, n = sys_write(h, &big[0], 7000)
+        if e != OK || n != 7000 { r++ }
+        pos += 7000
+    }
+    e = sys_close(h)
+    check(r == 0 && file_ok("A:/tmp/w", 9, 70000, 8192), "write: 70000 bytes across 64 KB")
+
+    // --- directories and the current directory ---
+    check(sys_mkdir("A:/tmp/d1") == OK && sys_chdir("A:/tmp/d1") == OK, "chdir: into a new directory")
+    var cw: [80]byte
+    e, n = sys_getcwd(&cw[0], 80)
+    check(e == OK && streq(&cw[0], "A:/tmp/d1") != 0 && n == 9, "getcwd: A:/tmp/d1")
+    e, h = sys_open("f", O_WRITE | O_CREATE, 0)
+    e, n = sys_write(h, "hello", 5)
+    e = sys_close(h)
+    check(sys_chdir("..") == OK && fsize("d1/f") == 5, "chdir: .. and relative path")
+    e, n = sys_getcwd(&cw[0], 5)
+    check(e == E_INVAL, "getcwd: short buffer -> INVAL")
+    check(sys_chdir("d1/f") == E_NOTDIR, "chdir: to a file -> NOTDIR")
+    check(sys_chdir("A:/..") == E_BADPATH, "path: .. above the root -> BADPATH")
+    check(sys_chdir("./d1/../d1/.//") == OK, "path: . .. and repeated /")
+    check(sys_delete("A:/tmp/d1") == E_BUSY, "delete: current directory -> BUSY")
+    check(sys_chdir("A:/") == OK, "chdir: back to the root")
+    // volume prefix: a letter in any case or, as before, a digit; GETCWD gives a capital letter
+    check(sys_chdir("0:/tmp/d1") == OK && fsize("A:/tmp/d1/f") == 5 && fsize("a:/tmp/d1/f") == 5, "drive: digit 0: and lower-case a: still accepted")
+    e, n = sys_getcwd(&cw[0], 80)
+    check(e == OK && streq(&cw[0], "A:/tmp/d1") != 0, "drive: getcwd after chdir 0: gives A:")
+    check(sys_chdir("a:/") == OK && sys_chdir("I:/") == E_BADNAME && sys_chdir("8:/") == E_BADNAME, "drive: I: and 8: are not drives -> BADNAME")
+    check(sys_chdir("A:/") == OK, "chdir: back to the root")
+    check(sys_delete("A:/tmp/d1") == E_NOTEMPTY, "delete: non-empty directory -> NOTEMPTY")
+    check(count_dir("A:/data") == 6, "readdir: 6 entries in /data")
+    e, h = sys_open("A:/data", O_READ | O_WRITE, 0)
+    check(e == E_ISDIR, "open: directory for writing -> ISDIR")
+    e, h = sys_open("A:/data", O_READ, 0)
+    e, n = sys_read(h, &big[0], 10)
+    check(e == E_ISDIR, "read: directory handle -> ISDIR")
+    e = sys_close(h)
+    e, h = sys_open("A:/data/small", O_READ, 0)
+    e, k = sys_readdir(h, &st)
+    check(e == E_NOTDIR, "readdir: file handle -> NOTDIR")
+    e = sys_close(h)
+
+    // many entries: a directory larger than one cluster
+    check(sys_mkdir("A:/tmp/many") == OK, "mkdir: /tmp/many")
+    var i: uint = 0
+    r = 0
+    while i < 40 {
+        kname("A:/tmp/many/f", i)
+        e, h = sys_open(&nbuf[0], O_WRITE | O_CREATE, 0)
+        if e != OK { r++ } else { e = sys_close(h) }
+        i++
+    }
+    check(r == 0 && count_dir("A:/tmp/many") == 40, "dir: 40 files, directory grows past a cluster")
+    i = 0
+    r = 0
+    while i < 40 {
+        kname("A:/tmp/many/f", i)
+        if sys_delete(&nbuf[0]) != OK { r++ }
+        i++
+    }
+    check(r == 0 && count_dir("A:/tmp/many") == 0 && sys_delete("A:/tmp/many") == OK, "delete: 40 files and the directory")
+
+    // renaming
+    check(sys_rename("A:/tmp/a", "A:/tmp/b") == OK && fsize("A:/tmp/b") == 10, "rename: in the same directory")
+    check(sys_rename("A:/tmp/b", "A:/tmp/d1/b") == OK && fsize("A:/tmp/d1/b") == 10, "rename: move to another directory")
+    check(sys_rename("A:/tmp/d1/b", "A:/tmp/d1/f") == E_EXIST, "rename: target exists -> EXIST")
+    check(sys_rename("A:/tmp", "A:/tmp/d1/x") == E_INVAL, "rename: directory into its subdirectory -> INVAL")
+    check(sys_rename("A:/tmp/w", "B:/w") == E_XDEV, "rename: between volumes -> XDEV")
+    check(sys_rename("A:/", "A:/r") == E_INVAL, "rename: root -> INVAL")
+    check(sys_delete("A:/") == E_INVAL, "delete: root -> INVAL")
+
+    // names ignoring letter case (FS16, sect. 7.1)
+    e, h = sys_open("A:/tmp/Case", O_WRITE | O_CREATE, 0)
+    e = sys_close(h)
+    e, h = sys_open("A:/TMP/CASE", O_WRITE | O_CREATE | O_EXCL, 0)
+    check(e == E_EXIST, "case: CREATE | EXCL with another case -> EXIST")
+    check(sys_mkdir("A:/tmp/case") == E_EXIST, "case: MKDIR with another case -> EXIST")
+    check(sys_stat("A:/Tmp/cAsE", &st) == OK && streq(&st.name[0], "Case") != 0, "case: lookup in any case, stored spelling kept")
+    check(sys_rename("A:/tmp/case", "A:/tmp/CASE") == OK && sys_stat("A:/tmp/case", &st) == OK && streq(&st.name[0], "CASE") != 0, "case: RENAME changes only the letter case")
+    check(sys_rename("A:/tmp/CASE", "A:/tmp/CASE") == OK, "case: RENAME to the same name -> OK")
+    check(sys_rename("A:/tmp/d1/f", "A:/tmp/CASE") == E_EXIST, "case: RENAME onto another object -> EXIST")
+    check(sys_delete("A:/tmp/case") == OK && sys_stat("A:/tmp/CASE", &st) == E_NOENT, "case: DELETE in another case")
+    check(sys_mkdir("A:/tmp/dd") == OK && sys_rename("A:/tmp/dd", "A:/tmp/DD") == OK, "case: RENAME of a directory")
+    check(sys_chdir("A:/TMP/dd") == OK, "case: CHDIR in another case")
+    e, n = sys_getcwd(&cw[0], 80)
+    check(e == OK && streq(&cw[0], "A:/tmp/DD") != 0, "case: GETCWD returns the stored spelling")
+    e = sys_chdir("A:/")
+    check(sys_delete("A:/tmp/dd") == OK, "case: delete the directory")
+
+    // flags
+    e, h = sys_open("A:/data/ro", O_WRITE, 0)
+    check(e == E_RDONLY, "attr: open RDONLY file for writing -> RDONLY")
+    check(sys_delete("A:/data/ro") == E_RDONLY, "attr: delete RDONLY file -> RDONLY")
+    check(sys_setattr("A:/data/ro", A_HIDDEN) == OK && sys_stat("A:/data/ro", &st) == OK && uint(st.size >> 16) & $F800 == A_HIDDEN, "attr: SETATTR")
+    check(sys_setattr("A:/data/ro", A_DIR) == E_INVAL, "attr: DIR bit -> INVAL")
+    check(sys_delete("A:/data/ro") == OK, "attr: delete after RDONLY removed")
+
+    // SETMTIME
+    var tset: ulong = ulong(6 << 10 | 3 << 6 | 4 << 1 | 1) << 16 | (5 << 12 | 6 << 6 | 7)   // 2031-03-04 17:06:07
+    var hm: uint
+    e, hm = sys_open("A:/data/small", O_READ, 0)
+    check(sys_setmtime("A:/data/small", tset) == OK && sys_stat("A:/data/small", &st) == OK && st.mtime == tset, "mtime: SETMTIME")
+    check(sys_fstat(hm, &st) == OK && st.mtime == tset, "mtime: seen through an open handle")
+    e = sys_close(hm)
+    check(sys_setmtime("A:/", tset) == OK && sys_stat("A:/", &st) == OK && st.mtime == tset, "mtime: root directory")
+    check(sys_setmtime("A:/data/small", 0) == OK, "mtime: 0 - no label")
+    check(sys_setmtime("A:/data/small", ulong(13 << 6 | 2) << 16) == E_INVAL, "mtime: month 13 -> INVAL")
+    check(sys_setmtime("dev:con", tset) == E_INVAL, "mtime: device -> INVAL")
+    check(sys_setmtime("C:/x", tset) == E_RDONLY, "mtime: read-only volume -> RDONLY")
+    check(sys_setmtime("A:/data/none", tset) == E_NOENT, "mtime: missing file -> NOENT")
+    e, h = sys_open("A:/tmp/c", O_WRITE | O_CREATE, A_RDONLY)
+    e, n = sys_write(h, "abc", 3)
+    check(e == OK && n == 3, "attr: new RDONLY file stays writable through its handle")
+    e = sys_close(h)
+    e, h = sys_open("A:/tmp/c", O_WRITE, 0)
+    check(e == E_RDONLY, "attr: reopen for writing -> RDONLY")
+
+    // redirecting a child's output to a file
+    e, h = sys_open("A:/tmp/out", O_WRITE | O_CREATE, 0)
+    e, r = sys_spawn("A:/bin/tchild.cx 20", SAME, h, SAME)
+    e = sys_close(h)
+    e, h = sys_open("A:/tmp/out", O_READ, 0)
+    e, n = sys_read(h, &big[0], 100)
+    big[n] = 0
+    e = sys_close(h)
+    check(r == 2 && streq(&big[0], "redirected\n") != 0, "spawn: stdout redirected to a file, PIB flag 1")
+
+    // launching by a relative path, load errors
+    check(sys_chdir("A:/bin") == OK, "chdir: /bin")
+    e, r = run("tchild.cx 4")
+    check(e == OK && r == 40, "spawn: program by a relative path")
+    e, r = run("A:/bin")
+    check(e == E_ISDIR, "spawn: directory -> ISDIR")
+    e, r = run("dev:con")
+    check(e == E_NOENT, "spawn: device -> NOENT")
+    e = sys_chdir("A:/")
+
+    // a small volume: filling
+    e, h = sys_open("B:/fill", O_WRITE | O_CREATE, 0)
+    var total: ulong = 0
+    gen_fill(5, 0, 4096)
+    loop {
+        e, n = sys_write(h, &big[0], 4096)
+        total += n
+        if e != OK { break }
+    }
+    check(e == E_NOSPC, "nospc: writing until the volume is full -> NOSPC")
+    check(sys_volinfo(1, &vi) == OK && vi.free == 0, "nospc: no free clusters")
+    e = sys_close(h)
+    check(fsize("B:/fill") == total, "nospc: file size = bytes reported written")
+    check(sys_delete("B:/fill") == OK && sys_volinfo(1, &vi) == OK && vi.free > 0, "nospc: delete frees the clusters")
+
+    // mounting
+    e, h = sys_open("B:/keep", O_WRITE | O_CREATE, 0)
+    check(sys_unmount(1) == E_BUSY, "unmount: open file -> BUSY")
+    e = sys_close(h)
+    check(sys_unmount(1) == OK, "unmount: volume 1")
+    e, h = sys_open("B:/keep", O_READ, 0)
+    check(e == E_NODEV, "unmount: path on the unmounted volume -> NODEV")
+    e, m = sys_mount(1, 0)
+    check(e == OK && m == 0 && fsize("B:/keep") == 0, "mount: volume 1 again, file kept")
+    e, m = sys_mount(5, 0)
+    check(e == E_NODEV, "mount: absent disk -> NODEV")
+
+    // raw sectors and SYNC
+    dreq.op = DIO_WRITE
+    dreq.drive = 4
+    dreq.count = 1
+    dreq.buf = &big[0]
+    dreq.lba = 3
+    check(sys_disk_io(&dreq) == OK, "disk: DISK_IO write to an unmounted disk")
+    dreq.drive = 1
+    dreq.lba = 10
+    check(sys_disk_io(&dreq) == E_BUSY, "disk: DISK_IO write to a mounted disk -> BUSY")
+    dreq.lba = 2
+    check(sys_disk_io(&dreq) == OK, "disk: DISK_IO write to the boot area (sectors 1-3) of a mounted disk")
+    dreq.lba = 3
+    dreq.count = 2
+    check(sys_disk_io(&dreq) == E_BUSY, "disk: write crossing the end of the boot area -> BUSY")
+    check(sys_sync() == OK, "sync: SYNC")
+    return finish()
+}

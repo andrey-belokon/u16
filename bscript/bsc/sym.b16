@@ -1,0 +1,253 @@
+// sym.b16 - the bsc tables: names, module constants, code, the line table, functions.
+
+// ---- global names (sect. 3.3) -----------------------------------------------------------------
+const S_VAR = 1
+const S_CONST = 2
+const S_FN = 3
+
+struct Sym {
+    next: uint          // number of the next one in the hash chain + 1
+    name: uint          // offset in npool
+    kind: byte
+    ty: byte            // variable annotation; constant type
+    nlen: byte
+    decl: byte          // 1 - the declaration has already been passed in the second pass
+    a: uint             // variable: number; constant: the value or the address of a string; function: number
+    b: uint             // string constant: length
+}
+
+const GSYMMAX = 160
+const NPOOL = 1536
+const HSIZE = 64
+var gsym: [GSYMMAX]Sym
+var ngsym: uint
+var npool: [NPOOL]byte
+var nused: uint
+var ghash: [HSIZE]uint
+
+fn hash_name(s: ptr byte, n: uint): uint {
+    var h: uint = 0
+    while n != 0 { h = h * 31 + *s; s++; n-- }
+    return h & (HSIZE - 1)
+}
+
+// A name from tbuf in the global table: the number + 1 or 0.
+fn gfind(s: ptr byte, n: uint): uint {
+    var k = ghash[hash_name(s, n)]
+    while k != 0 {
+        var p = &gsym[k - 1]
+        if uint(p.nlen) == n && memeq(&npool[p.name], s, n) != 0 { return k }
+        k = p.next
+    }
+    return 0
+}
+
+fn name_copy(s: ptr byte, n: uint): uint {
+    if nused + n > NPOOL { err("too many names") }
+    memcpy(&npool[nused], s, n)
+    nused += n
+    return nused - n
+}
+
+fn gadd(s: ptr byte, n: uint, kind: uint): ptr Sym {
+    if ngsym >= GSYMMAX { err("too many global names") }
+    var h = hash_name(s, n)
+    var p = &gsym[ngsym]
+    p.name = name_copy(s, n)
+    p.nlen = byte(n)
+    p.kind = byte(kind)
+    p.ty = 0
+    p.decl = 0
+    p.a = 0
+    p.b = 0
+    p.next = ghash[h]
+    ngsym++
+    ghash[h] = ngsym
+    return p
+}
+
+// ---- module constants (sect. 12.5): string objects ----------------------------------------------
+// Every constant is in the format of a VM heap object: type, length, room for a handle, bytes, alignment.
+// The pool is the XB_KONST buffer in extended memory (xbuf.b16); offsets and lengths are in near memory.
+const KPOOL = 16384
+const KMAX = 512
+var kused: uint
+var koff: [KMAX]uint
+var khs: [KMAX]byte             // the low byte of the hash: a quick filter when looking for repeats
+var nconst: uint
+
+// the length of constant k - from its header in the pool
+fn klen(k: uint): uint {
+    var w: uint
+    xread(XB_KONST, koff[k] + 2, ptr byte(&w), 2)
+    return w
+}
+
+fn kintern(s: ptr byte, n: uint): uint {
+    var hs = (name_hash(s, n) + n) & $FF
+    var k: uint = 0
+    while k < nconst {
+        if uint(khs[k]) == hs && klen(k) == n && xeq(XB_KONST, koff[k] + 6, s, n) != 0 { return k }
+        k++
+    }
+    if nconst >= KMAX { err("too many constants") }
+    if kused + n + 8 > KPOOL { err("constants too large") }
+    var hd: [3]uint
+    hd[0] = TY_STR
+    hd[1] = n
+    hd[2] = 0
+    xwrite(XB_KONST, kused, ptr byte(&hd[0]), 6)
+    xwrite(XB_KONST, kused + 6, s, n)
+    koff[nconst] = kused
+    khs[nconst] = byte(hs)
+    kused += (n + 7) & $FFFE
+    nconst++
+    return nconst - 1
+}
+
+// ---- scratch area for the string constants of an expression -------------------------------------------------
+const SCRATCH = 1024
+var scratch: [SCRATCH]byte
+var sused: uint
+
+fn sput(s: ptr byte, n: uint): ptr byte {
+    if sused + n > SCRATCH { err("constant string too long") }
+    var p = &scratch[sused]
+    memcpy(p, s, n)
+    sused += n
+    return p
+}
+
+// constant k of the pool into the scratch area: the address of the bytes
+fn kfetch(k: uint): ptr byte {
+    var n = klen(k)
+    if sused + n > SCRATCH { err("constant string too long") }
+    var p = &scratch[sused]
+    xread(XB_KONST, koff[k] + 6, p, n)
+    sused += n
+    return p
+}
+
+// ---- code -------------------------------------------------------------------------------------------
+// The code is the XB_CODE buffer in extended memory (xbuf.b16).
+const CODEMAX = 32768
+var cpos: uint
+
+// The line table: a stream of records (the bytecode document, sect. 5) in the XB_LINES buffer. The tail of the stream
+// accumulates in the near buffer ltail and is moved to frames in portions; the rollback of constant folding
+// (restore_code) merely shortens the stream.
+const LINEMAX = 8192
+const LTAIL = 256
+var ltail: [LTAIL]byte
+var lt_flushed: uint            // bytes of the stream already in frames
+var lused: uint
+var lt_off, lt_line, lt_file: uint
+var lt_any: uint
+
+fn lt_flush() {
+    if lused > lt_flushed { xwrite(XB_LINES, lt_flushed, &ltail[0], lused - lt_flushed) }
+    lt_flushed = lused
+}
+
+fn lt_put(b: uint) {
+    if lused >= LINEMAX { err("program too large (line table)") }
+    if lused < lt_flushed { lt_flushed = lused }
+    if lused - lt_flushed >= LTAIL { lt_flush() }
+    ltail[lused - lt_flushed] = byte(b)
+    lused++
+}
+
+fn mark_line() {
+    var l = pline
+    var f = pfile
+    if lt_any != 0 && l == lt_line && f == lt_file { return }
+    var dc: uint = cpos - lt_off
+    var dl: int = int(l) - int(lt_line)
+    if lt_any != 0 && f == lt_file && dc >= 1 && dc <= 255 && dl >= -128 && dl <= 127 {
+        lt_put(dc)
+        lt_put(uint(dl) & $FF)
+    } else {
+        lt_put(0)
+        lt_put(f)
+        lt_put(cpos & $FF); lt_put(cpos >> 8)
+        lt_put(l & $FF); lt_put(l >> 8)
+    }
+    lt_any = 1
+    lt_off = cpos; lt_line = l; lt_file = f
+}
+
+fn emit(b: uint) {
+    if cpos >= CODEMAX { err("program too large") }
+    xput(XB_CODE, cpos, b)
+    cpos++
+}
+
+fn cset(q: uint, b: uint) { xput(XB_CODE, q, b) }
+fn cget(q: uint): uint { return xget(XB_CODE, q) }
+
+fn emitw(w: uint) { emit(w & $FF); emit(w >> 8) }
+
+// A command does not cross the code frame boundary (8 KB): if there is less room before the boundary than the
+// longest command (4 bytes) and a jump (3) need, a jump to the start of the next frame is placed
+// (the bytecode document, sect. 1.5).
+fn op(o: uint) {
+    var room = $2000 - (cpos & $1FFF)
+    if room < 7 {
+        emit(OP_JMP)
+        emitw(room - 3)
+        while cpos & $1FFF != 0 { emit(0) }
+    }
+    mark_line()
+    emit(o)
+}
+
+fn op1(o: uint, a: uint) { op(o); emit(a) }
+fn op2w(o: uint, a: uint) { op(o); emitw(a) }
+
+fn patchw(q: uint, w: uint) {
+    xput(XB_CODE, q, w & $FF)
+    xput(XB_CODE, q + 1, w >> 8)
+}
+
+fn getw(q: uint): uint { return xget(XB_CODE, q) | xget(XB_CODE, q + 1) << 8 }
+
+// A forward jump: the result is the offset position for patch_here.
+fn jump(o: uint): uint {
+    op(o)
+    emitw(0)
+    return cpos - 2
+}
+
+fn patch_here(q: uint) { patchw(q, cpos - (q + 2)) }
+
+fn jump_back(o: uint, target: uint) {
+    op(o)
+    emitw(target - (cpos + 2))
+}
+
+// The code state for rolling back constant folding.
+var sv_cpos, sv_lused, sv_off, sv_line, sv_file, sv_any: uint
+
+fn save_code() {
+    sv_cpos = cpos; sv_lused = lused; sv_off = lt_off; sv_line = lt_line; sv_file = lt_file; sv_any = lt_any
+}
+
+fn restore_code() {
+    cpos = sv_cpos; lused = sv_lused
+    if lused < lt_flushed { lt_flushed = lused }
+    lt_off = sv_off; lt_line = sv_line; lt_file = sv_file; lt_any = sv_any
+}
+
+// ---- functions ---------------------------------------------------------------------------------------
+const FNMAX = 160
+const TPOOL = 512
+var fn_name: [FNMAX]uint
+var fn_code: [FNMAX]uint
+var fn_np: [FNMAX]byte
+var fn_nl: [FNMAX]byte
+var fn_nr: [FNMAX]byte
+var fn_ty: [FNMAX]uint          // offset of the annotations in tpool: parameters, then results
+var fn_typed: [FNMAX]byte
+var nfn: uint
+var tpool: [TPOOL]byte
+var tused: uint

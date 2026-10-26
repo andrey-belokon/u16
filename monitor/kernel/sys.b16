@@ -1,0 +1,679 @@
+// sys.b16 - system call handlers ("System Calls", sect. 9).
+// SPAWN and EXIT are in proc.b16, time is in time.b16. The handlers are called by the dispatcher of
+// resident.asm: arguments in R0..R3 by the slot rule, results R0..R3 go into frame KF.
+
+export fn sys_nosys(): uint { return E_NOSYS }
+
+// ---- descriptors (sect. 9.3) --------------------------------------------------------------
+export fn sys_open(path: uint, mode: uint, attr: uint): (uint, uint) {
+    var e, n, kind, h, o: uint
+    e, n = upath(path)
+    if e != OK { return e, 0 }
+    if mode & (O_READ | O_WRITE) == 0 { return E_INVAL, 0 }
+    if mode & O_TRUNC != 0 && mode & O_WRITE == 0 { return E_INVAL, 0 }
+    e, kind = path_resolve()
+    if e != OK { return e, 0 }
+    e, h = fd_free()
+    if e != OK { return e, 0 }
+    if kind != P_FS {
+        e, o = of_alloc(kind, mode & (O_READ | O_WRITE))
+        if e != OK { return e, 0 }
+    } else {
+        e, o = of_alloc(H_FILE, mode & (O_READ | O_WRITE | O_APPEND))
+        if e != OK { return e, 0 }
+        var k: uint
+        e, k = fs_open_k(&pbuf[0], mode, attr, &ofiles[o].f)
+        if e != OK { ofiles[o].refs = 0; return e, 0 }
+        ofiles[o].kind = byte(k)
+    }
+    curp().fd[h] = byte(o)
+    return OK, h
+}
+
+export fn sys_close(h: uint): uint {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e }
+    of_unref(o)
+    curp().fd[h] = FD_NONE
+    return OK
+}
+
+// The volume of an open file or directory is available: OK or E_NODEV (the disk is disconnected, sect. 5.3 of the calls).
+fn of_vol(of: ptr OFile): uint {
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(of.f.n.drv)
+    return e
+}
+
+// Reading a file in pieces through the windows: the error code, the count read.
+fn file_read(f: ptr File, ua: uint, n: uint): (uint, uint) {
+    var p = curp()
+    var done: uint = 0
+    var e: uint = OK
+    while n != 0 {
+        var k: ptr byte
+        var a, got: uint
+        k, a = pwin(p, ua)
+        if a > n { a = n }
+        e, got = fs_read(f, k, a)
+        done += got
+        if e != OK || got < a { break }
+        ua += a
+        n -= a
+    }
+    win_idle()
+    return e, done
+}
+
+fn file_write(f: ptr File, ua: uint, n: uint): (uint, uint) {
+    var p = curp()
+    var done: uint = 0
+    var e: uint = OK
+    while n != 0 {
+        var k: ptr byte
+        var a, put: uint
+        k, a = pwin(p, ua)
+        if a > n { a = n }
+        e, put = fs_write(f, k, a)
+        done += put
+        if e != OK || put < a { break }
+        ua += a
+        n -= a
+    }
+    win_idle()
+    return e, done
+}
+
+export fn sys_read(h: uint, buf: uint, n: uint): (uint, uint) {
+    var e, o, r: uint
+    e, o = fd_of(h)
+    if e != OK { return e, 0 }
+    var of = &ofiles[o]
+    if of.mode & O_READ == 0 { return E_BADF, 0 }
+    if uchk(buf, n) != OK { return E_FAULT, 0 }
+    var kind: uint = of.kind
+    if kind == H_CON {
+        e, r = con_read(buf, n)
+        return e, r
+    }
+    if kind == H_NUL { return OK, 0 }
+    if kind == H_DIR { return E_ISDIR, 0 }
+    e = of_vol(of)
+    if e != OK { return e, 0 }
+    e, r = file_read(&of.f, buf, n)
+    return e, r
+}
+
+export fn sys_write(h: uint, buf: uint, n: uint): (uint, uint) {
+    var e, o, r: uint
+    e, o = fd_of(h)
+    if e != OK { return e, 0 }
+    var of = &ofiles[o]
+    if of.mode & O_WRITE == 0 { return E_BADF, 0 }
+    if uchk(buf, n) != OK { return E_FAULT, 0 }
+    var kind: uint = of.kind
+    if kind == H_CON { con_write(buf, n); win_idle(); return OK, n }
+    if kind == H_NUL { return OK, n }
+    if kind == H_DIR { return E_ISDIR, 0 }
+    e = of_vol(of)
+    if e != OK { return e, 0 }
+    if of.mode & O_APPEND != 0 { of.f.pos = of.f.n.size }
+    if of.f.pos > of.f.n.size { return E_INVAL, 0 }
+    if n == 0 { return OK, 0 }
+    e, r = file_write(&of.f, buf, n)
+    return e, r
+}
+
+export fn sys_seek(h: uint, off: long, whence: uint): (uint, ulong) {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e, 0 }
+    var of = &ofiles[o]
+    if whence > SEEK_END { return E_INVAL, 0 }
+    if of.kind == H_DIR || of.kind == H_FILE {
+        e = of_vol(of)
+        if e != OK { return e, 0 }
+    }
+    if of.kind == H_DIR {
+        if off != 0 || whence != SEEK_SET { return E_INVAL, 0 }
+        of.f.pos = 0
+        of.f.lk = 0
+        return OK, 0
+    }
+    if of.kind != H_FILE { return E_INVAL, 0 }
+    var base: long = 0
+    if whence == SEEK_CUR { base = long(of.f.pos) }
+    if whence == SEEK_END { base = long(of.f.n.size) }
+    var np: long = base + off
+    if np < 0 || ulong(np) > of.f.n.size { return E_INVAL, 0 }
+    of.f.pos = ulong(np)
+    return OK, of.f.pos
+}
+
+export fn sys_dup(h: uint, target: uint): (uint, uint) {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e, 0 }
+    var p = curp()
+    if target == SAME {
+        e, target = fd_free()
+        if e != OK { return e, 0 }
+    } else {
+        if target >= NFD { return E_BADF, 0 }
+        if target == h { return OK, h }
+        if p.fd[target] != FD_NONE { of_unref(p.fd[target]) }
+    }
+    p.fd[target] = byte(o)
+    ofiles[o].refs++
+    return OK, target
+}
+
+export fn sys_hinfo(h: uint): (uint, uint, uint) {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e, 0, 0 }
+    return OK, ofiles[o].kind, ofiles[o].mode
+}
+
+export fn sys_setsize(h: uint, size: ulong, flags: uint): uint {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e }
+    var of = &ofiles[o]
+    if of.mode & O_WRITE == 0 { return E_BADF }
+    if of.kind != H_FILE || flags & ~uint(SZ_ZERO) != 0 { return E_INVAL }
+    e = of_vol(of)
+    if e != OK { return e }
+    var n = of.f.n
+    if size == n.size { return OK }
+    if size < n.size {
+        var keep: ulong = of.f.pos
+        e = fs_truncate(&of.f, size)
+        if keep > size { keep = size }
+        of.f.pos = keep
+        return e
+    }
+    return fs_extend(&of.f, size, flags & SZ_ZERO)
+}
+
+var kstat: Stat
+
+fn stat_dev(kind: uint) {
+    kzero(&kstat, sizeof(Stat))
+    if kind == H_CON { kcopy(&kstat.name[0], "con", 3) } else { kcopy(&kstat.name[0], "nul", 3) }
+}
+
+export fn sys_fstat(h: uint, st: uint): uint {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e }
+    var of = &ofiles[o]
+    if of.kind == H_FILE || of.kind == H_DIR {
+        e = of_vol(of)
+        if e != OK { return e }
+        e = node_stat(of.f.n, &kstat)
+        if e != OK { return e }
+    } else {
+        stat_dev(of.kind)
+    }
+    return ucopyout(st, ptr byte(&kstat), sizeof(Stat))
+}
+
+// ---- the file system (sect. 9.4) --------------------------------------------------------------
+var tnode: Node
+
+// A process path on a volume (not a device): the error code.
+fn fs_path_in(ua: uint): uint {
+    var e, n, kind: uint
+    e, n = upath(ua)
+    if e != OK { return e }
+    e, kind = path_resolve()
+    if e != OK { return e }
+    if kind != P_FS { return E_INVAL }
+    return OK
+}
+
+export fn sys_stat(path: uint, st: uint): uint {
+    var e, n, kind: uint
+    e, n = upath(path)
+    if e != OK { return e }
+    e, kind = path_resolve()
+    if e != OK { return e }
+    if kind != P_FS {
+        stat_dev(kind)
+    } else {
+        e = fs_stat(&pbuf[0], &tnode)
+        if e != OK { return e }
+        e = node_stat(&tnode, &kstat)
+        if e != OK { return e }
+    }
+    return ucopyout(st, ptr byte(&kstat), sizeof(Stat))
+}
+
+export fn sys_delete(path: uint): uint {
+    var e: uint = fs_path_in(path)
+    if e != OK { return e }
+    e = fs_stat(&pbuf[0], &tnode)
+    if e != OK { return e }
+    if tnode.eclu == 0 { return E_INVAL }
+    return fs_delete(&pbuf[0])
+}
+
+export fn sys_rename(old: uint, new: uint): uint {
+    var e: uint = fs_path_in(old)
+    if e != OK { return e }
+    var n, kind: uint
+    e, n = upath_to(&pbuf2[0], new)
+    if e != OK { return e }
+    e, kind = path_kind(&pbuf2[0])
+    if e != OK { return e }
+    if kind != P_FS { return E_INVAL }
+    e = fs_stat(&pbuf[0], &tnode)
+    if e != OK { return e }
+    if tnode.eclu == 0 { return E_INVAL }
+    return fs_rename(&pbuf[0], &pbuf2[0])
+}
+
+export fn sys_mkdir(path: uint): uint {
+    var e: uint = fs_path_in(path)
+    if e != OK { return e }
+    return fs_mkdir(&pbuf[0])
+}
+
+export fn sys_chdir(path: uint): uint {
+    var e: uint = fs_path_in(path)
+    if e != OK { return e }
+    return fs_chdir(&pbuf[0])
+}
+
+var gbuf: [600]byte
+
+export fn sys_getcwd(buf: uint, n: uint): (uint, uint) {
+    var c = &curp().cwd
+    var len: uint = 0
+    gbuf[0] = byte('A' + c.drv)
+    gbuf[1] = ':'
+    gbuf[2] = '/'
+    len = 3
+    var k: uint = 0
+    while k < c.depth {
+        var d: ptr DirEnt
+        var b: ptr byte
+        var e: uint
+        d, b, e = ent_get(c.drv, c.ent[k].clu, c.ent[k].idx)
+        if e != OK { return e, 0 }
+        if k != 0 { gbuf[len] = '/'; len++ }
+        var i: uint = 0
+        while i < 32 && d.name[i] != 0 { gbuf[len] = d.name[i]; len++; i++ }
+        k++
+    }
+    gbuf[len] = 0
+    if len + 1 > n { return E_INVAL, 0 }
+    var e2: uint = ucopyout(buf, &gbuf[0], len + 1)
+    return e2, len
+}
+
+var kdent: DirEnt
+
+export fn sys_readdir(h: uint, st: uint): (uint, uint) {
+    var e, o: uint
+    e, o = fd_of(h)
+    if e != OK { return e, 0 }
+    var of = &ofiles[o]
+    if of.kind != H_DIR { return E_NOTDIR, 0 }
+    if uchk(st, sizeof(Stat)) != OK { return E_FAULT, 0 }
+    e = of_vol(of)
+    if e != OK { return e, 0 }
+    e = fs_readdir(&of.f, &kdent)
+    if e == E_NOENT { return OK, 0 }
+    if e != OK { return e, 0 }
+    e = ucopyout(st, ptr byte(&kdent), sizeof(Stat))
+    return e, 1
+}
+
+export fn sys_setattr(path: uint, attr: uint): uint {
+    var e: uint = fs_path_in(path)
+    if e != OK { return e }
+    if attr & ~uint(A_RDONLY | A_HIDDEN | A_SYSTEM) != 0 { return E_INVAL }
+    e = fs_stat(&pbuf[0], &tnode)
+    if e != OK { return e }
+    if tnode.eclu == 0 { return E_INVAL }
+    var v: ptr Vol
+    v, e = vol_get(tnode.drv)
+    if e != OK { return e }
+    if v.fl & V_RW == 0 { return E_RDONLY }
+    var fl: uint = (tnode.flags & F_DIR) | attr
+    var d: ptr DirEnt
+    var b: ptr byte
+    d, b, e = ent_get(tnode.drv, tnode.eclu, tnode.eidx)
+    if e != OK { return e }
+    d.size = (d.size & SZ_MASK) | ulong(fl) << 16
+    e = ent_put(b, tnode.eclu)
+    var i: uint = 0
+    while i < NNODE {
+        var nd = &nodes[i]
+        if nd.refs != 0 && nd.drv == tnode.drv && nd.eclu == tnode.eclu && nd.eidx == tnode.eidx { nd.flags = fl }
+        i++
+    }
+    return e
+}
+
+// The FS16 timestamp (sect. 5.1): 0 - no timestamp, otherwise fields within the allowed limits.
+fn mtime_valid(t: ulong): uint {
+    if t == 0 { return 1 }
+    var tm: uint = uint(t)
+    var dt: uint = uint(t >> 16)
+    if tm >> 12 > 11 || (tm >> 6) & 63 > 59 || tm & 63 > 59 { return 0 }
+    var mo: uint = (dt >> 6) & 15
+    var dd: uint = (dt >> 1) & 31
+    if mo < 1 || mo > 12 || dd < 1 { return 0 }
+    return 1
+}
+
+export fn sys_setmtime(path: uint, t: ulong): uint {
+    var e: uint = fs_path_in(path)
+    if e != OK { return e }
+    if mtime_valid(t) == 0 { return E_INVAL }
+    e = fs_stat(&pbuf[0], &tnode)
+    if e != OK { return e }
+    var v: ptr Vol
+    v, e = vol_get(tnode.drv)
+    if e != OK { return e }
+    if v.fl & V_RW == 0 { return E_RDONLY }
+    var d: ptr DirEnt
+    var b: ptr byte
+    d, b, e = ent_get(tnode.drv, tnode.eclu, tnode.eidx)
+    if e != OK { return e }
+    d.mtime = t
+    e = ent_put(b, tnode.eclu)
+    var i: uint = 0
+    while i < NNODE {
+        var nd = &nodes[i]
+        if nd.refs != 0 && nd.drv == tnode.drv && nd.eclu == tnode.eclu && nd.eidx == tnode.eidx { nd.mtime = t }
+        i++
+    }
+    return e
+}
+
+var kvol: VolInfo
+
+export fn sys_volinfo(drv: uint, vi: uint): uint {
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(drv)
+    if e != OK { return e }
+    var b: ptr byte
+    b, e = cache_get(drv, 0)
+    if e != OK { return e }
+    var sb = ptr Super(b)
+    kcopy(&kvol.label[0], &sb.label[0], 16)
+    kvol.serial = sb.serial
+    kvol.clusters = v.n
+    kvol.free = v.free
+    kvol.flags = v.mnt
+    return ucopyout(vi, ptr byte(&kvol), sizeof(VolInfo))
+}
+
+// MOUNT (sect. 9.4 of the calls). MOUNT_REMOUNT: mount an already mounted volume again
+// (after the volume check, sect. 5.3 of the calls) - the cache is flushed, the superblock is read again.
+export fn sys_mount(drv: uint, flags: uint): (uint, uint) {
+    if flags & ~uint(MOUNT_RDONLY | MOUNT_REMOUNT) != 0 { return E_INVAL, 0 }
+    var e, m: uint
+    if flags & MOUNT_REMOUNT != 0 {
+        if drv >= NVOL || vols[drv].fl & V_MOUNT == 0 || vols[drv].fl & V_LOST != 0 { return E_NODEV, 0 }
+        var i: uint = 0
+        while i < NNODE {
+            if nodes[i].refs != 0 && nodes[i].drv == drv { return E_BUSY, 0 }
+            i++
+        }
+        if vols[drv].fl & V_RW != 0 {
+            e = vol_sync(drv)
+            if e != OK { return e, 0 }
+        }
+        cache_drop(drv)
+        vols[drv].fl = 0
+    }
+    e, m = vol_mount(drv, flags & MOUNT_RDONLY)
+    return e, m
+}
+
+export fn sys_unmount(drv: uint): uint {
+    if drv >= NVOL || vols[drv].fl & V_MOUNT == 0 { return E_NODEV }
+    if vols[drv].fl & V_LOST == 0 && vol_busy(drv) != 0 { return E_BUSY }
+    return vol_umount(drv)
+}
+
+fn sync_all(): uint {
+    var e: uint = OK
+    var d: uint = 0
+    while d < NVOL {
+        if vols[d].fl & V_MOUNT != 0 && vols[d].fl & V_LOST == 0 {
+            var r: uint = vol_sync(d)
+            if r != OK { e = r }
+        }
+        d++
+    }
+    return e
+}
+
+export fn sys_sync(): uint { return sync_all() }
+
+// ---- events (sect. 9.2) ---------------------------------------------------------------------
+export fn sys_onevent(ev: uint, h: uint): (uint, uint) {
+    var p = curp()
+    if ev != EVT_BREAK && ev != EVT_BADINSN { return E_INVAL, 0 }
+    if h != 0 && (uvalid(p, h) == 0 || h & 1 != 0) { return E_FAULT, 0 }
+    var old: uint
+    if ev == EVT_BREAK {
+        old = p.brkh
+        p.brkh = h
+        RES.brk_hook = h
+    } else {
+        old = p.badh
+        p.badh = h
+        RES.bad_hook = h
+    }
+    return OK, old
+}
+
+// ---- console (sect. 9.5) --------------------------------------------------------------------
+export fn sys_con_mode(mode: uint): (uint, uint) {
+    var p = curp()
+    var old: uint = p.conmode
+    if mode == $FFFF { return OK, old }
+    if mode & ~uint(CM_RAW | CM_NOECHO | CM_NOBREAK) != 0 { return E_INVAL, 0 }
+    ln_check_drop()
+    if ln_ready == 0 { ln_reset() }
+    p.conmode = mode
+    con_mode_apply(mode)
+    return OK, old
+}
+
+export fn sys_con_getev(flags: uint): (uint, uint, uint) {
+    if flags & ~uint(EV_NOWAIT) != 0 { return E_INVAL, 0, 0 }
+    if ev_empty() != 0 {
+        if flags & EV_NOWAIT != 0 { return E_AGAIN, 0, 0 }
+        var e: uint = ev_wait()
+        if e != OK { return e, 0, 0 }
+    }
+    var ev: uint = ev_get()
+    return OK, ev, ev_mods
+}
+
+export fn sys_con_flush(): uint {
+    RES.ln_drop = 0
+    con_flush()
+    return OK
+}
+
+// ---- memory, system (sect. 9.6, 9.8) -------------------------------------------------------------
+export fn sys_meminfo(): (uint, uint, uint, uint) {
+    var p = curp()
+    return OK, p.top, nfree, frames_count(proc_id(p)) - p.nfr
+}
+
+// ---- extended memory (sect. 9.6 of the calls) ---------------------------------------------------------
+fn zero_frame(f: uint) {
+    PAGE[5] = byte(f)
+    kzero(ptr(WIN0), $2000)
+    win_idle()
+}
+
+// Change top: new own frames are zeroed; a page with an extended-memory frame
+// keeps it. PIB.top is updated. The current process's map is RES.cmap (sect. 2.3).
+export fn sys_settop(top: uint): uint {
+    var p = curp()
+    if top == 0 || top > $E000 || top & $1FFF != 0 { return E_INVAL }
+    var nn: uint = top >> 13
+    var oid: uint = proc_id(p)
+    if nn > p.nfr && nn - p.nfr > nfree { return E_NOMEM }
+    while p.nfr < nn {
+        var f: uint = frame_alloc(oid)
+        zero_frame(f)
+        p.fr[p.nfr] = byte(f)
+        if RES.cmap[p.nfr] == GARBAGE { RES.cmap[p.nfr] = byte(f) }
+        p.nfr++
+    }
+    while p.nfr > nn {
+        p.nfr--
+        var g: uint = p.fr[p.nfr]
+        if RES.cmap[p.nfr] == g { RES.cmap[p.nfr] = GARBAGE }
+        frame_free(g)
+    }
+    p.top = top
+    omap_set(p)
+    var t: [1]uint
+    t[0] = top
+    if uvalid(p, 20) != 0 { pcopyout(p, 20, ptr byte(&t[0]), 2); win_idle() }
+    return OK
+}
+
+export fn sys_xalloc(): (uint, uint) {
+    var p = curp()
+    var f: uint = frame_alloc(proc_id(p))
+    if f == 0 { return E_NOMEM, 0 }
+    zero_frame(f)
+    xbit_put(f, 1)
+    p.nx++
+    return OK, f
+}
+
+// An extended-memory frame of the current process: RES.xbits (sect. 2.3).
+export fn sys_xfree(f: uint): uint {
+    if f >= 256 || xbit(f) == 0 { return E_INVAL }
+    var i: uint = 0
+    while i < 7 {
+        if RES.cmap[i] == f { RES.cmap[i] = RES.omap[i] }
+        i++
+    }
+    xbit_put(f, 0)
+    frame_free(f)
+    curp().nx--
+    return OK
+}
+
+// The full XMAP path. Valid arguments are usually handled by the resident part's fast path
+// (resident.asm, xmap_fast) with the same result; errors come here.
+export fn sys_xmap(page: uint, f: uint): (uint, uint) {
+    if page > 6 { return E_INVAL, 0 }
+    var nf: uint = f
+    if f == XM_OWN {
+        nf = RES.omap[page]
+    } else if f >= 256 || xbit(f) == 0 {
+        return E_INVAL, 0
+    }
+    var old: uint = RES.cmap[page]
+    if old == RES.omap[page] { old = XM_OWN }
+    RES.cmap[page] = byte(nf)
+    return OK, old
+}
+
+fn mounted_mask(): uint {
+    var m: uint = 0
+    var d: uint = 0
+    while d < NVOL {
+        if vols[d].fl & V_MOUNT != 0 && vols[d].fl & V_LOST == 0 { m |= 1 << d }
+        d++
+    }
+    return m
+}
+
+var ksys: SysInfo
+
+export fn sys_sysinfo(si: uint): uint {
+    ksys.version = $0600        // revision 6 of the call specification
+    ksys.frames = NPOOL
+    ksys.free_frames = nfree
+    var n: uint = 0
+    var i: uint = cur
+    while i != NONE { n++; i = procs[i].parent }
+    ksys.depth = n              // the current session's chain
+    ksys.max_depth = MAXPROC    // processes in all sessions together
+    ksys.mounted = mounted_mask()
+    ksys.session = cursess
+    ksys.max_sess = MAXSESS
+    return ucopyout(si, ptr byte(&ksys), sizeof(SysInfo))
+}
+
+export fn sys_shutdown(): uint {
+    shutdown()
+    return OK
+}
+
+export fn sys_disk_info(drv: uint, info: uint): (uint, uint) {
+    if disk_present(drv) == 0 { return E_NODEV, 0 }
+    if uchk(info, 32) != OK { return E_FAULT, 0 }
+    var e: uint = disk_info(drv, &dinfo)
+    if e != OK { return e, 0 }
+    e = ucopyout(info, ptr byte(&dinfo), 32)
+    var st: uint = 0
+    if mounted_mask() & (1 << drv) != 0 {
+        st = DI_MOUNTED
+        if vols[drv].fl & V_RW == 0 { st |= DI_RDONLY }
+    }
+    return e, st
+}
+
+var kreq: DiskReq
+
+export fn sys_disk_io(req: uint): uint {
+    var e: uint = ucopyin(ptr byte(&kreq), req, sizeof(DiskReq))
+    if e != OK { return e }
+    if kreq.op != DIO_READ && kreq.op != DIO_WRITE { return E_INVAL }
+    if kreq.count == 0 || kreq.count > 255 { return E_INVAL }
+    if disk_present(kreq.drive) == 0 { return E_NODEV }
+    // write: the disk is not mounted or is mounted read-only (volume check, sect. 5.3)
+    // sectors 1-3 (the boot code, FS16 sect. 2) are not used by the kernel: they can always be written
+    var rodisk: uint = 0
+    var bootarea: uint = 0
+    if kreq.lba >= 1 && kreq.lba + kreq.count <= 4 { bootarea = 1 }
+    if kreq.op == DIO_WRITE && bootarea == 0 && mounted_mask() & (1 << kreq.drive) != 0 {
+        if vols[kreq.drive].fl & V_RW != 0 { return E_BUSY }
+        rodisk = 1
+    }
+    var top: uint = curp().top
+    var ua: uint = uint(kreq.buf)
+    if ulong(ua) + (ulong(kreq.count) << 9) > ulong(top) { return E_FAULT }
+    var cmd: uint = DK_READ
+    if kreq.op == DIO_WRITE { cmd = DK_WRITE }
+    var left: uint = kreq.count
+    var lba: ulong = kreq.lba
+    var p = curp()
+    while left != 0 {
+        var k: ptr byte
+        var a: uint
+        k, a = pwin(p, ua)
+        var c: uint = a >> 9
+        if c > left { c = left }
+        e = disk_io(cmd, kreq.drive, lba, k, c)
+        if e != OK { win_idle(); if rodisk != 0 { cache_drop(kreq.drive) }; return e }
+        left -= c
+        lba += c
+        ua += c << 9
+    }
+    win_idle()
+    if rodisk != 0 { cache_drop(kreq.drive) }    // the volume was changed bypassing the kernel
+    return OK
+}

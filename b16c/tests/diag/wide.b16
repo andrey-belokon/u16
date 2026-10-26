@@ -1,0 +1,21 @@
+// Diagnostics for the long and ulong types and exact constants (sect. 4.7, 6.2).
+var arr: [4]int
+fn main() {
+    var i: int = 70000
+    var b: byte = 300
+    var u: uint = 0
+    var l: long = 5
+    var p: ptr byte = 0
+    u = l
+    u = -40000
+    l = p
+    p = l
+    p = ptr byte(l)
+    l = long(p)
+    u = arr[l]
+    u = uint(70000)
+    var big = 1 << 63
+    var ok: ulong = $FFFFFFFF
+    var neg: long = $FFFFFFFF
+    var h: uint = $10000
+}

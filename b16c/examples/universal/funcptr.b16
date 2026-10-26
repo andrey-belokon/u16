@@ -1,0 +1,212 @@
+// funcptr.b16 - function pointers: callbacks, jump tables,
+// "objects" with a method table, a state machine on pointers, a function as a result.
+include "../../lib/io.b16"
+
+// ---------------------------------------------------------------------------
+// 1. Callbacks: map / filter / reduce over an array of words.
+//    The parameter type reads as "pointer to a function (int): int".
+
+fn map(p: ptr int, n: uint, f: ptr fn(int): int) {
+    while n != 0 { *p = f(*p); p++; n-- }
+}
+
+// Keep the elements for which pred != 0; the result is the new length.
+fn filter(p: ptr int, n: uint, pred: ptr fn(int): uint): uint {
+    var dst = p
+    var k: uint = 0
+    while n != 0 {
+        if pred(*p) { *dst++ = *p; k++ }
+        p++
+        n--
+    }
+    return k
+}
+
+fn reduce(p: ptr int, n: uint, acc: int, f: ptr fn(int, int): int): int {
+    while n != 0 { acc = f(acc, *p++); n-- }
+    return acc
+}
+
+fn square(x: int): int { return x * x }
+fn negate(x: int): int { return -x }
+fn is_even(x: int): uint { return uint(x) & 1 == 0 }
+fn is_big(x: int): uint { return x > 100 }
+fn add(a, b: int): int { return a + b }
+fn imax(a, b: int): int { if a > b { return a }; return b }
+
+fn show(p: ptr int, n: uint) {
+    while n != 0 { puti(*p++); putc(' '); n-- }
+    putnl()
+}
+
+// ---------------------------------------------------------------------------
+// 2. Jump table: index -> function. A replacement for switch over dense codes.
+
+fn op_nop(a, _b: int): int { return a }
+fn op_add(a, b: int): int { return a + b }
+fn op_sub(a, b: int): int { return a - b }
+fn op_mul(a, b: int): int { return a * b }
+fn op_and(a, b: int): int { return a & b }
+
+const OP_NOP = 0
+const OP_ADD = 1
+const OP_SUB = 2
+const OP_MUL = 3
+const OP_AND = 4
+var ops: [5]ptr fn(int, int): int = {op_nop, op_add, op_sub, op_mul, op_and}
+
+// Bytecode: pairs (operation, operand).
+var program: [10]byte = {OP_ADD, 7, OP_MUL, 6, OP_SUB, 2, OP_AND, 31, OP_NOP, 0}
+
+fn run(code: ptr byte, n: uint): int {
+    var acc: int = 0
+    while n != 0 {
+        var op = *code++
+        var arg = int(*code++)
+        acc = ops[op](acc, arg)         // the address from the table into R4+, then CALL Rn
+        n--
+    }
+    return acc
+}
+
+// ---------------------------------------------------------------------------
+// 3. "Objects": a struct with a pointer to a method table (like a vtable).
+
+struct Shape {
+    vt: ptr ShapeVT     // method table
+    a, b: int           // sizes
+}
+
+struct ShapeVT {
+    name: ptr byte
+    area: ptr fn(ptr Shape): int
+    perimeter: ptr fn(ptr Shape): int
+}
+
+fn rect_area(s: ptr Shape): int { return s.a * s.b }
+fn rect_perim(s: ptr Shape): int { return 2 * (s.a + s.b) }
+fn tri_area(s: ptr Shape): int { return s.a * s.b / 2 }         // right triangle
+fn tri_perim(s: ptr Shape): int { return s.a + s.b + hypot(s.a, s.b) }
+fn sq_area(s: ptr Shape): int { return s.a * s.a }
+fn sq_perim(s: ptr Shape): int { return 4 * s.a }
+
+fn hypot(a, b: int): int {       // the integer part of sqrt(a*a + b*b)
+    var x = uint(a * a + b * b)
+    var r: uint = 0
+    while (r + 1) * (r + 1) <= x { r++ }
+    return int(r)
+}
+
+var rect_vt: ShapeVT
+var tri_vt: ShapeVT
+var square_vt: ShapeVT
+var shapes: [3]Shape
+
+fn init_shapes() {
+    rect_vt.name = "rectangle"; rect_vt.area = rect_area; rect_vt.perimeter = rect_perim
+    tri_vt.name = "triangle";    tri_vt.area = tri_area;   tri_vt.perimeter = tri_perim
+    square_vt.name = "square";     square_vt.area = sq_area; square_vt.perimeter = sq_perim
+    shapes[0].vt = &rect_vt;   shapes[0].a = 3; shapes[0].b = 5
+    shapes[1].vt = &tri_vt;    shapes[1].a = 6; shapes[1].b = 8
+    shapes[2].vt = &square_vt; shapes[2].a = 4
+}
+
+fn describe(s: ptr Shape) {
+    var vt = s.vt
+    // vt.area(s) compiles to CALL [Rvt+2]: the address is taken straight from the struct
+    puts(vt.name); puts(": area "); puti(vt.area(s))
+    puts(", perimeter "); puti(vt.perimeter(s)); putnl()
+}
+
+// ---------------------------------------------------------------------------
+// 4. A state machine where the state is a pointer to a handler function.
+//    The handler receives a character and returns the next state.
+//    The state type refers to itself, so we store it as ptr byte
+//    and cast it at the call: ptr fn(byte): ptr byte.
+
+var digits: uint
+var letters: uint
+var groups: uint
+
+fn st_other(c: byte): ptr byte
+fn st_digit(c: byte): ptr byte
+fn st_alpha(c: byte): ptr byte
+
+fn next_state(c: byte): ptr byte {
+    if c >= '0' && c <= '9' { digits++; return ptr byte(st_digit) }
+    if c >= 'a' && c <= 'z' || c >= $C0 || c == $A3 { letters++; return ptr byte(st_alpha) }   // $A3 - the letter yo (lowercase)
+    return ptr byte(st_other)
+}
+
+fn st_other(c: byte): ptr byte {
+    var s = next_state(c)
+    if s != ptr byte(st_other) { groups++ }
+    return s
+}
+
+fn st_digit(c: byte): ptr byte {
+    var s = next_state(c)
+    if s == ptr byte(st_alpha) { groups++ }
+    return s
+}
+
+fn st_alpha(c: byte): ptr byte {
+    var s = next_state(c)
+    if s == ptr byte(st_digit) { groups++ }
+    return s
+}
+
+fn scan(text: ptr byte) {
+    var state = ptr fn(byte): ptr byte(st_other)
+    while *text != 0 { state = ptr fn(byte): ptr byte(state(*text++)) }
+}
+
+// ---------------------------------------------------------------------------
+// 5. A function that returns a function, and a check for 0.
+
+fn pick(name: ptr byte): ptr fn(int): int {
+    if *name == 's' { return square }
+    if *name == 'n' { return negate }
+    return 0                            // no such operation
+}
+
+fn apply_by_name(name: ptr byte, x: int) {
+    var f = pick(name)
+    puts(name); puts("("); puti(x); puts(") = ")
+    if f == 0 { puts("?\n"); return }
+    puti(f(x)); putnl()
+}
+
+// ---------------------------------------------------------------------------
+
+var data: [8]int = {3, 14, 15, 92, 6, 5, 35, 8}
+
+fn main() {
+    puts("1. map/filter/reduce\n")
+    show(&data[0], 8)
+    var n = filter(&data[0], 8, is_even)
+    show(&data[0], n)
+    map(&data[0], n, square)
+    show(&data[0], n)
+    puts("sum "); puti(reduce(&data[0], n, 0, add))
+    puts(", maximum "); puti(reduce(&data[0], n, -32768, imax)); putnl()
+    n = filter(&data[0], n, is_big)
+    show(&data[0], n)
+
+    puts("2. bytecode: ((0 + 7) * 6 - 2) & 31 = "); puti(run(&program[0], 5)); putnl()
+
+    puts("3. objects\n")
+    init_shapes()
+    var i: uint = 0
+    while i < 3 { describe(&shapes[i]); i++ }
+
+    puts("4. state machine: ")
+    scan("abc 123 x9y, 42ёж")
+    puts("letters "); putu(letters); puts(", digits "); putu(digits)
+    puts(", groups "); putu(groups); putnl()
+
+    puts("5. choosing a function\n")
+    apply_by_name("sq", 12)
+    apply_by_name("neg", 12)
+    apply_by_name("cube", 12)
+}

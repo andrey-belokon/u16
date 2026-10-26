@@ -1,0 +1,58 @@
+// t10: long and ulong in register pairs: parameters and locals of leaf and ordinary functions,
+// x = y - x in place, ++ with carry, word halves, sign, comparison with zero
+var OUT at $FF20: byte
+fn putc(c: byte) { OUT = c }
+fn hex(w: uint) { var i = 0; while i < 4 { var d = (w >> 12) & 15; if d < 10 { putc(byte(d + 48)) } else { putc(byte(d + 55)) }; w <<= 4; i++ } }
+fn show(v: ulong) { hex(uint(v >> 16)); hex(uint(v)); putc(' ') }
+fn nl() { putc(10) }
+
+fn fib(n: uint): ulong {                 // leaf: n, a, b, t are in registers
+    var a: ulong = 0
+    var b: ulong = 1
+    while n != 0 {
+        var t = a + b
+        a = b
+        b = t
+        n--
+    }
+    return a
+}
+fn hi(x: ulong): uint { return uint(x >> 16) }
+fn lo(x: ulong): uint { return uint(x) }
+fn hisigned(x: long): int { return int(x >> 16) }
+fn hibyte(x: ulong): byte { return byte(x >> 24) }
+fn mk(h, l: uint): ulong { return (ulong(h) << 16) | l }
+fn mk2(h: int, l: uint): long { return (long(h) << 16) + l }
+fn rsub(x, y: long): long { x = y - x; return x }
+fn xorswap(a, b: ulong): ulong, ulong { a ^= b; b ^= a; a ^= b; return a, b }
+fn sign(x: long): int { if x < 0 { return 1 } if x >= 0 { return 2 } return 3 }
+fn isz(x: ulong): int { if x == 0 { return 0 } return 1 }
+fn nz(x: ulong): int { if x != 0 { return 1 } return 0 }
+fn count(): ulong {                      // ++ with carry between words, a call inside: an ordinary function
+    var c: ulong = $FFFD
+    var i = 0
+    while i < 6 { c++; i++; hex(uint(i)) }
+    return c
+}
+fn nested(a, b, c: long): long {         // three pairs, calls: R4-R9 and memory
+    var s = a + b
+    s = s - c
+    s += fibl(5)
+    return s
+}
+fn fibl(n: uint): long { return long(fib(n)) }
+
+fn main() {
+    show(fib(10)); show(fib(40)); show(fib(47)); nl()
+    show(ulong(hi($DEADBEEF))); show(ulong(lo($DEADBEEF))); show(mk($DEAD, $BEEF)); show(ulong(mk2(-2, $FFFF))); nl()
+    show(ulong(hisigned(-65536))); show(ulong(hisigned(-1))); show(ulong(hisigned($7FFFFFFF))); show(ulong(hibyte($DEADBEEF))); nl()
+    show(ulong(rsub(100000, 5))); show(ulong(rsub(-3, -3))); nl()
+    var p: ulong
+    var q: ulong
+    p, q = xorswap($12345678, $9ABCDEF0)
+    show(p); show(q); nl()
+    show(ulong(sign(-1))); show(ulong(sign(0))); show(ulong(sign(1))); show(ulong(sign(-2147483648))); show(ulong(sign($7FFFFFFF))); nl()
+    show(ulong(isz(0))); show(ulong(isz(1))); show(ulong(isz($10000))); show(ulong(nz(0))); show(ulong(nz($80000000))); nl()
+    show(count()); nl()
+    show(ulong(nested(100000, -1, 7))); nl()
+}

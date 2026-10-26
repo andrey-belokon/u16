@@ -1,0 +1,8 @@
+tests/diag/extern.b16:3: error: function both is declared extern but defined in B16
+tests/diag/extern.b16:5: error: function defined is declared extern but defined in B16
+tests/diag/extern.b16:6: error: extern function withbody cannot have a body: it is defined outside B16
+tests/diag/extern.b16:7: error: extern cannot be combined with static or export
+tests/diag/extern.b16:8: error: extern cannot be combined with static or export
+tests/diag/extern.b16:9: error: extern and export cannot be combined
+tests/diag/extern.b16:10: error: extern applies only to functions
+rc 1

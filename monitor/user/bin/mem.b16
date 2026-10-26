@@ -1,0 +1,26 @@
+// mem - the memory of its own process, its extended memory, free memory, the chain depth.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var si: SysInfo
+
+fn main(): int {
+    prog = "mem"
+    var e, top, fr, x: uint
+    e, top, fr, x = sys_meminfo()
+    e = sys_sysinfo(&si)
+    puts("process memory: ")
+    fputul(STDOUT, ulong(top) >> 10, 0)
+    puts(" KB\nfree: ")
+    fputul(STDOUT, ulong(fr) * 8, 0)
+    puts(" KB of ")
+    fputul(STDOUT, ulong(si.frames) * 8, 0)
+    puts(" KB\nextended memory: ")
+    fputul(STDOUT, ulong(x) * 8, 0)
+    puts(" KB\nprograms in chain: ")
+    fputul(STDOUT, ulong(si.depth), 0)
+    puts(" of ")
+    fputul(STDOUT, ulong(si.max_depth), 0)
+    putnl()
+    return 0
+}

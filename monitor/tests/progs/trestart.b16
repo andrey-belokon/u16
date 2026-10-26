@@ -1,0 +1,16 @@
+// trestart.b16 - the restart script (shell): the first launch ends with code 5,
+// the monitor restarts the shell; the second launch sees that ticks continued and exits with 0.
+include "tlib.b16"
+
+fn main(): int {
+    var e: uint
+    var t: ulong
+    e, t = sys_ticks()
+    if t < 100 {
+        puts("first run\n")
+        e = sys_sleep(200)
+        return 5
+    }
+    puts("second run\n")
+    return 0
+}

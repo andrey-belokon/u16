@@ -1,0 +1,40 @@
+// test: bare-only (its own vector table and interrupts)
+// clock.b16 - a clock on the timer: an interrupt handler, atomic for a consistent read.
+include "../../lib/console.b16"
+
+var TIMER at $FF29: byte
+var VEC   at $FF00: [16]ptr interrupt fn()
+
+var ticks: uint                 // 50 per second
+var sec, cs: uint               // seconds and hundredths
+
+interrupt fn on_tick() {
+    ticks++
+    cs += 2
+    if cs >= 100 { cs = 0; sec++ }
+}
+
+fn now(): uint, uint {
+    var s, c: uint
+    atomic { s = sec; c = cs }      // an interrupt cannot slip in between the two reads
+    return s, c
+}
+
+fn main() {
+    VEC[0] = on_tick
+    TIMER = 1
+    ei()
+    var last: uint = 0
+    while ticks < 60 {
+        wfi()
+        if ticks - last >= 10 {
+            last = ticks
+            var s, c: uint
+            s, c = now()
+            putu(s); putc('.'); if c < 10 { putc('0') }; putu(c); putc(' ')
+        }
+    }
+    TIMER = 0
+    di()
+    putnl()
+}

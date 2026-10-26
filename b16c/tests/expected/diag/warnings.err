@@ -1,0 +1,7 @@
+tests/diag/warnings.b16:9: warning: comparison of an unsigned value with a negative constant
+tests/diag/warnings.b16:10: warning: value of the expression is not used
+tests/diag/warnings.b16:2: warning: parameter unused is not used
+tests/diag/warnings.b16:5: warning: variable z is not used
+tests/diag/warnings.b16:11: warning: label skip is not used
+tests/diag/warnings.b16:14: warning: function proto is declared but not defined (if it is defined in assembly, declare it extern fn)
+rc 0

@@ -1,0 +1,256 @@
+// sess.b16 - sessions: each session's screen and console line, switching between sessions, the calls
+// SESS_INFO, SESS_NEW, SESS_SWITCH, SESS_KILL ("CPU16 Monitor: Kernel Internals", sect. 3.8, 4.7;
+// "System Calls", sect. 2.4, 9.9).
+//
+// The processor belongs only to the current session: the top process of another session is frozen
+// (PS_SUSP), its frame KF is in Proc.ctx, its map in Proc.map. A switch is done only with
+// an empty kernel stack - in kexit, on leaving the kernel. Three paths lead here: an ordinary call
+// (the switch after it, with the result in the frame), waiting in a call (the call will be executed again,
+// wait_restart) and a tick that interrupted the process (irq0 sends the process to the PREEMPT_PROC stub,
+// sys_preempt restores the exact frame).
+
+// ---- the session frame ---------------------------------------------------------------------------------
+fn sess_win(s: uint): ptr SessSave {
+    PAGE[5] = sess[s].frame
+    return ptr SessSave(WIN0)
+}
+
+// A new session: a frame with an empty screen (teletype, cursor, ATTR = $07) and an empty line.
+fn sess_create(): (uint, uint) {
+    var s: uint = 0
+    while s < MAXSESS && sess[s].used != 0 { s++ }
+    if s == MAXSESS { return E_NOPROC, 0 }
+    var f: uint = frame_alloc(OWN_SESS)
+    if f == 0 { return E_NOMEM, 0 }
+    sess[s].used = 1
+    sess[s].frame = byte(f)
+    sess[s].top = NONE
+    var d = sess_win(s)
+    kzero(d, sizeof(SessSave))
+    var i: uint = 0
+    while i < 2000 { d.scr[i] = $0720; i++ }
+    d.ctrl = 3
+    d.attr = $07
+    win_idle()
+    return OK, s
+}
+
+fn sess_free(s: uint) {
+    frame_free(sess[s].frame)
+    sess[s].used = 0
+    sess[s].top = NONE
+    if sw_to == s { sw_to = NONE }
+}
+
+fn sess_count(): uint {
+    var n: uint = 0
+    var s: uint = 0
+    while s < MAXSESS { if sess[s].used != 0 { n++ }; s++ }
+    return n
+}
+
+// The neighboring occupied session after s in a circle: dir = 1 - the next, otherwise the previous.
+// If there are no others - s.
+fn sess_next(s: uint, dir: uint): uint {
+    var k: uint = 1
+    while k < MAXSESS {
+        var t: uint
+        if dir == 1 { t = (s + k) % MAXSESS } else { t = (s + MAXSESS - k) % MAXSESS }
+        if sess[t].used != 0 { return t }
+        k++
+    }
+    return s
+}
+
+// The process's command line (cmdbuf, just loaded) into the frame of its session.
+fn proc_setname(p: ptr Proc) {
+    var d = sess_win(p.sess)
+    var k: uint = proc_id(p) - 1
+    var i: uint = 0
+    while i < NAMELEN - 1 && cmdbuf[i] != 0 { d.names[k][i] = cmdbuf[i]; i++ }
+    d.names[k][i] = 0
+    win_idle()
+}
+
+// The screen, display mode and console line of the current session into the frame of session s.
+fn sess_save(s: uint) {
+    ln_check_drop()
+    var d = sess_win(s)
+    d.ctrl = CON_CTRL
+    d.attr = CON_ATTR
+    d.col = CON_COL
+    d.row = CON_ROW
+    scr_save(&d.scr[0])
+    d.ln_len = ln_len
+    d.ln_pos = ln_pos
+    d.ln_ready = ln_ready
+    d.ln_eof = ln_eof
+    kcopy(&d.ln[0], &ln[0], 256)
+    win_idle()
+}
+
+// Back from the frame; restore = 0 - do not touch the screen (the first entry into a session at startup).
+fn sess_load(s: uint, restore: uint) {
+    var d = sess_win(s)
+    if restore != 0 {
+        scr_restore(&d.scr[0])
+        CON_COL = d.col
+        CON_ROW = d.row
+        CON_ATTR = d.attr
+        CON_CTRL = d.ctrl       // last: before that output went in coordinate mode
+    }
+    ln_len = d.ln_len
+    ln_pos = d.ln_pos
+    ln_ready = d.ln_ready
+    ln_eof = d.ln_eof
+    kcopy(&ln[0], &d.ln[0], 256)
+    win_idle()
+}
+
+// The current process is frozen together with the session.
+fn sess_leave() {
+    var p = curp()
+    ctx_save(p)
+    cmap_save(p)
+    p.state = PS_SUSP
+    sess_save(cursess)
+    cur = NONE
+}
+
+// Session s becomes current: the screen, the line, the top process. Keyboard events typed
+// before the switch are discarded: they were for the previous session.
+fn sess_enter(s: uint, restore: uint) {
+    sess_load(s, restore)
+    RES.kb_tail = RES.kb_head
+    RES.abort = 0
+    RES.ln_drop = 0
+    cursess = s
+    proc_enter(&procs[sess[s].top])
+}
+
+// The session d steps from s (d is signed: Ctrl+] and Ctrl+[ from the keyboard).
+fn sess_step(s: uint, d: uint): uint {
+    var dir: uint = 1
+    var n: uint = d
+    if int(d) < 0 { dir = 0; n = uint(-int(d)) }
+    n = n % sess_count()
+    while n != 0 { s = sess_next(s, dir); n-- }
+    return s
+}
+
+// Exit from the kernel (resident.asm, after the call handler): Ctrl+C, then the switch to a session.
+export fn kexit() {
+    pending_break()
+    if sw_to == NONE && RES.sw_req == 0 { return }
+    var t: uint = sw_to
+    if t == NONE { t = sess_step(cursess, RES.sw_req) }
+    sw_to = NONE
+    RES.sw_req = 0
+    if cur == NONE || t == cursess || sess[t].used == 0 { return }
+    sess_leave()
+    sess_enter(t, 1)
+}
+
+// ---- the calls (sect. 9.9) ----------------------------------------------------------------------------
+// The PREEMPT_PROC stub: a tick interrupted the process while it waited for a switch (irq0). The frame is the exact state
+// of the interrupted program: IP from RES.sw_ip, the flags are those with which the stub's TRAP was executed.
+export fn sys_preempt(): uint {
+    if KF[F_IP] != PREEMPT_PROC + 4 { return E_NOSYS }
+    KF[F_IP] = RES.sw_ip
+    RES.kf_raw = 1
+    RES.kf_set = 1
+    return OK
+}
+
+fn sess_check(s: uint): (uint, uint) {
+    if s == SAME { s = cursess }
+    if s >= MAXSESS { return E_INVAL, 0 }
+    if sess[s].used == 0 { return E_NOENT, 0 }
+    return OK, s
+}
+
+var kpi: ProcInfo
+
+// Session s (SAME - the current one): the flags, the number of processes, the session number; pi != 0 - information about the k-th
+// process of the chain (0 - the root).
+export fn sys_sess_info(s: uint, k: uint, pi: uint): (uint, uint, uint, uint) {
+    var e: uint
+    e, s = sess_check(s)
+    if e != OK { return e, 0, 0, 0 }
+    var ch: [MAXPROC]byte
+    var n: uint = 0
+    var i: uint = sess[s].top
+    while i != NONE && n < MAXPROC { ch[n] = byte(i); n++; i = procs[i].parent }
+    var fl: uint = 0
+    if s == cursess { fl = SF_CUR }
+    if pi != 0 {
+        if k >= n { return E_INVAL, 0, 0, 0 }
+        var j: uint = ch[n - 1 - k]
+        var p = &procs[j]
+        kpi.pid = j
+        kpi.state = p.state
+        kpi.top = p.top
+        kpi.frames = frames_count(j + 1)
+        var d = sess_win(s)
+        kcopy(&kpi.cmd[0], &d.names[j][0], NAMELEN)
+        win_idle()
+        e = ucopyout(pi, ptr byte(&kpi), sizeof(ProcInfo))
+        if e != OK { return e, 0, 0, 0 }
+    }
+    return OK, fl, n, s
+}
+
+// A new session with the program cmd (0 - the shell) in the calling process's current directory.
+// Without SN_BACK the new session becomes current - right after the call.
+export fn sys_sess_new(cmd: uint, flags: uint): (uint, uint) {
+    if flags & ~uint(SN_BACK) != 0 { return E_INVAL, 0 }
+    var e, n, s: uint
+    if cmd == 0 {
+        kcopy(&cmdbuf[0], &shell_path[0], 16)
+    } else {
+        e, n = ustr(&cmdbuf[0], cmd, 255)
+        if e == TOOLONG { return E_ARGS, 0 }
+        if e != OK { return e, 0 }
+    }
+    e, s = sess_create()
+    if e != OK { return e, 0 }
+    e = root_load(s, &curp().cwd)
+    if e != OK { sess_free(s); return e, 0 }
+    if flags & SN_BACK == 0 { sw_to = s }
+    return OK, s
+}
+
+export fn sys_sess_switch(s: uint): uint {
+    var e: uint
+    e, s = sess_check(s)
+    if e != OK { return e }
+    sw_to = s
+    return OK
+}
+
+// Terminate session s (SAME - the current one) and all its processes. Without SK_FORCE - only a session of one
+// process. The only session is not terminated this way: for it, exit the shell.
+export fn sys_sess_kill(s: uint, flags: uint): uint {
+    var e: uint
+    e, s = sess_check(s)
+    if e != OK { return e }
+    if flags & ~uint(SK_FORCE) != 0 { return E_INVAL }
+    if sess_count() == 1 { return E_BUSY }
+    var n: uint = 0
+    var i: uint = 0
+    while i < MAXPROC { if procs[i].state != PS_FREE && procs[i].sess == s { n++ }; i++ }
+    if n > 1 && flags & SK_FORCE == 0 { return E_BUSY }
+    i = 0
+    while i < MAXPROC {
+        if procs[i].state != PS_FREE && procs[i].sess == s { proc_release(&procs[i]) }
+        i++
+    }
+    sess_free(s)
+    if s == cursess {
+        // the calling process was terminated together with the session: the exit goes to a neighboring session
+        cur = NONE
+        sess_enter(sess_next(s, 1), 1)
+        RES.kf_set = 1
+    }
+    return OK
+}

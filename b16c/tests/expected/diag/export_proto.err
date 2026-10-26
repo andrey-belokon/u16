@@ -1,0 +1,2 @@
+tests/diag/export_proto.b16:2: error: exported function entry is not defined
+rc 1

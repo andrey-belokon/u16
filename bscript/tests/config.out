@@ -1,0 +1,4 @@
+/t/data/app.cfg: 2 srv
+/t/data/missing.cfg: 0 -
+config: /t/data/a.log: bad line "error alpha"
+exit code 1

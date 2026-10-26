@@ -1,0 +1,68 @@
+// ticks.b16 - time under the monitor: TICKS, SLEEP, the tick handler TICKHOOK, the Ctrl+C handler.
+//
+//     ticks
+//
+// The timer and the vectors belong to the monitor ("System Calls", sect. 2.2): the program has no vector table of its own,
+// as in ../bare/clock.b16. Instead:
+//   - TICKS is the number of 20 ms ticks since the monitor started, SLEEP waits n ticks;
+//   - TICKHOOK is the process tick handler (interrupt fn, sect. 7.4). The monitor calls it only
+//     for ticks that interrupted the program itself: while it waits in a call (SLEEP), the handler stays silent.
+//     System calls are forbidden in it;
+//   - ONEVENT(EVT_BREAK) is a Ctrl+C handler instead of terminating with code $8001 (sect. 7.5): calls
+//     are allowed in it, and IRET continues the program.
+include "sys.b16"                       // monitor calls and output: puts, putnl, putdec, puthex
+include "mon.b16"                       // how the program was started, and output of numbers and errors
+option max_top = $2000
+
+var hooked: uint                // ticks that reached the handler; a word - read with a single instruction
+var stop: uint                  // 1 - Ctrl+C was pressed
+
+interrupt fn on_tick() { hooked++ }
+interrupt fn on_break() { stop = 1 }
+
+fn now(): ulong {
+    var e: uint
+    var t: ulong
+    e, t = sys_ticks()
+    return t
+}
+
+fn report(what: ptr byte, t0: ulong) {
+    puts(what); puts(": elapsed "); putudec(now() - t0); puts(" ticks, the handler received ")
+    putdec(hooked); putnl()
+}
+
+fn main(): int {
+    if on_monitor() == 0 { return 1 }    // there are no monitor calls on a bare machine
+    var e: uint
+    var h: ptr interrupt fn()
+    e, h = sys_tickhook(on_tick)
+    e, h = sys_onevent(EVT_BREAK, on_break)
+
+    // 1. Waiting in a call: ticks go on, but the program is not interrupted - the handler does not see them.
+    var t0 = now()
+    hooked = 0
+    e = sys_sleep(50)
+    report("SLEEP 50", t0)
+
+    // 2. Computation without calls: every tick interrupts the program and reaches the handler.
+    t0 = now()
+    hooked = 0
+    var x: uint = 1
+    while hooked < 50 { x = x * 5 + 1 }
+    report("counting to 50 handler ticks", t0)
+
+    // 3. Ctrl+C does not terminate the program but calls on_break.
+    puts("press Ctrl+C (10 seconds)\n")
+    var n: uint = 0
+    while stop == 0 && n < 10 {
+        e = sys_sleep(50)               // Ctrl+C during the wait: SLEEP will return INTR
+        n++
+        putdec(n); putc(' ')
+    }
+    putnl()
+    if stop != 0 { puts("Ctrl+C was intercepted, the program ends by itself\n") }
+    else { puts("there was no Ctrl+C\n") }
+    e, h = sys_tickhook(0)              // not required: on exit the monitor resets both
+    return 0
+}

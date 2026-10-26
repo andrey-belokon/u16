@@ -1,0 +1,4 @@
+var x = 0
+var s = "abc"
+println(s.upper())
+println(s.push(1))

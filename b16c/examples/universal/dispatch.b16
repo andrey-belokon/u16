@@ -1,0 +1,46 @@
+// dispatch.b16 - a command table: structs with function pointers.
+include "../../lib/io.b16"
+include "../../lib/string.b16"
+
+var acc: int
+
+fn do_add(x: int) { acc += x }
+fn do_sub(x: int) { acc -= x }
+fn do_mul(x: int) { acc *= x }
+fn do_shl(x: int) { acc <<= x }
+fn do_neg(_x: int) { acc = -acc }
+fn do_show(_x: int) { puts("acc = "); puti(acc); putnl() }
+
+struct Cmd {
+    name: ptr byte
+    run: ptr fn(int)
+}
+
+var cmds: [6]Cmd
+
+fn reg(i: uint, name: ptr byte, f: ptr fn(int)) { cmds[i].name = name; cmds[i].run = f }
+
+fn find(name: ptr byte): ptr Cmd {
+    var p = &cmds[0]
+    var end = p + 6
+    while p < end {
+        if strcmp(p.name, name) == 0 { return p }
+        p++
+    }
+    return 0
+}
+
+fn exec(name: ptr byte, arg: int) {
+    var c = find(name)
+    if c == 0 { puts("no command "); puts(name); putnl(); return }
+    var f = c.run
+    f(arg)
+}
+
+fn main() {
+    reg(0, "add", do_add); reg(1, "sub", do_sub); reg(2, "mul", do_mul)
+    reg(3, "shl", do_shl); reg(4, "neg", do_neg); reg(5, "show", do_show)
+    exec("add", 5); exec("mul", 7); exec("show", 0)
+    exec("shl", 2); exec("sub", 40); exec("neg", 0); exec("show", 0)
+    exec("div", 2)
+}

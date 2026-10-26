@@ -1,0 +1,185 @@
+// test: bare-only (its own vector table and interrupts)
+// inline_asm.b16 - embedding assembly: functions in assembly, flags and carry,
+// local labels, access to globals, calling B16 from asm, custom handlers for the
+// ERRCMD exception and the TRAP software interrupt.
+//
+// What the compiler guarantees around an asm block (details - the guide, sect. 12):
+//  - in a leaf function parameter i lives in Ri; a value is returned via return param;
+//  - between statements the registers not occupied by variables are free;
+//  - in a non-leaf function variables live in R4..R11, so R0..R3 are free in asm;
+//  - a CALL in an asm block makes the function non-leaf (LR is saved automatically);
+//  - global variables and functions are visible in asm by name.
+include "../../lib/console.b16"
+
+// ---------------------------------------------------------------------------
+// 1. A function entirely in assembly: B16 supplies only the signature.
+//    x is the first parameter of a leaf function, it is in R0; return x returns R0.
+
+fn bswap(x: uint): uint {
+    asm {
+        ROR   R0, #8          ; swap the bytes of a word
+    }
+    return x
+}
+
+// ---------------------------------------------------------------------------
+// 2. 32-bit left shift by n: a loop with local labels @name and ADC.
+//    lo - R0, hi - R1, n - R2.
+
+fn shl32(lo, hi, n: uint): uint, uint {
+    asm {
+        TEST  R2, R2
+        JZ    @done
+@loop:  ADD   R0, R0          ; lo <<= 1, the high bit goes to CF
+        ADC   R1, R1          ; hi = hi * 2 + CF
+        DEC   R2
+        JNZ   @loop
+@done:
+    }
+    return lo, hi
+}
+
+// ---------------------------------------------------------------------------
+// 3. The carry flag as a value: a sum and the carry.
+//    LD does not change flags, so ADC R1, #0 sees the CF from ADD.
+
+fn add_carry(a, b: uint): uint, uint {
+    asm {
+        ADD   R0, R1          ; a += b, CF = carry
+        LD    R1, #0
+        ADC   R1, #0          ; R1 = CF
+    }
+    return a, b
+}
+
+// 32-bit comparison without branches: (alo, ahi) < (blo, bhi) unsigned.
+// SUB/SBC leave the borrow of the whole 32-bit difference in CF.
+fn lt32(alo, ahi, blo, bhi: uint): uint {
+    asm {
+        SUB   R0, R2
+        SBC   R1, R3
+        LD    R0, #0
+        ADC   R0, #0          ; R0 = borrow = (a < b)
+    }
+    return alo
+}
+
+// ---------------------------------------------------------------------------
+// 4. Global variables by name: read the FLAGS register, which B16 does not have.
+//    In a function without variables all of R0..R3 are free.
+
+var flags_copy: uint
+
+fn read_flags(): uint {
+    asm {
+        LD    R0, FLAGS
+        ST    [flags_copy], R0
+    }
+    return flags_copy
+}
+
+// ---------------------------------------------------------------------------
+// 5. Calling a B16 function from asm: arguments in R0..R3 per the calling convention.
+//    The compiler sees the CALL, saves LR and does not keep variables in R0..R3.
+//    Where a variable lives can be seen in the output of b16c -s; reliably known is only the case
+//    "one variable in a non-leaf function -> R4".
+
+fn print_pair(a, b: uint) {
+    putc('['); putu(a); putc(','); putu(b); putc(']')
+}
+
+fn asm_calls() {
+    var i: uint = 4                 // the only variable of a non-leaf function: it is in R4
+    while i != 0 {
+        asm {
+            LD    R0, R4            ; i
+            LD    R1, R4
+            MUL   R1, R1            ; i * i
+            CALL  print_pair        ; R0..R3 and LR are clobbered - the compiler has accounted for this
+        }
+        i--
+    }
+    putnl()
+}
+
+// ---------------------------------------------------------------------------
+// 6. An ERRCMD handler (vector 8) in assembly: counts illegal instructions
+//    and skips them. The handler has no B16 statements, so the compiler
+//    does not save registers: on entry [SP] = FLAGS, [SP+2] = the address of the instruction.
+
+var VEC at $FF00: [16]ptr interrupt fn()
+var errcmd_count: uint
+
+interrupt fn on_errcmd() {
+    asm {
+        PUSH  R0
+        LD    R0, [SP+4]          ; saved IP: the address of the illegal instruction
+        ADD   R0, #2              ; skip it (single-word)
+        ST    [SP+4], R0
+        LD    R0, [errcmd_count]
+        INC   R0
+        ST    [errcmd_count], R0
+        POP   R0
+    }
+}
+
+fn bad_instructions() {
+    asm {
+        .word $3800               ; opcode 00111 is reserved: ERRCMD
+        .word $B028               ; MISC with subcode 5: also ERRCMD
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 7. System calls through TRAP: the number and argument in globals, the table of
+//    handlers holds function pointers. trap(n) is a built-in B16 function.
+
+var sys_no, sys_arg, sys_ret: uint
+
+fn sys_double(x: uint): uint { return x * 2 }
+fn sys_square(x: uint): uint { return x * x }
+fn sys_hex(x: uint): uint { puthex(x, 4); return 0 }
+var sys_table: [3]ptr fn(uint): uint = {sys_double, sys_square, sys_hex}
+
+interrupt fn on_syscall() {         // the handler calls functions: saves R0..R3 and LR
+    if sys_no < 3 { sys_ret = sys_table[sys_no](sys_arg) } else { sys_ret = $FFFF }
+}
+
+fn syscall(no, arg: uint): uint {
+    sys_no = no
+    sys_arg = arg
+    trap(9)
+    return sys_ret
+}
+
+// ---------------------------------------------------------------------------
+
+fn main() {
+    puts("1. bswap($1234) = $"); puthex(bswap($1234), 4); putnl()
+
+    var lo, hi: uint
+    lo, hi = shl32($8001, $0001, 4)
+    puts("2. ($0001:8001) << 4 = $"); puthex(hi, 4); puthex(lo, 4); putnl()
+
+    var s, c: uint
+    s, c = add_carry(60000, 10000)
+    puts("3. 60000 + 10000 = "); putu(s); puts(" carry "); putu(c); putnl()
+    puts("   $1:0000 < $0:FFFF? "); putu(lt32(0, 1, $FFFF, 0))
+    puts("   $0:FFFF < $1:0000? "); putu(lt32($FFFF, 0, 0, 1)); putnl()
+
+    ei()
+    puts("4. FLAGS: IF="); putu((read_flags() >> 3) & 1)
+    di()
+    puts(" after di(): IF="); putu((read_flags() >> 3) & 1); putnl()
+
+    puts("5. "); asm_calls()
+
+    VEC[8] = on_errcmd
+    bad_instructions()
+    bad_instructions()
+    puts("6. illegal instructions skipped: "); putu(errcmd_count); putnl()
+
+    VEC[9] = on_syscall
+    puts("7. syscall: "); putu(syscall(0, 21)); putc(' '); putu(syscall(1, 12)); putc(' ')
+    syscall(2, $BEEF); putc(' '); puthex(syscall(7, 0), 4); putnl()
+}

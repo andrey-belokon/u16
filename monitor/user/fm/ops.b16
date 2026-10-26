@@ -1,0 +1,622 @@
+// ops.b16 - fm operations: copying, moving, deleting (directories with their contents),
+// creating a directory, flags.
+//
+// The tree walk does not keep directories open: a directory's names are first read into the pool pool,
+// the descriptor is closed, then each name is processed. So the depth is limited
+// only by the path length (16 names, "System Calls", sect. 4.1), not by the number of descriptors.
+// Object paths are assembled in spath and dpath: at each level a name is appended and
+// then cut off.
+
+const CBUF = 3584               // 7 sectors: with 4096 the fm image does not fit under $A000 (sect. 6 of cpu16_fm_en.md)
+var cbuf: [CBUF]byte            // the copy buffer and the viewer window
+const POOL = 4096
+var pool: [POOL]byte            // directory names of the walk levels
+var ptop: uint
+var spath: [256]byte            // the source path (no longer than 255, sect. 4.1 of "System Calls")
+var dpath: [256]byte            // the destination path ("" - the operation has none)
+var inbuf: [256]byte            // the dialog input line
+var cdst: [256]byte             // the copy destination, a full path
+var ov_all: uint                // overwrite without asking
+var ro_all: uint                // delete RDONLY objects without asking
+var op_abort: uint              // the operation was aborted
+var op_skip: uint               // objects skipped (an error or a refusal)
+var op_title: ptr byte = "Copying"
+var selv: [MAXENT]uint          // positions of the selected entries
+var nsel: uint
+
+// Append "/name" to the path: the previous length or $FFFF if the path would become longer than 255.
+fn pjoin(buf: ptr byte, name: ptr byte): uint {
+    var n: uint = strlen(buf)
+    var sl: uint = 1
+    if n != 0 && (buf[n - 1] == '/' || buf[n - 1] == ':') { sl = 0 }
+    if n + sl + strlen(name) > 255 { return $FFFF }
+    if sl != 0 { buf[n] = '/' }
+    strcpy(&buf[n + sl], name)
+    return n
+}
+
+// d lies inside s (or coincides with it). Letter case does not matter: file names do not distinguish it.
+fn is_sub(d: ptr byte, s: ptr byte): uint {
+    var n: uint = strlen(s)
+    var i: uint = 0
+    while i < n { if chfold(d[i]) != chfold(s[i]) { return 0 }; i++ }
+    return d[n] == '/' || d[n] == 0
+}
+
+// The last name of path p without trailing "/" into out (at most 32 bytes).
+fn last_name(p: ptr byte, out: ptr byte) {
+    var n: uint = strlen(p)
+    while n > 1 && p[n - 1] == '/' { n-- }
+    var b: uint = n
+    while b > 0 && p[b - 1] != '/' && p[b - 1] != ':' { b-- }
+    var k: uint = 0
+    while b < n && k < 32 { out[k] = p[b]; k++; b++ }
+    out[k] = 0
+}
+
+// The selected entries of the active panel: the marked ones or the entry under the cursor (except "..").
+fn sel_build(): uint {
+    var P = &pn[act]
+    nsel = 0
+    if P.nmark != 0 {
+        var i: uint = 0
+        while i < P.n {
+            if mark[act][ord[act][i]] != 0 { selv[nsel] = i; nsel++ }
+            i++
+        }
+    } else if P.n != 0 && is_up(entp(act, P.cur)) == 0 {
+        selv[0] = P.cur
+        nsel = 1
+    }
+    return nsel
+}
+
+// The full path for path given relative to the active panel's directory. The object may not
+// exist: then the directory that holds it must exist.
+fn canon(path: ptr byte, out: ptr byte): uint {
+    var cwd = &pn[act].path[0]
+    var e, n: uint
+    sys_chdir(cwd)
+    if sys_chdir(path) == OK {
+        e, n = sys_getcwd(out, 256)
+        sys_chdir(cwd)
+        return e
+    }
+    var tmp: [256]byte
+    var bn: [256]byte
+    strcpy(&tmp[0], path)
+    n = strlen(&tmp[0])
+    while n > 1 && tmp[n - 1] == '/' { n--; tmp[n] = 0 }
+    var k: uint = n
+    var i: uint = 0
+    while i < n { if tmp[i] == '/' || tmp[i] == ':' { k = i }; i++ }
+    e = OK
+    if k == n {
+        strcpy(&bn[0], &tmp[0])
+    } else {
+        strcpy(&bn[0], &tmp[k + 1])
+        if tmp[k] == ':' || k == 0 || tmp[k - 1] == ':' { tmp[k + 1] = 0 } else { tmp[k] = 0 }
+        e = sys_chdir(&tmp[0])
+    }
+    if e == OK { e, n = sys_getcwd(out, 256) }
+    if e == OK && bn[0] == 0 { e = E_BADPATH }
+    if e == OK && pjoin(out, &bn[0]) == $FFFF { e = E_BADPATH }
+    sys_chdir(cwd)
+    return e
+}
+
+// ---- the course of an operation ---------------------------------------------------------------------------
+fn prog_box() {
+    dlg_open(7, op_title, A_DLG)
+    dlg_line(1, &spath[0], A_DLG)
+    if dpath[0] != 0 {
+        dlg_line(2, "to", A_DLG)
+        dlg_line(3, &dpath[0], A_DLG)
+    }
+    cursor_off()
+}
+
+fn prog_bytes(done: ulong, total: ulong) {
+    mb_clear()
+    mb_ul(done)
+    mb_s(" of ")
+    mb_ul(total)
+    mb_s(" bytes")
+    fill(dlg_x + 2, dlg_y + 5, DLG_W - 4, ' ', A_DLG)
+    putsc(dlg_x + 2, dlg_y + 5, DLG_W - 4, A_DLG, &mb[0])
+}
+
+// Esc during an operation: ask and abort. 1 - abort.
+fn check_abort(): uint {
+    if poll_esc() == 0 { return 0 }
+    if dlg_ask("Abort", "Abort the operation?", 0, "[Y]es   [N]o", "yn", DA_ERR) == 'n' { prog_box(); return 0 }
+    op_abort = 1
+    return 1
+}
+
+// An error with an object: skip or abort. The result is op_abort.
+fn op_errt(what: ptr byte, obj: ptr byte, text: ptr byte): uint {
+    op_skip++
+    mb_clear()
+    mb_s(what)
+    mb_s(": ")
+    mb_s(text)
+    if dlg_ask("Error", obj, &mb[0], "[S]kip   [Esc] Abort", "s", DA_ERR) == C_ESC { op_abort = 1; return 1 }
+    prog_box()
+    return 0
+}
+
+fn op_err(what: ptr byte, obj: ptr byte, e: uint): uint {
+    var t: [40]byte
+    var s = err_text(e)
+    if s != 0 { strcpy(&t[0], s) } else { strcpy(&t[0], "error "); ultoa(&t[6], ulong(e)) }
+    return op_errt(what, obj, &t[0])
+}
+
+// The destination dpath already exists: ask about overwriting. 1 - write.
+fn ask_over(): uint {
+    if ov_all != 0 { return 1 }
+    var r: uint = dlg_ask("Warning", "The file already exists:", &dpath[0], "[Y]es  [N]o  [A]ll  [Esc] Cancel", "yna", 0)
+    if r == C_ESC { op_abort = 1; return 0 }
+    if r == 'n' { op_skip++; prog_box(); return 0 }
+    if r == 'a' { ov_all = 1 }
+    prog_box()
+    return 1
+}
+
+// The names of directory path go into the pool starting at ptop.
+fn list_dir(path: ptr byte): uint {
+    var e, h, got: uint
+    e, h = sys_open(path, O_READ, 0)
+    if e != OK { return e }
+    var st: Stat
+    loop {
+        e, got = sys_readdir(h, &st)
+        if e != OK || got == 0 { break }
+        var j: uint = 0
+        while j < 32 && st.name[j] != 0 { j++ }
+        if ptop + j + 1 > POOL { e = E_NOMEM; break }
+        var k: uint = 0
+        while k < j { pool[ptop] = st.name[k]; ptop++; k++ }
+        pool[ptop] = 0
+        ptop++
+    }
+    sys_close(h)
+    return e
+}
+
+fn keep_attr(st: ptr Stat) {
+    sys_setmtime(&dpath[0], st.mtime)
+    var fl: uint = eflags(st) & (A_RDONLY | A_HIDDEN | A_SYSTEM)
+    if fl != 0 { sys_setattr(&dpath[0], fl) }
+}
+
+// ---- copying ----------------------------------------------------------------------------
+// File spath -> dpath. The modification time and flags are kept. The result is op_abort.
+fn copy_file(st: ptr Stat): uint {
+    var ds: Stat
+    if sys_stat(&dpath[0], &ds) == OK {
+        if edir(&ds) != 0 { return op_err("cannot copy", &dpath[0], E_ISDIR) }
+        if ask_over() == 0 { return op_abort }
+    }
+    var e, hi, ho, n, w: uint
+    e, hi = sys_open(&spath[0], O_READ, 0)
+    if e != OK { return op_err("cannot open", &spath[0], e) }
+    e, ho = sys_open(&dpath[0], O_WRITE | O_CREATE | O_TRUNC, 0)
+    if e != OK { sys_close(hi); return op_err("cannot create", &dpath[0], e) }
+    var total: ulong = st.size & SIZE_MASK
+    var done: ulong = 0
+    var obj: ptr byte = &spath[0]
+    loop {
+        prog_bytes(done, total)
+        e, n = sys_read(hi, &cbuf[0], CBUF)
+        if e != OK || n == 0 { break }
+        e, w = sys_write(ho, &cbuf[0], n)
+        if e != OK { obj = &dpath[0]; break }
+        done += n
+        if check_abort() != 0 { break }
+    }
+    sys_close(hi)
+    sys_close(ho)
+    if e != OK || op_abort != 0 {
+        sys_delete(&dpath[0])               // an incomplete copy does not remain
+        if e != OK { return op_err("cannot copy", obj, e) }
+        return 1
+    }
+    keep_attr(st)
+    return 0
+}
+
+// Object spath -> dpath, a directory with its contents.
+fn copy_obj(st: ptr Stat): uint {
+    if edir(st) == 0 { return copy_file(st) }
+    var e: uint = sys_mkdir(&dpath[0])
+    if e == E_EXIST {
+        if is_dir(&dpath[0]) == 0 { return op_err("cannot create", &dpath[0], E_EXIST) }
+    } else if e != OK {
+        return op_err("cannot create", &dpath[0], e)
+    }
+    var base: uint = ptop
+    e = list_dir(&spath[0])
+    if e != OK { ptop = base; return op_err("cannot read", &spath[0], e) }
+    var end: uint = ptop
+    var q: uint = base
+    var cs: Stat
+    while q < end && op_abort == 0 {
+        var nm = &pool[q]
+        q += strlen(nm) + 1
+        var ls: uint = pjoin(&spath[0], nm)
+        var ld: uint = $FFFF
+        if ls != $FFFF { ld = pjoin(&dpath[0], nm) }
+        if ld == $FFFF {
+            op_err("cannot copy", nm, E_BADPATH)
+        } else {
+            e = sys_stat(&spath[0], &cs)
+            if e != OK { op_err("cannot read", &spath[0], e) } else { prog_box(); copy_obj(&cs) }
+        }
+        if ls != $FFFF { spath[ls] = 0 }
+        if ld != $FFFF { dpath[ld] = 0 }
+    }
+    ptop = base
+    keep_attr(st)
+    return op_abort
+}
+
+// ---- deletion -------------------------------------------------------------------------------
+// An object with RDONLY: ask and clear the flag. 1 - delete.
+fn ro_check(st: ptr Stat): uint {
+    var fl: uint = eflags(st)
+    if fl & A_RDONLY == 0 { return 1 }
+    if ro_all == 0 {
+        var r: uint = dlg_ask("Warning", "Delete the read-only object?", &spath[0], "[Y]es  [N]o  [A]ll  [Esc] Cancel", "yna", DA_NOENTER)
+        if r == C_ESC { op_abort = 1; return 0 }
+        if r == 'n' { op_skip++; prog_box(); return 0 }
+        if r == 'a' { ro_all = 1 }
+        prog_box()
+    }
+    var e: uint = sys_setattr(&spath[0], fl & (A_HIDDEN | A_SYSTEM))
+    if e != OK { op_err("cannot change attributes", &spath[0], e); return 0 }
+    return 1
+}
+
+// Delete spath, a directory with its contents.
+fn del_obj(st: ptr Stat): uint {
+    if ro_check(st) == 0 { return op_abort }
+    var e: uint
+    if edir(st) != 0 {
+        var skip0: uint = op_skip
+        var base: uint = ptop
+        e = list_dir(&spath[0])
+        if e != OK { ptop = base; return op_err("cannot read", &spath[0], e) }
+        var end: uint = ptop
+        var q: uint = base
+        var cs: Stat
+        while q < end && op_abort == 0 {
+            var nm = &pool[q]
+            q += strlen(nm) + 1
+            var ls: uint = pjoin(&spath[0], nm)
+            if ls == $FFFF {
+                op_err("cannot delete", nm, E_BADPATH)
+            } else {
+                e = sys_stat(&spath[0], &cs)
+                if e != OK { op_err("cannot read", &spath[0], e) } else { del_obj(&cs) }
+                spath[ls] = 0
+            }
+        }
+        ptop = base
+        if op_abort != 0 { return 1 }
+        if op_skip != skip0 { return 0 }    // something remained inside: this has already been reported
+    }
+    if check_abort() != 0 { return 1 }
+    e = sys_delete(&spath[0])
+    if e != OK { return op_err("cannot delete", &spath[0], e) }
+    return 0
+}
+
+// ---- moving ----------------------------------------------------------------------------
+// spath -> dpath: RENAME, between volumes - copy and delete the source.
+fn move_obj(st: ptr Stat): uint {
+    var e: uint = sys_rename(&spath[0], &dpath[0])
+    // EXIST with dpath that equals spath ignoring case is impossible: it is the same object,
+    // and the "destination" must not be deleted - the source itself would be deleted
+    if e == E_EXIST && edir(st) == 0 && is_dir(&dpath[0]) == 0 && strieq(&spath[0], &dpath[0]) == 0 {
+        if ask_over() == 0 { return op_abort }
+        e = sys_delete(&dpath[0])
+        if e == OK { e = sys_rename(&spath[0], &dpath[0]) }
+    }
+    if e == OK { return 0 }
+    if e != E_XDEV { return op_err("cannot move", &spath[0], e) }
+    var skip0: uint = op_skip
+    if copy_obj(st) != 0 { return 1 }
+    if op_skip != skip0 { return 0 }        // the copy is incomplete: the source stays
+    var keep: uint = ro_all
+    ro_all = 1
+    var save: [300]byte
+    strcpy(&save[0], &dpath[0])
+    dpath[0] = 0
+    var r: uint = del_obj(st)
+    strcpy(&dpath[0], &save[0])
+    ro_all = keep
+    return r
+}
+
+// ---- panel commands -------------------------------------------------------------------------
+fn op_start(title: ptr byte) {
+    ov_all = 0
+    ro_all = 0
+    op_abort = 0
+    op_skip = 0
+    ptop = 0
+    op_title = title
+    dpath[0] = 0
+}
+
+// F5 (mv = 0) and F6 (mv = 1).
+fn do_copy(mv: uint) {
+    var n: uint = sel_build()
+    if n == 0 { return }
+    var P = &pn[act]
+    strcpy(&inbuf[0], &pn[act ^ 1].path[0])
+    mb_clear()
+    if mv != 0 { mb_s("Rename or move ") } else { mb_s("Copy ") }
+    if n == 1 {
+        mb_c('"')
+        mb_s(ename(entp(act, selv[0]), &nbuf[0]))
+        mb_c('"')
+    } else {
+        mb_ul(ulong(n))
+        mb_s(" objects")
+    }
+    mb_s(" to:")
+    var title: ptr byte = "Copy"
+    if mv != 0 { title = "Rename/Move" }
+    if dlg_input(title, &mb[0], &inbuf[0], 250) == 0 || inbuf[0] == 0 { redraw(); return }
+    var e: uint = canon(&inbuf[0], &cdst[0])
+    if e != OK {
+        mb_clear()
+        mb_err(e)
+        dlg_msg("Error", &inbuf[0], &mb[0], 1)
+        redraw()
+        return
+    }
+    var todir: uint = is_dir(&cdst[0])
+    if n > 1 && todir == 0 {
+        dlg_msg("Error", &cdst[0], "not a directory", 1)
+        redraw()
+        return
+    }
+    if mv != 0 { op_start("Moving") } else { op_start("Copying") }
+    var what: ptr byte = "cannot copy"
+    if mv != 0 { what = "cannot move" }
+    var k: uint = 0
+    while k < n && op_abort == 0 {
+        var s = entp(act, selv[k])
+        var nm: [33]byte
+        ename(s, &nm[0])
+        k++
+        strcpy(&spath[0], &P.path[0])
+        strcpy(&dpath[0], &cdst[0])
+        if pjoin(&spath[0], &nm[0]) == $FFFF { op_err(what, &nm[0], E_BADPATH); continue }
+        var into: uint = todir
+        if into != 0 && strieq(&cdst[0], &spath[0]) != 0 {
+            // the destination is the selected directory itself (including in another letter case): this is a
+            // new name of the same object, not a directory to put it into
+            into = 0
+            var nn: [33]byte
+            last_name(&inbuf[0], &nn[0])
+            strcpy(&dpath[0], &P.path[0])
+            if nn[0] == 0 || pjoin(&dpath[0], &nn[0]) == $FFFF { op_err(what, &nm[0], E_BADPATH); continue }
+        }
+        if into != 0 && pjoin(&dpath[0], &nm[0]) == $FFFF { op_err(what, &nm[0], E_BADPATH); continue }
+        if strieq(&spath[0], &dpath[0]) != 0 {
+            // the same object: a copy into itself is an error; a move changes only the letter case of the name
+            if mv == 0 { op_errt(what, &spath[0], "same file"); continue }
+            if streq(&spath[0], &dpath[0]) != 0 { continue }
+            var e2: uint = sys_rename(&spath[0], &dpath[0])
+            if e2 != OK { op_err(what, &spath[0], e2) }
+            continue
+        }
+        if edir(s) != 0 && is_sub(&dpath[0], &spath[0]) != 0 {
+            op_errt(what, &spath[0], "destination is inside the directory")
+            continue
+        }
+        prog_box()
+        if mv != 0 { move_obj(s) } else { copy_obj(s) }
+    }
+    reload_all()
+    redraw()
+}
+
+// F8: delete the selected.
+fn do_delete() {
+    var n: uint = sel_build()
+    if n == 0 { return }
+    var P = &pn[act]
+    var anydir: uint = 0
+    var k: uint = 0
+    while k < n { if edir(entp(act, selv[k])) != 0 { anydir = 1 }; k++ }
+    mb_clear()
+    if n == 1 {
+        if anydir != 0 { mb_s("Delete the directory \"") } else { mb_s("Delete the file \"") }
+        mb_s(ename(entp(act, selv[0]), &nbuf[0]))
+        mb_s("\"?")
+    } else {
+        mb_s("Delete ")
+        mb_ul(ulong(n))
+        mb_s(" marked objects?")
+    }
+    var l2: ptr byte = 0
+    if anydir != 0 { l2 = "Directories are deleted with all their contents." }
+    if dlg_ask("Delete", &mb[0], l2, "[Y]es   [N]o", "yn", DA_ERR | DA_NOENTER) != 'y' { redraw(); return }
+    op_start("Deleting")
+    k = 0
+    while k < n && op_abort == 0 {
+        var s = entp(act, selv[k])
+        var nm: [33]byte
+        ename(s, &nm[0])
+        k++
+        strcpy(&spath[0], &P.path[0])
+        if pjoin(&spath[0], &nm[0]) == $FFFF { op_err("cannot delete", &nm[0], E_BADPATH); continue }
+        prog_box()
+        del_obj(s)
+    }
+    reload_all()
+    redraw()
+}
+
+// F7: create a directory (the path is relative to the panel's directory).
+fn do_mkdir() {
+    inbuf[0] = 0
+    if dlg_input("Make directory", "Create the directory:", &inbuf[0], 250) == 0 || inbuf[0] == 0 { redraw(); return }
+    sys_chdir(&pn[act].path[0])
+    var e: uint = sys_mkdir(&inbuf[0])
+    if e != OK {
+        mb_clear()
+        mb_err(e)
+        dlg_msg("Error", &inbuf[0], &mb[0], 1)
+    }
+    reload_all()
+    if e == OK { load(act, basename(&inbuf[0])) }
+    redraw()
+}
+
+fn attr_row(r: uint, on: uint, text: ptr byte) {
+    var t: [40]byte
+    strcpy(&t[0], "[ ] ")
+    if on != 0 { t[1] = 'x' }
+    strcat(&t[0], text)
+    putsn(dlg_x + 20, dlg_y + r, A_DLG, &t[0], 30)
+}
+
+// F9: the RDONLY, HIDDEN, SYSTEM flags of the selected.
+fn do_attr() {
+    var n: uint = sel_build()
+    if n == 0 { return }
+    var P = &pn[act]
+    var fl: uint = eflags(entp(act, selv[0])) & (A_RDONLY | A_HIDDEN | A_SYSTEM)
+    dlg_open(9, "Attributes", A_DLG)
+    mb_clear()
+    if n == 1 { mb_s(ename(entp(act, selv[0]), &nbuf[0])) } else { mb_ul(ulong(n)); mb_s(" objects") }
+    dlg_line(1, &mb[0], A_DLG)
+    dlg_line(7, "R H S - change   Enter - set   Esc - cancel", A_DLG)
+    loop {
+        attr_row(3, fl & A_RDONLY, "R  read-only")
+        attr_row(4, fl & A_HIDDEN, "H  hidden")
+        attr_row(5, fl & A_SYSTEM, "S  system")
+        cursor_off()
+        var c: uint = lower(getkey() & $FF)
+        if c == C_ESC { redraw(); return }
+        if c == C_ENTER { break }
+        if c == 'r' { fl ^= A_RDONLY }
+        if c == 'h' { fl ^= A_HIDDEN }
+        if c == 's' { fl ^= A_SYSTEM }
+    }
+    op_start("Attributes")
+    var k: uint = 0
+    while k < n && op_abort == 0 {
+        var nm: [33]byte
+        ename(entp(act, selv[k]), &nm[0])
+        k++
+        strcpy(&spath[0], &P.path[0])
+        if pjoin(&spath[0], &nm[0]) == $FFFF { op_err("cannot change attributes", &nm[0], E_BADPATH); continue }
+        var e: uint = sys_setattr(&spath[0], fl)
+        if e != OK { op_err("cannot change attributes", &spath[0], e) }
+    }
+    reload_all()
+    redraw()
+}
+
+// ---- directory size (F3 on a directory) ---------------------------------------------------------
+var du_files, du_dirs, du_bytes, du_clus: ulong
+
+// Clusters on the volume for an object of size size: data, IND, DIND and second-level clusters
+// (FS16, sect. 6).
+fn clusters(size: ulong): ulong {
+    var c: ulong = (size + 2047) / 2048
+    var n: ulong = c
+    if c > 10 { n++ }
+    if c > 1034 { n += 1 + (c - 1034 + 1023) / 1024 }
+    return n
+}
+
+fn du_show() {
+    mb_clear()
+    mb_ul(du_files)
+    mb_s(" files, ")
+    mb_ul(du_bytes)
+    mb_s(" bytes")
+    fill(dlg_x + 2, dlg_y + 5, DLG_W - 4, ' ', A_DLG)
+    putsc(dlg_x + 2, dlg_y + 5, DLG_W - 4, A_DLG, &mb[0])
+}
+
+// A walk of spath: the du_* counters. The result is op_abort.
+fn du_obj(st: ptr Stat): uint {
+    var sz: ulong = st.size & SIZE_MASK
+    du_clus += clusters(sz)
+    if edir(st) == 0 { du_files++; du_bytes += sz; return 0 }
+    du_dirs++
+    du_show()
+    if check_abort() != 0 { return 1 }
+    var base: uint = ptop
+    var e: uint = list_dir(&spath[0])
+    if e != OK { ptop = base; return op_err("cannot read", &spath[0], e) }
+    var end: uint = ptop
+    var q: uint = base
+    var cs: Stat
+    while q < end && op_abort == 0 {
+        var nm = &pool[q]
+        q += strlen(nm) + 1
+        var ls: uint = pjoin(&spath[0], nm)
+        if ls == $FFFF {
+            op_err("cannot read", nm, E_BADPATH)
+        } else {
+            e = sys_stat(&spath[0], &cs)
+            if e != OK { op_err("cannot read", &spath[0], e) } else { du_obj(&cs) }
+            spath[ls] = 0
+        }
+    }
+    ptop = base
+    return op_abort
+}
+
+// F3 on a directory: how many files and bytes it holds with all subdirectories and how much it
+// takes on the volume.
+fn do_dirinfo(s: ptr Stat) {
+    var nm: [33]byte
+    ename(s, &nm[0])
+    op_start("Directory size")
+    strcpy(&spath[0], &pn[act].path[0])
+    if pjoin(&spath[0], &nm[0]) == $FFFF { return }
+    du_files = 0
+    du_dirs = 0
+    du_bytes = 0
+    du_clus = 0
+    prog_box()
+    du_obj(s)
+    if op_abort != 0 { redraw(); return }
+    dlg_open(9, "Directory size", A_DLG)
+    dlg_line(1, &spath[0], A_DLG)
+    mb_clear()
+    mb_s("Files: ")
+    mb_ul(du_files)
+    mb_s("   directories: ")
+    mb_ul(du_dirs - 1)
+    dlg_line(3, &mb[0], A_DLG)
+    mb_clear()
+    mb_s("Size of the files: ")
+    mb_ul(du_bytes)
+    mb_s(" bytes")
+    dlg_line(4, &mb[0], A_DLG)
+    mb_clear()
+    mb_s("On the volume: ")
+    mb_ul(du_clus * 2)
+    mb_s(" KB (")
+    mb_ul(du_clus)
+    mb_s(" clusters)")
+    dlg_line(5, &mb[0], A_DLG)
+    if op_skip != 0 { dlg_line(6, "some objects could not be read", A_DLG) }
+    dlg_line(7, "[ OK ]", A_DLG)
+    cursor_off()
+    getkey()
+    redraw()
+}

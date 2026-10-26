@@ -1,0 +1,29 @@
+// asmlink/main.b16 - a B16 program together with functions from a separate file, util.asm.
+// Build: b16c -I ../../lib main.b16 -o main.s, then cpu16asm --exec main.s
+// (include asm pulls util.asm into the image before __image_end; see the README in this directory).
+include "io.b16"
+include asm "util.asm"
+
+// Functions from util.asm: extern fn is a prototype without a body, the definition lives outside B16.
+extern fn checksum(p: ptr byte, n: uint): uint
+extern fn each(p: ptr int, n: uint, f: ptr fn(int))
+extern fn minmax(p: ptr int, n: uint): int, int
+
+// Callback that util.asm calls through a pointer (CALL R6).
+fn show(x: int) { puti(x); putc(' ') }
+
+var total: int
+fn accumulate(x: int) { total += x }
+
+var vals: [6]int = {12, -5, 40, 7, -19, 3}
+var text = "CPU16"
+
+fn main() {
+    puts("checksum(\""); puts(&text[0]); puts("\") = "); putu(checksum(&text[0], 5)); putnl()
+    puts("each(show): "); each(&vals[0], 6, show); putnl()
+    each(&vals[0], 6, accumulate)
+    puts("sum via each: "); puti(total); putnl()
+    var lo, hi: int
+    lo, hi = minmax(&vals[0], 6)
+    puts("min "); puti(lo); puts(", max "); puti(hi); putnl()
+}

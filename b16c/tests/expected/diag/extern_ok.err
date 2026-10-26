@@ -1,0 +1,2 @@
+tests/diag/extern_ok.b16:5: warning: function forgotten is declared but not defined (if it is defined in assembly, declare it extern fn)
+rc 0

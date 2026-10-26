@@ -1,0 +1,2 @@
+fn rec(n: int): int { return rec(n + 1) + 1 }
+println(rec(0))

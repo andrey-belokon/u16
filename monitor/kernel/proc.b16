@@ -1,0 +1,504 @@
+// proc.b16 - processes: command line parsing, the CX16 loader, SPAWN, EXIT, the shell,
+// halting ("CPU16 Monitor: Kernel Internals", sect. 4; the CX16 format, sect. 5, 6, 9.1).
+
+var shell_path = "A:/sys/shell.cx"
+
+// ---- the command line (CX16 format, sect. 5.2) ----------------------------------------
+const MAXARGS = 32
+var cmdbuf: [256]byte
+var abuf: [300]byte             // argument strings with zeros
+var aoff: [MAXARGS]uint         // string offsets in abuf
+var k_argc: uint
+var k_alen: uint                // bytes used in abuf
+
+fn args_parse(): uint {
+    var i: uint = 0
+    var out: uint = 0
+    k_argc = 0
+    loop {
+        while cmdbuf[i] == ' ' || cmdbuf[i] == 9 { i++ }
+        if cmdbuf[i] == 0 { break }
+        if k_argc == MAXARGS { return E_ARGS }
+        aoff[k_argc] = out
+        var inq: uint = 0
+        loop {
+            var c: uint = cmdbuf[i]
+            if c == 0 {
+                if inq != 0 { return E_ARGS }
+                break
+            }
+            if c == '"' {
+                inq ^= 1
+                i++
+                continue
+            }
+            if inq == 0 && (c == ' ' || c == 9) { break }
+            abuf[out] = byte(c)
+            out++
+            i++
+        }
+        abuf[out] = 0
+        out++
+        k_argc++
+    }
+    if k_argc == 0 { return E_ARGS }
+    k_alen = out
+    return OK
+}
+
+// ---- the loader -------------------------------------------------------------------------------
+var ablk: [370]byte             // the argument block: argv[0..argc] and strings
+var hdr: [14]uint               // the CX16 header
+
+fn round8k(x: ulong): ulong { return (x + $1FFF) & $FFFFE000 }
+
+fn frames_release(p: ptr Proc) {
+    var i: uint = 0
+    while i < p.nfr { frame_free(p.fr[i]); i++ }
+    p.nfr = 0
+    map_own(p)
+}
+
+var lf: File                    // the program file during loading
+
+fn load_close(e: uint): uint {
+    node_put(lf.n)
+    win_idle()
+    return e
+}
+
+// Loading the program abuf/argv into descriptor p (CX16 format, sect. 9.1). pibflags are the PIB flags.
+// On success p.ctx is the initial state (sect. 8.1), p.top and the frames are filled in.
+// On an error nothing is taken.
+fn load(p: ptr Proc, pibflags: uint, oid: uint): uint {
+    var e, kind, got: uint
+    e, kind = path_kind(&abuf[0])
+    if e != OK { return e }
+    if kind != P_FS { return E_NOENT }
+    e, kind = fs_open_k(&abuf[0], O_READ, 0, &lf)
+    if e != OK { return e }
+    if kind == H_DIR { return load_close(E_ISDIR) }
+    e, got = fs_read(&lf, ptr byte(&hdr[0]), 28)
+    if e != OK { return load_close(e) }
+    if got < 28 { return load_close(E_NOEXEC) }
+    // sect. 3.3
+    if hdr[0] != $C873 || hdr[2] != $5843 || hdr[3] != $3631 { return load_close(E_NOEXEC) }
+    if hdr[4] != 1 { return load_close(E_BADVER) }
+    var start: uint = hdr[1]
+    var iend: uint = hdr[6]
+    var bend: uint = hdr[7]
+    var minfree: uint = hdr[8]
+    var maxtop: uint = hdr[9]
+    if hdr[5] != 0 || hdr[10] != 0 || hdr[11] != 0 || hdr[12] != 0 || hdr[13] != 0 { return load_close(E_NOEXEC) }
+    if iend < $1C || iend > bend || bend > $E000 { return load_close(E_NOEXEC) }
+    if start & 1 != 0 || start < $1C || start >= iend || minfree & 1 != 0 { return load_close(E_NOEXEC) }
+    if lf.n.size < ulong(iend) { return load_close(E_NOEXEC) }
+
+    // sect. 6: memory
+    var bssx: uint = (bend + 1) & $FFFE
+    var asz: uint = (2 * (k_argc + 1) + k_alen + 1) & $FFFE
+    var need: ulong = round8k(ulong(bssx) + asz + minfree)
+    if need > $E000 { return load_close(E_NOMEM) }
+    var avail: ulong = ulong(nfree) << 13
+    if avail > $E000 { avail = $E000 }
+    if need > avail { return load_close(E_NOMEM) }
+    var top: ulong = $E000
+    if maxtop != 0 && maxtop <= $E000 { top = round8k(ulong(maxtop)) }
+    if top > avail { top = avail }
+    if top < need { top = need }
+    var nfr: uint = uint(top >> 13)
+
+    var i: uint = 0
+    while i < nfr {
+        p.fr[i] = byte(frame_alloc(oid))
+        PAGE[5] = p.fr[i]
+        kzero(ptr(WIN0), $2000)
+        i++
+    }
+    p.nfr = byte(nfr)
+    p.top = uint(top)
+    map_own(p)
+
+    // the image: one page at a time, straight into the process frames (whole sectors by DMA)
+    var pos: uint = 0
+    var k: uint = 0
+    while pos < iend {
+        var c: uint = iend - pos
+        if c > $2000 { c = $2000 }
+        PAGE[5] = p.fr[k]
+        lf.pos = ulong(pos)
+        e, got = fs_read(&lf, ptr byte(WIN0), c)
+        if e == OK && got != c { e = E_IO }
+        if e != OK {
+            frames_release(p)
+            return load_close(e)
+        }
+        pos += c
+        k++
+    }
+    node_put(lf.n)
+
+    // the argument block (sect. 5.1)
+    var av: ptr uint = ptr uint(&ablk[0])
+    var sbase: uint = bssx + 2 * (k_argc + 1)
+    i = 0
+    while i < k_argc { av[i] = sbase + aoff[i]; i++ }
+    av[k_argc] = 0
+    kcopy(&ablk[2 * (k_argc + 1)], &abuf[0], k_alen)
+    if (2 * (k_argc + 1) + k_alen) & 1 != 0 { ablk[2 * (k_argc + 1) + k_alen] = 0 }
+    pcopyout(p, bssx, &ablk[0], asz)
+
+    // the PIB (sect. 4)
+    var pib: [12]uint
+    pib[0] = $5843
+    pib[1] = $4250
+    pib[2] = 1
+    pib[3] = pibflags
+    pib[4] = k_argc
+    pib[5] = bend
+    pib[6] = bssx
+    pib[7] = bssx + asz
+    pib[8] = uint(top)
+    pib[9] = 0
+    pib[10] = 0
+    pib[11] = 0
+    pcopyout(p, 4, ptr byte(&pib[0]), 24)
+    win_idle()
+
+    // the initial state (CX16 format, sect. 8.1)
+    i = 0
+    while i < 16 { p.ctx[i] = 0; i++ }
+    p.ctx[0] = k_argc
+    p.ctx[1] = bssx
+    p.ctx[F_LR] = EXIT_PROC
+    p.ctx[F_SP] = uint(top)
+    p.ctx[F_IP] = 0
+    p.ctx[F_FL] = $08
+    return OK
+}
+
+// ---- changing the current process ----------------------------------------------------------------
+fn ctx_save(p: ptr Proc) {
+    var i: uint = 0
+    while i < 16 { p.ctx[i] = KF[i]; i++ }
+    p.raw = byte(RES.kf_raw)
+}
+
+// Process p becomes current: the frame, the map, the tick handler, the console mode.
+fn proc_enter(p: ptr Proc) {
+    var i: uint = 0
+    while i < 16 { KF[i] = p.ctx[i]; i++ }
+    RES.kf_raw = p.raw
+    cur = proc_id(p) - 1
+    sess[p.sess].top = byte(cur)
+    cmap_set(p)
+    RES.hook = p.hook
+    RES.brk_hook = p.brkh
+    RES.bad_hook = p.badh
+    con_mode_apply(p.conmode)
+    p.state = PS_RUN
+}
+
+fn proc_init(p: ptr Proc) {
+    p.state = PS_FREE
+    p.parent = NONE
+    p.raw = 0
+    p.nfr = 0
+    p.nx = 0
+    p.top = 0
+    p.hook = 0
+    p.brkh = 0
+    p.badh = 0
+    p.conmode = 0
+    kzero(&p.cwd, sizeof(Chain))
+    map_own(p)
+    var h: uint = 0
+    while h < NFD { p.fd[h] = FD_NONE; h++ }
+}
+
+fn proc_id(p: ptr Proc): uint { return (uint(p) - uint(&procs[0])) / sizeof(Proc) + 1 }
+
+// A free descriptor or 0.
+fn proc_alloc(): ptr Proc {
+    var i: uint = 0
+    while i < MAXPROC {
+        if procs[i].state == PS_FREE { return &procs[i] }
+        i++
+    }
+    return ptr Proc(0)
+}
+
+fn proc_release(p: ptr Proc) {
+    fd_close_all(p)
+    frames_free_owner(proc_id(p))   // own frames and extended-memory frames
+    p.nfr = 0
+    p.nx = 0
+    map_own(p)
+    p.state = PS_FREE
+}
+
+// ---- halting ------------------------------------------------------------------------------------
+fn halt() {
+    TIMER = 0
+    ei()                        // accept a pending IRQ0 request ("The Machine", sect. 3)
+    di()
+    loop { wfi() }
+}
+
+export fn kernel_fault(ip: uint) {
+    kputs("monitor: kernel fault at $")
+    khex(ip)
+    kputc($0A)
+    halt()
+}
+
+fn shutdown() {
+    var i: uint = 0
+    while i < MAXPROC {
+        if procs[i].state != PS_FREE { proc_release(&procs[i]) }
+        i++
+    }
+    cur = NONE
+    i = 0
+    while i < MAXSESS { if sess[i].used != 0 { sess_free(i) }; i++ }
+    var d: uint = 0
+    while d < NVOL {
+        if vols[d].fl & V_MOUNT != 0 {
+            var e: uint = vol_umount(d)
+            if e != OK { kputs("monitor: error writing volume "); kputc('A' + d); kputs(":, error $"); khex(e); kputc($0A) }
+        }
+        d++
+    }
+    kputs("monitor: halted\n")
+    halt()
+}
+
+// ---- the session root and the shell (sect. 4.6, 4.7) ------------------------------------------------------
+// The program from cmdbuf is the root of session s: descriptors 0-2 to the console, the current directory cwd.
+// The process is frozen (PS_SUSP) and starts working on the switch to the session. On an error nothing is taken.
+fn root_load(s: uint, cwd: ptr Chain): uint {
+    var e: uint = args_parse()
+    if e != OK { return e }
+    var p = proc_alloc()
+    if p == ptr Proc(0) { return E_NOPROC }
+    proc_init(p)
+    p.sess = byte(s)
+    e = load(p, 0, proc_id(p))
+    if e != OK { return e }
+    var o: uint
+    e, o = of_alloc(H_CON, O_READ | O_WRITE)
+    if e != OK { frames_release(p); return e }
+    ofiles[o].refs = 3
+    p.fd[0] = byte(o)
+    p.fd[1] = byte(o)
+    p.fd[2] = byte(o)
+    kcopy(&p.cwd, cwd, sizeof(Chain))
+    p.state = PS_SUSP
+    sess[s].top = byte(proc_id(p) - 1)
+    proc_setname(p)
+    return OK
+}
+
+var root_cwd: Chain             // A:/ is the shell's current directory at startup
+
+// The shell is the root of session s and the current process; the screen does not change except for teletype mode.
+fn shell_start(s: uint): uint {
+    kcopy(&cmdbuf[0], &shell_path[0], 16)
+    kzero(&root_cwd, sizeof(Chain))
+    var e: uint = root_load(s, &root_cwd)
+    if e != OK { return e }
+    CON_CTRL = 3                // teletype, the cursor is visible
+    CON_ATTR = $07
+    ln_reset()
+    cursess = s
+    proc_enter(&procs[sess[s].top])
+    RES.kf_set = 1
+    return OK
+}
+
+fn shell_exited(code: uint) {
+    kputs("monitor: shell exited, code $")
+    khex(code)
+    kputc($0A)
+    if code == 0 { shutdown() }
+    kputs("monitor: restarting the shell\n")
+    var e: uint = shell_start(cursess)
+    if e != OK {
+        kputs("monitor: cannot start the shell, error $")
+        khex(e)
+        kputc($0A)
+        halt()
+    }
+}
+
+// ---- Ctrl+C on leaving the kernel (sect. 3.4) ------------------------------------------------------
+// With a Ctrl+C handler (ONEVENT): the call-return frame is pushed on the process stack and
+// the exit from the kernel goes to the handler (sect. 7.5 of the calls). Otherwise the process ends with $8001.
+export fn pending_break() {
+    if RES.abort == 0 || RES.nobreak != 0 { return }
+    RES.abort = 0
+    var p = curp()
+    var sp: uint = KF[F_SP]
+    if p.brkh != 0 && sp >= 8 && uvalid(p, sp - 8) != 0 && uvalid(p, sp - 1) != 0 {
+        kputs("^C\n")
+        con_flush()
+        var fr: [2]uint
+        fr[0] = KF[F_FL]
+        if RES.kf_raw == 0 {            // the call result's ZF as resume would set it;
+            fr[0] &= $FFFE              // the exact frame (sect. 3.8) - the flags of the interrupted program
+            if KF[0] == 0 { fr[0] |= 1 }
+        }
+        fr[1] = KF[F_IP]
+        pcopyout(p, sp - 4, ptr byte(&fr[0]), 4)
+        win_idle()
+        KF[F_SP] = sp - 4
+        KF[F_IP] = p.brkh
+        KF[F_FL] = KF[F_FL] & ~uint($08)
+        return
+    }
+    RES.brk_echo = 1
+    KF[F_IP] = EXIT_PROC
+    KF[0] = EXIT_BREAK
+}
+
+// ---- SPAWN and EXIT (sect. 4.3, 4.4) -----------------------------------------------------------------
+fn std_of(p: ptr Proc, h: uint, dflt: uint): (uint, uint) {
+    if h == SAME { h = dflt }
+    if h >= NFD || p.fd[h] == FD_NONE { return E_BADF, 0 }
+    return OK, p.fd[h]
+}
+
+export fn sys_spawn(cmd: uint, fin: uint, fout: uint, ferr: uint): (uint, uint) {
+    var p = curp()
+    var e, o0, o1, o2, n: uint
+    e, o0 = std_of(p, fin, 0)
+    if e != OK { return e, 0 }
+    e, o1 = std_of(p, fout, 1)
+    if e != OK { return e, 0 }
+    e, o2 = std_of(p, ferr, 2)
+    if e != OK { return e, 0 }
+    e, n = ustr(&cmdbuf[0], cmd, 255)
+    if e == TOOLONG { return E_ARGS, 0 }
+    if e != OK { return e, 0 }
+    e = args_parse()
+    if e != OK { return e, 0 }
+    var flags: uint = 0
+    if ofiles[o0].kind != H_CON { flags |= 1 }
+    if ofiles[o1].kind != H_CON { flags |= 2 }
+    var c = proc_alloc()
+    if c == ptr Proc(0) { return E_NOPROC, 0 }
+    proc_init(c)
+    e = load(c, flags, proc_id(c))
+    if e != OK { return e, 0 }
+    // success: the parent waits, the child becomes current
+    ctx_save(p)
+    cmap_save(p)                // the parent's map goes from RES.cmap to the descriptor (sect. 2.3)
+    p.state = PS_WAIT
+    p.dctrl = CON_CTRL
+    p.dattr = CON_ATTR
+    kcopy(&c.cwd, &p.cwd, sizeof(Chain))
+    c.fd[0] = byte(o0)
+    c.fd[1] = byte(o1)
+    c.fd[2] = byte(o2)
+    ofiles[o0].refs++
+    ofiles[o1].refs++
+    ofiles[o2].refs++
+    c.sess = p.sess
+    c.parent = byte(cur)
+    proc_setname(c)
+    proc_enter(c)
+    RES.kf_set = 1
+    return OK, 0
+}
+
+// ---- EXEC (sect. 9.2 of the calls) ---------------------------------------------------------------------
+var xproc: Proc                 // a new program during loading
+
+fn of_is_con(p: ptr Proc, h: uint): uint {
+    if p.fd[h] == FD_NONE { return 0 }
+    if ofiles[p.fd[h]].kind == H_CON { return 1 }
+    return 0
+}
+
+export fn sys_exec(cmd: uint): uint {
+    var p = curp()
+    var e, n: uint
+    e, n = ustr(&cmdbuf[0], cmd, 255)
+    if e == TOOLONG { return E_ARGS }
+    if e != OK { return e }
+    e = args_parse()
+    if e != OK { return e }
+    var flags: uint = 0
+    if of_is_con(p, 0) == 0 { flags |= 1 }
+    if of_is_con(p, 1) == 0 { flags |= 2 }
+    proc_init(&xproc)
+    e = load(&xproc, flags, OWN_TMP)
+    if e != OK { return e }
+    // success: the old memory (with the extended one) is freed, the new program's frames
+    // pass to the process
+    var oid: uint = proc_id(p)
+    frames_free_owner(oid)
+    var f: uint = FIRST_PFRAME
+    while f < 256 { if owner[f] == OWN_TMP { owner[f] = byte(oid) }; f++ }
+    var i: uint = 0
+    while i < 7 { p.fr[i] = xproc.fr[i]; i++ }
+    p.nfr = xproc.nfr
+    p.nx = 0                    // extended memory is freed
+    p.top = xproc.top
+    map_own(p)
+    i = 0
+    while i < 16 { p.ctx[i] = xproc.ctx[i]; i++ }
+    p.hook = 0
+    p.brkh = 0
+    p.badh = 0
+    p.conmode = 0
+    if ln_ready == 0 { ln_reset() }
+    proc_setname(p)
+    proc_enter(p)
+    RES.kf_set = 1
+    return OK
+}
+
+export fn sys_exit(code: uint): uint {
+    if code == EXIT_BREAK && RES.brk_echo != 0 {
+        RES.brk_echo = 0
+        kputs("^C\n")
+        con_flush()
+    }
+    if code == EXIT_BADINSN {
+        kputs("monitor: illegal instruction at $")
+        khex(RES.fault_ip)
+        kputc($0A)
+    }
+    if code == EXIT_KILLED {
+        kputs("monitor: reserved instruction at $")
+        khex(RES.fault_ip)
+        kputc($0A)
+    }
+    var p = curp()
+    var par: uint = p.parent
+    var s: uint = p.sess
+    proc_release(p)
+    if ln_ready == 0 { ln_reset() }
+    if par == NONE {
+        // the session root: the session is closed and a neighboring one becomes current; the last session
+        // is as before, the shell
+        cur = NONE
+        if sess_count() > 1 {
+            sess_free(s)
+            sess_enter(sess_next(s, 1), 1)
+        } else {
+            shell_exited(code)
+        }
+        RES.kf_set = 1
+        return OK
+    }
+    var q = &procs[par]
+    q.ctx[0] = OK
+    q.ctx[1] = code
+    proc_enter(q)
+    CON_CTRL = q.dctrl
+    CON_ATTR = q.dattr
+    RES.kf_set = 1
+    return OK
+}

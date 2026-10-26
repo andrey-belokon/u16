@@ -1,0 +1,41 @@
+// fsm.b16 - a finite-state machine with goto: counting words, numbers and lines in text.
+include "../../lib/io.b16"
+
+var text = "B16 compiles\n  to 16 bit code, 2 passes\n42 times 7 = 294\n"
+
+fn classify(c: byte): uint {
+    if c >= '0' && c <= '9' { return 1 }
+    if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' { return 2 }
+    return 0
+}
+
+fn count(s: ptr byte): uint, uint, uint {
+    var words, numbers, lines: uint
+    words = 0; numbers = 0; lines = 0
+    var c: byte
+space:                                  // between words
+    c = *s++
+    if c == 0 { goto done }
+    if c == '\n' { lines++; goto space }
+    if classify(c) == 1 { numbers++; goto number }
+    if classify(c) == 2 { words++; goto word }
+    goto space
+word:                                   // letters, then letters or digits: B16 is one word
+    c = *s++
+    if classify(c) != 0 { goto word }
+    s--
+    goto space
+number:
+    c = *s++
+    if classify(c) == 1 { goto number }
+    s--
+    goto space
+done:
+    return words, numbers, lines
+}
+
+fn main() {
+    var w, n, l: uint
+    w, n, l = count(&text[0])
+    puts("words: "); putu(w); puts(", numbers: "); putu(n); puts(", lines: "); putu(l); putnl()
+}

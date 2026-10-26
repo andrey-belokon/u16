@@ -1,0 +1,97 @@
+// lib.b16 - global built-in functions and io (the specification, sect. 9.1, 10.3).
+
+// a BScript string -> a C string into a buffer (no longer than n - 1 bytes)
+fn cstr(h: uint, buf: ptr byte, n: uint): ptr byte {
+    var l = slen(h)
+    if l > n - 1 { l = n - 1 }
+    hget(h, 0, buf, l)
+    buf[l] = 0
+    return buf
+}
+
+fn b_type(): uint { bn = 1; return res_str(str_c(tname(arg(0)))) }
+fn b_str(): uint { bn = 1; return res_str(to_str(arg(0))) }
+
+
+fn b_assert(): uint {
+    bn = 0
+    if arg_bool(0) != 0 { return 0 }
+    if bnargs == 2 {
+        var buf: [100]byte
+        var s = to_str(arg(1))
+        rt_err2("assertion failed: ", cstr(s, &buf[0], 100))
+    }
+    rt_err("assertion failed")
+    return 0
+}
+
+fn b_min(): uint {
+    bn = 1
+    var a = arg_int(0)
+    var b = arg_int(1)
+    if int(b) < int(a) { a = b }
+    return res_int(a)
+}
+
+fn b_max(): uint {
+    bn = 1
+    var a = arg_int(0)
+    var b = arg_int(1)
+    if int(b) > int(a) { a = b }
+    return res_int(a)
+}
+
+fn b_abs(): uint {
+    bn = 1
+    var a = arg_int(0)
+    if a == $8000 { rt_err("abs of -32768") }
+    if int(a) < 0 { a = 0 - a }
+    return res_int(a)
+}
+
+fn print_to(k: uint, nl: uint): uint {
+    bn = 0
+    if bnargs == 1 {
+        var s = to_str(arg(0))
+        out_str(k, s)
+    }
+    if nl != 0 { out_write(k, "\n", 1) }
+    return 0
+}
+
+fn b_print(): uint { return print_to(SL_OUT, 0) }
+fn b_println(): uint { return print_to(SL_OUT, 1) }
+fn b_eprint(): uint { return print_to(SL_ERR, 0) }
+fn b_eprintln(): uint { return print_to(SL_ERR, 1) }
+
+fn b_read_line(): uint {
+    bn = 1
+    var e = read_line(SL_IN)
+    if e != 0 { return fail_code(e, 0) }
+    if rl_h == 0 { return res_null() }
+    return res_str(rl_h)
+}
+
+fn b_read_all(): uint {
+    bn = 1
+    flush_all()
+    var e = read_all(SL_IN)
+    if e != 0 { return fail_code(e, 0) }
+    return res_str(rl_h)
+}
+
+fn b_flush(): uint {
+    bn = 0
+    ign = slot_flush(SL_OUT)
+    ign = slot_flush(SL_ERR)
+    slots[SL_OUT].werr = 0
+    slots[SL_ERR].werr = 0
+    return 0
+}
+
+var bfuncs: [NBUILTIN]ptr fn(): uint = {
+    b_type, b_str, b_error, b_assert, b_min, b_max, b_abs, b_print, b_println, b_eprint,
+    b_eprintln, b_read_line, b_read_all, b_flush, b_join, b_from_byte, b_hex, b_read_text, b_write_text, b_append_text,
+    b_open, b_exists, b_is_dir, b_is_file, b_list, b_mkdir, b_remove, b_rename, b_copy, b_cwd,
+    b_chdir, b_pjoin, b_basename, b_dirname, b_extension, b_normalize, b_is_abs, b_pequal, b_match, b_run,
+    b_capture, b_which, b_exit, b_script, b_name, b_sleep }

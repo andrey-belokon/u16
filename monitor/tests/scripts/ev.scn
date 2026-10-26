@@ -1,0 +1,14 @@
+# the ev script: keys for tev
+after "WAIT\n" steps 2000 key 61 1E
+after "WAITM\n" steps 2000 key 00 48 1
+after "" steps 10 key 00 3E 7
+after "" steps 10 key 61 1E
+after "SPIN\n" steps 3000 ctrlc
+after "GETEV\n" steps 2000 ctrlc
+after "SLEEP\n" steps 2000 ctrlc
+after "READ\n" steps 2000 type "abc"
+after "abc" steps 2000 ctrlc
+after "SPIN2\n" steps 3000 ctrlc
+after "WAITB\n" steps 2000 ctrlc
+after "SPIN\n" steps 3000 ctrlc
+after "WAIT3\n" steps 2000 key 62 30

@@ -1,0 +1,78 @@
+// Files and directories (sect. 10.4, 10.5)
+var d = "/t/work"
+fs.mkdir(d)
+println(fs.is_dir(d))
+fs.write_text(path.join(d, "a.txt"), "alpha\nbeta\n")
+fs.append_text(path.join(d, "a.txt"), "gamma\n")
+println(fs.read_text("/t/work/a.txt"))
+var f = fs.open("/t/work/b.txt", "w")
+f.write("x1\n")
+f.write($"x{|2|}\n")
+println(f.path())
+f.close()
+f.close()
+var e = f.write("late")
+println(e)
+f = fs.open("/t/work/b.txt", "a")
+f.write("x3")
+f.close()
+var r = fs.open("/t/work/b.txt", "r")
+loop {
+    var line = r.read_line()
+    if line == null { break }
+    println("> " + line)
+}
+r.close()
+r = fs.open("/t/data/in.txt", "r")
+println(r.read_line())
+println(r.read_all().len())
+r.close()
+println(fs.read_text("/t/data/in.txt").lines()[1])
+fs.copy("/t/work/a.txt", "/t/work/c.txt")
+fs.copy("/t/work/a.txt", "/t")
+println(fs.read_text("/t/a.txt").len())
+fs.remove("/t/a.txt")
+var ce = fs.copy("/t/work/a.txt", "/T/WORK/A.TXT")
+println(ce)
+fs.rename("/t/work/c.txt", "/t/work/d.txt")
+println($"{|fs.exists("/t/work/c.txt")|} {|fs.is_file("/t/work/d.txt")|} {|fs.is_dir("/t/work/d.txt")|}")
+var names = []
+for ent in fs.list(d) {
+    var nm = ent["name"]
+    if ent["dir"] { nm += "/" }
+    names.push(nm)
+}
+names.sort()
+println(str.join(names, " "))
+fs.mkdir("/t/work/sub")
+for ent in fs.list(d) {
+    if ent["dir"] { println("dir " + ent["name"]) }
+}
+var le = fs.remove("/t/work")
+println(le)
+println(fs.cwd())
+fs.chdir("/t/work")
+println(fs.cwd())
+println(fs.read_text("a.txt").len())
+fs.chdir("/")
+for n in fs.list(d) {
+    if !n["dir"] { fs.remove(path.join(d, n["name"])) }
+}
+fs.remove("/t/work/sub")
+fs.remove(d)
+println(fs.exists(d))
+var t, err = fs.read_text("/t")
+println(err)
+var o, oe = fs.open("/t/none/x", "r")
+println(oe)
+var x, le2 = fs.list("/t/data/in.txt")
+println(le2)
+// paths
+println(path.join("A:/a", "b.txt") + " " + path.join("a/", "b") + " " + path.join("a", "/abs") + " " + path.join("x", "B:/y"))
+println(path.basename("A:/a/b.txt") + " " + path.basename("b") + " " + path.basename("A:/a/"))
+println(path.dirname("A:/a/b.txt") + " " + path.dirname("b.txt") + " " + path.dirname("A:/x") + " " + path.dirname("/x") + " " + path.dirname("a/b"))
+println(path.extension("a/b.txt") + "|" + path.extension(".profile") + "|" + path.extension("a.tar.gz") + "|" + path.extension("noext"))
+println(path.normalize("A:/a/./b//c/../d/") + " " + path.normalize("../x/../../y") + " " + path.normalize("a/..") + " " + path.normalize("/a/../.."))
+println($"{|path.is_absolute("0:x")|} {|path.is_absolute("/x")|} {|path.is_absolute("x")|}")
+println($"{|path.equal("A:/Bin/LS.cx", "A:/bin/./ls.CX")|} {|path.equal("a", "b")|}")
+println($"{|path.match("*.log", "app.LOG")|} {|path.match("a?c", "abc")|} {|path.match("*", "a/b")|} {|path.match("x*y*z", "xAyBz")|}")

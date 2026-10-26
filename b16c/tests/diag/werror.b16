@@ -1,0 +1,2 @@
+// b16c-flags: -Werror
+fn main() { var x: int = 1; x }

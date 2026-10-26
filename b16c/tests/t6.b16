@@ -1,0 +1,26 @@
+// t6: 32-bit types long and ulong - declarations, constants, extension, casts, structs (phase 1: data movement)
+var OUT at $FF20: byte
+struct S { c: byte; w: long; d: uint }
+const BIG = 100000
+var g: long = -100000
+var h: ulong = $FFFFFFFF
+fn putc(c: byte) { OUT = c }
+fn hex(v: uint) { var i = 0; while i < 4 { var d = (v >> 12) & 15; if d < 10 { putc(byte(d + 48)) } else { putc(byte(d + 55)) }; v <<= 4; i++ } }
+var t32: ulong
+fn put32() { var pw: ptr uint = ptr uint(&t32); hex(pw[1]); hex(pw[0]); putc(10) }
+fn main() {
+    var a = BIG                  // long
+    var b = 40000                // uint
+    var c = -3                   // int
+    var d: ulong = c             // sign extension
+    var e: long = b              // zero extension
+    t32 = ulong(a); put32(); t32 = ulong(b); put32(); t32 = d; put32(); t32 = ulong(e); put32(); t32 = ulong(g); put32(); t32 = h; put32()
+    t32 = ulong(sizeof(long)); put32(); t32 = ulong(sizeof(S)); put32(); t32 = ulong(offsetof(S, w)); put32(); t32 = ulong(offsetof(S, d)); put32()
+    var s: S
+    s.w = a
+    s.d = uint(a)
+    t32 = ulong(s.w); put32(); t32 = ulong(s.d); put32()
+    a = 70000
+    t32 = ulong(a); put32()
+    t32 = ulong(int(a)); put32()
+}

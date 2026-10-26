@@ -1,0 +1,9 @@
+// thello.b16 - the simplest shell: a greeting and exit with code 0.
+include "sys.b16"
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    puts("hello from ")
+    puts(argv[0])
+    putnl()
+    return 0
+}

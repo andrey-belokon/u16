@@ -1,0 +1,56 @@
+// t11: multiplication, division, remainder and shifts by a variable count on long and ulong
+var OUT at $FF20: byte
+var V: [19]ulong = {$0, $1, $2, $3, $7, $A, $FF, $100, $FFFF, $10000, $186A0, $7FFFFFFF, $80000000, $FFFFFFFF, $FFFF0000, $12345678, $DEADBEEF, $80000001, $3B9ACA07}
+fn putc(c: byte) { OUT = c }
+fn hex(w: uint) { var i = 0; while i < 4 { var d = (w >> 12) & 15; if d < 10 { putc(byte(d + 48)) } else { putc(byte(d + 55)) }; w <<= 4; i++ } }
+fn show(v: ulong) { hex(uint(v >> 16)); hex(uint(v)); putc(' ') }
+fn main() {
+    var i: uint = 0
+    while i < 19 {
+        var j: uint = 0
+        while j < 19 {
+            var a = V[i]
+            var b = V[j]
+            var sa = long(a)
+            var sb = long(b)
+            show(a * b)
+            show(a / b); show(a % b)
+            if sb != 0 { show(ulong(sa / sb)); show(ulong(sa % sb)) }
+            putc(10)
+            j++
+        }
+        i++
+    }
+    i = 0
+    while i < 19 {
+        var a = V[i]
+        var sa = long(a)
+        var n: uint = 0
+        while n < 40 {
+            show(a << n); show(a >> n); show(ulong(sa >> n))
+            n += 7
+        }
+        putc(10)
+        i++
+    }
+    i = 0
+    while i < 19 {
+        var a = V[i]
+        var x = uint(a)
+        var y = uint(a >> 16)
+        show(ulong(x) * ulong(y)); show(ulong(x) * 1000); show(ulong(y) * 65535); show(ulong(x) * ulong(x)); show(ulong(byte(a)) * ulong(x))
+        show(a * 1); show(a * 2); show(a * 65536); show(a * $80000000); show(a * 0)
+        show(a / 1); show(a / 2); show(a / 256); show(a / 65536); show(a / $80000000); show(a / $10000000)
+        show(a % 1); show(a % 2); show(a % 256); show(a % 65536); show(a % $80000000); show(a % $10000000)
+        putc(10)
+        i++
+    }
+    i = 0
+    while i < 19 {
+        var a = V[i]
+        show(a / 3); show(a % 3); show(a / 7); show(a % 7); show(a / 10); show(a % 10)
+        show(a / 100); show(a % 100); show(a / 255); show(a % 255); show(a / 5); show(a / 200)
+        putc(10)
+        i++
+    }
+}

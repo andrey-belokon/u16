@@ -1,0 +1,4 @@
+include "inc/lib.bs"
+include "INC/LIB.BS"
+println(twice(GREET))
+println(three())

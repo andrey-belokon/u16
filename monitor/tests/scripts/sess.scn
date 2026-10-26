@@ -1,0 +1,9 @@
+# the sess script: keys for tsess - switching sessions
+# Ctrl+] (character $1D, as from a terminal) in the computational loop of session 0
+after "SPIN\n" steps 3000 key 1D 00
+# Ctrl+[ (scancode [ with Ctrl) while session 1 waits in CON_GETEV
+after "CHILD BACK\n" steps 3000 key 00 1A 2
+# again in session 1: CON_GETEV is executed again and gets 'x'
+after "TO CHILD\n" steps 60000 key 78 2D
+# Ctrl+[ in the middle of SLEEP(1000) of session 1
+after "SLEEP\n" steps 8000 key 00 1A 2

@@ -1,0 +1,169 @@
+// io.b16 - streams and files in the VM's pinned memory (the specification, sect. 10.3, 10.5, 12.4).
+//
+// Entries: 0 - stream 0 (input), 1 and 2 - streams 1 and 2, 3..10 - program files.
+
+// constants and the Slot record - types.b16
+
+var slots: [NSLOT]Slot
+
+fn io_init() {
+    var i: uint = 0
+    while i < 3 {
+        var s = &slots[i]
+        s.fd = i
+        if i == 0 { s.mode = SM_READ } else { s.mode = SM_WRITE }
+        var e, kind, m: uint
+        e, kind, m = sys_hinfo(i)
+        s.con = uint(e == OK && kind == H_CON)
+        i++
+    }
+}
+
+fn slot_flush(k: uint): uint {
+    var s = &slots[k]
+    if s.mode != SM_WRITE || s.n == 0 { return s.werr }
+    var n = s.n
+    s.n = 0                     // before the call: the Ctrl+C handler will not write the buffer a second time
+    var e, w: uint
+    e, w = sys_write(s.fd, &s.buf[0], n)
+    if e != OK && s.werr == 0 { s.werr = e }
+    return s.werr
+}
+
+// string object h to stream or file k
+fn out_str(k: uint, h: uint) { out_write(k, ptr byte(hp(h)), slen(h)) }
+
+fn out_write(k: uint, p: ptr byte, n: uint) {
+    var s = &slots[k]
+    var nl: uint = 0
+    while n != 0 {
+        if s.n == SBUF { ign = slot_flush(k) }
+        var c = *p
+        s.buf[s.n] = c
+        s.n++
+        if c == 10 { nl = 1 }
+        p++; n--
+    }
+    if nl != 0 && s.con != 0 { ign = slot_flush(k) }
+}
+
+fn flush_all() {
+    var i: uint = 1
+    while i < NSLOT {
+        if slots[i].mode == SM_WRITE { ign = slot_flush(i) }
+        i++
+    }
+}
+
+// close a file (garbage collection, termination): the error is lost
+fn file_finalize(k: uint) {
+    var s = &slots[k]
+    if s.mode == SM_FREE { return }
+    ign = slot_flush(k)
+    ign = sys_close(s.fd)
+    s.mode = SM_FREE
+}
+
+fn slot_alloc(): uint {
+    var i: uint = SL_FILE0
+    while i < NSLOT {
+        if slots[i].mode == SM_FREE { return i }
+        i++
+    }
+    return 0
+}
+
+// ---- string builder ---------------------------------------------------------------------------
+var bld_h: uint
+var bld_n: uint
+
+fn bld_start() {
+    bld_h = 0
+    bld_h = new_str(64)
+    bld_n = 0
+}
+
+// 1 - longer than 32767
+fn bld_put(p: ptr byte, n: uint): uint {
+    if n == 0 { return 0 }
+    if bld_n + n > 32767 { return 1 }
+    var cap = slen(bld_h)
+    if bld_n + n > cap {
+        var c = cap * 2
+        if c < bld_n + n { c = bld_n + n }
+        if c > 32767 { c = 32767 }
+        var h = new_str(c)
+        hmove(h, 0, bld_h, 0, bld_n)
+        bld_h = h
+    }
+    hput(bld_h, bld_n, p, n)
+    bld_n += n
+    return 0
+}
+
+fn bld_done(): uint {
+    var h = sub_str(bld_h, 0, bld_n)
+    bld_h = 0
+    return h
+}
+
+// ---- reading --------------------------------------------------------------------------------------
+var rd_err: uint
+
+fn slot_fill(k: uint): uint {
+    var s = &slots[k]
+    if s.eof != 0 { return 0 }
+    if k == SL_IN { flush_all() }
+    var e, r: uint
+    e, r = sys_read(s.fd, &s.buf[0], SBUF)
+    if e == E_INTR { do_exit(EXIT_BREAK) }
+    if e != OK { rd_err = e; return 0 }
+    s.pos = 0
+    s.n = r
+    if r == 0 { s.eof = 1 }
+    return r
+}
+
+// A string without \n and a trailing \r: 0 - success (the result in rl_h, 0 - end of input), otherwise an error code.
+var rl_h: uint
+fn read_line(k: uint): uint {
+    var s = &slots[k]
+    rd_err = 0
+    rl_h = 0
+    if s.pos >= s.n && slot_fill(k) == 0 { return rd_err }
+    bld_start()
+    loop {
+        if s.pos >= s.n {
+            if slot_fill(k) == 0 { if rd_err != 0 { bld_h = 0; return rd_err }; break }
+        }
+        var p = &s.buf[s.pos]
+        var m = s.n - s.pos
+        var i: uint = 0
+        while i < m && p[i] != 10 { i++ }
+        if bld_put(p, i) != 0 { bld_h = 0; return E_TOOBIG }
+        s.pos += i
+        if i < m { s.pos++; break }
+    }
+    if bld_n > 0 && hgb(bld_h, bld_n - 1) == 13 { bld_n-- }
+    rl_h = bld_done()
+    return 0
+}
+
+fn read_all(k: uint): uint {
+    var s = &slots[k]
+    rd_err = 0
+    bld_start()
+    loop {
+        if s.pos >= s.n && slot_fill(k) == 0 { break }
+        if bld_put(&s.buf[s.pos], s.n - s.pos) != 0 { bld_h = 0; return E_TOOBIG }
+        s.pos = s.n
+    }
+    if rd_err != 0 { bld_h = 0; return rd_err }
+    rl_h = bld_done()
+    return 0
+}
+
+interrupt fn on_break() {
+    flush_all()
+    sys_exit(EXIT_BREAK)
+}

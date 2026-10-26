@@ -1,0 +1,1849 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}</style><style>:root{color-scheme:light dark;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}}:root[data-theme="dark"]{color-scheme:dark;--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}:root[data-theme="light"]{color-scheme:light}@media print{:root,:root[data-theme="dark"]{color-scheme:light;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}}body{background:var(--md-bg);color:var(--md-text);max-width:720px;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:10px;font:14px/1.55 -apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif;overflow-wrap:break-word}body>:first-child{margin-top:0}h1,h2,h3,h4,h5,h6{margin:6px 0 0;line-height:1.25;font-weight:600;text-wrap:balance}h1{font-size:1.35em}h2{font-size:1.15em;color:var(--md-muted)}h3,h4,h5,h6{font-size:1em}p,ul,ol,blockquote,table,pre,hr{margin:0}strong{font-weight:600}a{color:var(--md-link);text-decoration:none}a:hover{text-decoration:underline}ul,ol{display:flex;flex-direction:column;gap:6px;padding-left:22px}ul{list-style:disc}ol{list-style:decimal}:is(li,td,th)>*+:is(p,ul,ol,blockquote){margin-top:6px}blockquote{display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--md-rule);padding-left:10px;color:var(--md-muted)}:not(pre)>code{background:var(--md-fill);padding:1px 3px;border-radius:4px;font:.92em 'SF Mono',ui-monospace,Menlo,Consolas,monospace}a>code{background:none;color:inherit}pre{background:var(--md-fill);padding:10px 12px;border-radius:6px;overflow-x:auto;font:12px/1.5 'SF Mono',ui-monospace,Menlo,Consolas,monospace;margin-block:4px}pre code{background:none;padding:0;font:inherit}table{width:100%;border-collapse:separate;border-spacing:2px;font:inherit}th,td{padding:6px 8px;border-radius:3px;text-align:left;vertical-align:top}th{background:var(--md-fill-strong);font-weight:600}td{background:var(--md-fill)}:is(th,td) :not(pre)>code{background:transparent}hr{border:0;border-top:1px solid var(--md-rule-strong);margin-block:10px}img{max-width:100%;height:auto;border-radius:4px}</style>
+</head><body>
+<h1>Введение в архитектуру и язык ассемблера CPU16</h1>
+<p>Это введение для читателя, который уже писал на каком-нибудь ассемблере. Оно объясняет устройство процессора, его способы адресации и команды, показывает типичную организацию программы и раскладку памяти и даёт готовую стандартную библиотеку.</p>
+<p>Здесь опущены детали: точные правила допустимости кодировок, все крайние случаи флагов, полная грамматика языка. Если нужна точность, обращайтесь к двум документам:</p>
+<ul>
+<li><strong>«Архитектура 16-битного процессора»</strong> (спецификация, ревизия 6) — нормативное описание процессора;</li>
+<li><strong>«Язык ассемблера 16-битного процессора. Справочник»</strong> — нормативное описание языка.</li>
+</ul>
+<p>Инструменты:</p>
+<table>
+<thead>
+<tr>
+<th>Инструмент</th>
+<th>Назначение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cpu16asm</code></td>
+<td>ассемблер: <code>cpu16asm prog.asm</code> → <code>prog.bin</code>; ключи <code>-l</code> (листинг), <code>-m</code> (карта символов)</td>
+</tr>
+<tr>
+<td><code>cpu16</code></td>
+<td>эмулятор: <code>cpu16 prog.bin</code>; ввод программы — из stdin, <code>-t</code> — трассировка</td>
+</tr>
+<tr>
+<td>веб-отладчик</td>
+<td>редактор, сборка, пошаговая отладка в браузере</td>
+</tr>
+<tr>
+<td><code>stdlib.asm</code></td>
+<td>стандартная библиотека (приложение А), подключается через <code>.include</code></td>
+</tr>
+</tbody>
+</table>
+<h2>1. Первая программа</h2>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00      ; стек
+        LD      R0, #hello      ; адрес строки
+        CALL    puts            ; печать (из библиотеки)
+        WFI                     ; остановка
+hello:  .asciz  &#34;Hello, CPU16!\n&#34;
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">Hello, CPU16!
+</code></pre>
+<p>Сборка и запуск в командной строке (<code>stdlib.asm</code> лежит рядом с программой):</p>
+<pre><code class="language-text">cpu16asm hello.asm
+cpu16 hello.bin
+</code></pre>
+<p>В веб-отладчике: вставьте текст на вкладку «Source», нажмите Ctrl+B, затем F9. Библиотека встроена в отладчик, <code>.include &quot;stdlib.asm&quot;</code> работает и там.</p>
+<p><code>WFI</code> (wait for interrupt) — ожидание прерывания. Пока прерывания запрещены и никто их не запрашивает, процессор просто стоит. Эмулятор в этом состоянии завершает работу, поэтому <code>WFI</code> удобно использовать как «стоп».</p>
+<h2>2. Процессор в общих чертах</h2>
+<h3>2.1. Память и данные</h3>
+<ul>
+<li>Машинное слово — 16 бит. Адресное пространство — 64 КБ, адресуется по байтам.</li>
+<li>Порядок байт little-endian: младший байт слова лежит по меньшему адресу.</li>
+<li>Слова и команды лежат по чётным адресам. Ассемблер выравнивает их сам; при обращении к слову бит 0 адреса просто игнорируется.</li>
+<li>Устройства ввода-вывода отображены на память: работа с ними — это обычные чтения и записи по их адресам.</li>
+</ul>
+<h3>2.2. Регистры</h3>
+<p>Шестнадцать 16-битных регистров:</p>
+<table>
+<thead>
+<tr>
+<th>Регистр</th>
+<th>Имя</th>
+<th>Назначение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R0..R11</td>
+<td>—</td>
+<td>общего назначения</td>
+</tr>
+<tr>
+<td>R12</td>
+<td>LR</td>
+<td>адрес возврата: команда <code>CALL</code> пишет его сюда, а не в стек</td>
+</tr>
+<tr>
+<td>R13</td>
+<td>SP</td>
+<td>указатель стека, стек растёт вниз</td>
+</tr>
+<tr>
+<td>R14</td>
+<td>IP</td>
+<td>указатель команд</td>
+</tr>
+<tr>
+<td>R15</td>
+<td>FLAGS</td>
+<td>флаги</td>
+</tr>
+</tbody>
+</table>
+<p>Важная особенность: IP и FLAGS — <strong>обычные регистры</strong>. Запись в IP — это переход (<code>LD IP, LR</code> — возврат из подпрограммы), а флаги можно читать, сохранять в стек и менять командами <code>AND</code>, <code>OR</code>, <code>XOR</code>.</p>
+<p>По соглашению стандартной библиотеки R0..R3 — оперативные регистры: через них передаются аргументы и результаты, и подпрограмма может их портить. R4..R11 подпрограмма обязана сохранить (раздел 5.6).</p>
+<h3>2.3. Флаги</h3>
+<table>
+<thead>
+<tr>
+<th>Флаг</th>
+<th>Бит</th>
+<th>Маска</th>
+<th>Смысл</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ZF</td>
+<td>0</td>
+<td><code>$01</code></td>
+<td>результат равен нулю</td>
+</tr>
+<tr>
+<td>CF</td>
+<td>1</td>
+<td><code>$02</code></td>
+<td>перенос при сложении; при вычитании - <strong>заём</strong>: после <code>SUB</code> или <code>CMP</code> CF = 1, если уменьшаемое меньше вычитаемого (без знака)</td>
+</tr>
+<tr>
+<td>SF</td>
+<td>2</td>
+<td><code>$04</code></td>
+<td>знак результата (бит 15)</td>
+</tr>
+<tr>
+<td>IF</td>
+<td>3</td>
+<td><code>$08</code></td>
+<td>прерывания разрешены</td>
+</tr>
+<tr>
+<td>OF</td>
+<td>4</td>
+<td><code>$10</code></td>
+<td>знаковое переполнение; у умножения и деления — свой смысл (раздел 5.2)</td>
+</tr>
+</tbody>
+</table>
+<p>Флаги меняют только команды арифметики, логики и сдвигов. Пересылки (<code>LD</code>, <code>ST</code>, <code>PUSH</code>, <code>POP</code>) флаги <strong>не меняют</strong>. Чтобы проверить загруженное значение, нужен <code>TEST R0, R0</code> или <code>CMP R0, #0</code>.</p>
+<h3>2.4. Общие принципы системы команд</h3>
+<ul>
+<li><strong>Двухадресный формат:</strong> <code>ОП Rd, src</code> означает <code>Rd = Rd ОП src</code>. Первый операнд всегда регистр и он же приёмник. Исключение — команды записи в память: там первым пишется адрес (<code>ST [адрес], R1</code>).</li>
+<li><strong>Не больше одного обращения к памяти за команду.</strong> Операнд <code>src</code> может быть в памяти (<code>ADD R0, [R1]</code>), но команд «память–память» нет.</li>
+<li><strong>Длина команды — одно или два слова.</strong> Второе слово нужно для 16-битной константы, адреса или смещения. Константы 0..15 помещаются в саму команду, поэтому <code>ADD R0, #1</code> занимает одно слово.</li>
+<li><strong>Недопустимая команда не исполняется:</strong> процессор вызывает исключение ERRCMD (прерывание по вектору 8) и сохраняет адрес команды. Это ловит, например, переход в данные.</li>
+</ul>
+<h2>3. Язык ассемблера в двух словах</h2>
+<p>Строка программы состоит из необязательной метки, команды или директивы и комментария после <code>;</code>:</p>
+<pre><code class="language-asm">; комментарий до конца строки
+        .equ    COUNT, 10       ; константа COUNT = 10
+start:  LD      R0, #COUNT      ; метка start, команда LD, операнды R0 и #COUNT
+table:  .word   1, 2, $FFFF     ; метка table и данные: три слова
+text:   .asciz  &#34;abc&#34;           ; метка text и строка с нулём в конце
+</code></pre>
+<h3>3.1. Метки</h3>
+<p>Метка — это имя с двоеточием в начале строки. Её значение — адрес того, что идёт за ней: команды или данных. Дальше в программе имя метки можно использовать везде, где нужен этот адрес: как цель перехода (<code>JMP start</code>), как адрес в памяти (<code>LD R0, [table]</code>), как константу-указатель (<code>LD R0, #text</code>).</p>
+<p>Метки бывают двух видов.</p>
+<ul>
+<li><strong>Обычная метка</strong> (<code>start:</code>, <code>table:</code>) видна во всей программе. Её имя должно быть уникальным.</li>
+<li><strong>Локальная метка</strong> начинается с символа <code>@</code> (<code>@loop:</code>, <code>@done:</code>). Она видна только в своей области: от ближайшей предыдущей обычной метки до следующей обычной. Поэтому в каждой подпрограмме можно заводить одни и те же имена <code>@loop</code> и <code>@done</code>, не придумывая уникальных.</li>
+</ul>
+<pre><code class="language-asm">clear:  LD      R2, #0          ; обычная метка clear открывает область
+@loop:  STB     [R0++], R2      ; @loop из области clear
+        DEC     R1
+        JNZ     @loop           ; переход на @loop этой же области
+        RET
+count:  LD      R2, #0          ; обычная метка count открывает новую область
+@loop:  INC     R2              ; другая метка: @loop из области count
+        DEC     R1
+        JNZ     @loop           ; переход на свой @loop, а не на тот, что в clear
+        RET
+</code></pre>
+<p>Из другой области локальная метка не видна: если в третьей подпрограмме написать <code>JMP @loop</code>, а своей <code>@loop</code> там нет, ассемблер сообщит «undefined symbol». Если на место нужно переходить из нескольких подпрограмм, ему нужна обычная метка.</p>
+<h3>3.2. Числа, выражения, директивы</h3>
+<ul>
+<li><strong>Числа:</strong> <code>123</code>, <code>$7F</code> или <code>0x7F</code>, <code>%1010</code> или <code>0b1010</code>, символ <code>'A'</code>.</li>
+<li><strong>Выражения:</strong> <code>+ - * / &amp; | ^ ~ &lt;&lt; &gt;&gt;</code>, скобки, <code>lo()</code>, <code>hi()</code>, а <code>$</code> — адрес текущей команды.</li>
+<li><strong>Регистр букв</strong> в мнемониках и именах регистров не важен, в метках — важен.</li>
+</ul>
+<p>Основные директивы:</p>
+<table>
+<thead>
+<tr>
+<th>Директива</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.org адрес</code></td>
+<td>дальнейший код и данные размещаются с этого адреса</td>
+</tr>
+<tr>
+<td><code>.word</code>, <code>.byte</code></td>
+<td>слова и байты</td>
+</tr>
+<tr>
+<td><code>.ascii</code>, <code>.asciz</code></td>
+<td>строка (у <code>.asciz</code> — с нулём в конце)</td>
+</tr>
+<tr>
+<td><code>.space n</code></td>
+<td>n байт, заполненных нулями</td>
+</tr>
+<tr>
+<td><code>.align n</code></td>
+<td>выровнять адрес на n</td>
+</tr>
+<tr>
+<td><code>.equ имя, значение</code></td>
+<td>константа</td>
+</tr>
+<tr>
+<td><code>.include &quot;файл&quot;</code></td>
+<td>вставить текст файла</td>
+</tr>
+</tbody>
+</table>
+<h2>4. Способы адресации</h2>
+<h3>4.1. Метки, адреса и указатели</h3>
+<p>Метка — это просто число, адрес. Поэтому одно и то же имя даёт разные вещи в зависимости от записи операнда:</p>
+<table>
+<thead>
+<tr>
+<th>Запись</th>
+<th>Что получается</th>
+<th>Пример: <code>numbers</code> лежит по адресу $0100, там слово 100</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#numbers</code></td>
+<td>сам адрес, то есть указатель</td>
+<td><code>LD R1, #numbers</code> → R1 = $0100</td>
+</tr>
+<tr>
+<td><code>[numbers]</code></td>
+<td>содержимое памяти по этому адресу</td>
+<td><code>LD R0, [numbers]</code> → R0 = 100</td>
+</tr>
+<tr>
+<td><code>[R1]</code></td>
+<td>содержимое по адресу, который лежит в регистре</td>
+<td>при R1 = $0100: <code>LD R0, [R1]</code> → R0 = 100</td>
+</tr>
+</tbody>
+</table>
+<p>Указатель в регистре можно сдвигать: на следующее слово — на 2 (<code>ADD R1, #2</code> или автоинкремент <code>[R1++]</code>), на следующий байт — на 1. Со смещением <code>[R1+4]</code> читается слово на 4 байта дальше, то есть третий элемент от указателя. Запись <code>[R2+numbers]</code> — это элемент массива по байтовому смещению из R2: для слов индекс надо умножить на 2.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R1, #numbers    ; R1 = адрес массива (указатель)
+        LD      R0, R1
+        CALL    print_hex16     ; $0100 - сам указатель
+        CALL    newline
+        LD      R0, [numbers]   ; содержимое по адресу метки
+        CALL    print_u16       ; 100
+        CALL    newline
+        LD      R1, #numbers
+        LD      R0, [R1+4]      ; третий элемент: смещение 2 слова = 4 байта
+        CALL    print_u16       ; 300
+        CALL    newline
+        LD      R2, #3          ; индекс 3
+        ADD     R2, R2          ; * 2: байтовое смещение
+        LD      R0, [R2+numbers]
+        CALL    print_u16       ; 400
+        WFI
+        .org    $0100
+numbers: .word  100, 200, 300, 400, 500
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">0100
+100
+300
+400
+</code></pre>
+<p>Обратите внимание: <code>LD R1, #numbers</code> не читает память, а только кладёт адрес в регистр. Все обращения к самим данным — это операнды в квадратных скобках.</p>
+<h3>4.2. Таблица способов адресации</h3>
+<p>Способ адресации есть только у второго операнда. Пусть R1 = $2000:</p>
+<table>
+<thead>
+<tr>
+<th>Запись</th>
+<th>Операнд</th>
+<th>Пример</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>R1</code></td>
+<td>значение регистра</td>
+<td><code>ADD R0, R1</code></td>
+</tr>
+<tr>
+<td><code>#выр</code></td>
+<td>константа</td>
+<td><code>ADD R0, #100</code></td>
+</tr>
+<tr>
+<td><code>[R1]</code></td>
+<td>слово по адресу R1</td>
+<td><code>LD R0, [R1]</code></td>
+</tr>
+<tr>
+<td><code>[R1++]</code></td>
+<td>слово по адресу R1, затем R1 += 2</td>
+<td><code>ADD R0, [R1++]</code></td>
+</tr>
+<tr>
+<td><code>[--R1]</code></td>
+<td>R1 −= 2, затем слово по адресу R1</td>
+<td><code>LD R0, [--R1]</code></td>
+</tr>
+<tr>
+<td><code>[адрес]</code></td>
+<td>слово по абсолютному адресу</td>
+<td><code>LD R0, [counter]</code></td>
+</tr>
+<tr>
+<td><code>[R1+выр]</code></td>
+<td>слово по адресу R1 + смещение</td>
+<td><code>LD R0, [R1+4]</code></td>
+</tr>
+<tr>
+<td><code>R1+выр</code></td>
+<td>сумма без обращения к памяти</td>
+<td><code>LEA R0, R1+4</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>У байтовых команд (<code>LDZX</code>, <code>LDSX</code>, <code>STB</code>, <code>XCHB</code>) шаг <code>++</code> и <code>--</code> равен 1, у остальных — 2.</li>
+<li>Стек устроен на тех же режимах: <code>PUSH R0</code> — это <code>ST [--SP], R0</code>, а <code>POP R0</code> — <code>LD R0, [SP++]</code>.</li>
+<li>Ассемблер сам выбирает длину константы: <code>#5</code> займёт одно слово, <code>#500</code> — два.</li>
+</ul>
+<p>Пример: обход массива. R1 — указатель на текущий элемент: <code>[R1++]</code> читает элемент, на который он указывает, и сразу сдвигает указатель на следующее слово.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R1, #numbers    ; R1 = адрес первого элемента
+        LD      R2, #5          ; счётчик элементов
+        LD      R0, #0          ; сумма
+@sum:   ADD     R0, [R1++]      ; прибавить элемент по адресу R1, R1 += 2
+        DEC     R2
+        JNZ     @sum
+        CALL    print_u16
+        WFI
+numbers: .word  100, 200, 300, 400, 500
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">1500
+</code></pre>
+<h2>5. Команды</h2>
+<h3>5.1. Пересылка данных</h3>
+<table>
+<thead>
+<tr>
+<th>Команда</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LD Rd, src</code> (или <code>MOV</code>)</td>
+<td>Rd = src</td>
+</tr>
+<tr>
+<td><code>ST [адрес], Rs</code></td>
+<td>слово Rs в память</td>
+</tr>
+<tr>
+<td><code>LDZX Rd, src</code> / <code>LDSX Rd, src</code></td>
+<td>байт из src с расширением нулём / знаком</td>
+</tr>
+<tr>
+<td><code>STB [адрес], Rs</code></td>
+<td>младший байт Rs в память</td>
+</tr>
+<tr>
+<td><code>XCHB [адрес], Rs</code></td>
+<td>атомарный обмен байтом (для семафоров)</td>
+</tr>
+<tr>
+<td><code>LEA Rd, Rs+выр</code></td>
+<td>Rd = Rs + выр (адрес без обращения к памяти)</td>
+</tr>
+<tr>
+<td><code>PUSH Rs</code>, <code>POP Rd</code></td>
+<td>стек</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-asm">        LD      R0, R1          ; копия регистра
+        LD      R0, #msg        ; адрес метки
+        LD      R0, [msg]       ; слово по адресу метки
+        ST      [result], R0    ; запись в память
+        LDZX    R2, [R3++]      ; очередной байт строки
+        PUSH    R4              ; сохранить регистр
+        POP     R4
+        LD      IP, R5          ; переход по адресу в R5
+</code></pre>
+<h3>5.2. Арифметика</h3>
+<table>
+<thead>
+<tr>
+<th>Команда</th>
+<th>Действие</th>
+<th>Флаги</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ADD</code>, <code>ADC</code></td>
+<td>Rd = Rd + src (+ CF)</td>
+<td>все</td>
+</tr>
+<tr>
+<td><code>SUB</code>, <code>SBC</code></td>
+<td>Rd = Rd − src (− CF); CF = заём</td>
+<td>все</td>
+</tr>
+<tr>
+<td><code>CMP</code></td>
+<td>как SUB, но Rd не меняется</td>
+<td>все</td>
+</tr>
+<tr>
+<td><code>NEG Rd</code></td>
+<td>Rd = −Rd</td>
+<td>все</td>
+</tr>
+<tr>
+<td><code>INC Rd</code>, <code>DEC Rd</code></td>
+<td>± 1 (это <code>ADD</code>/<code>SUB</code> с <code>#1</code>, <strong>CF тоже меняется</strong>)</td>
+<td>все</td>
+</tr>
+<tr>
+<td><code>MUL Rd, src</code></td>
+<td>младшее слово произведения</td>
+<td>CF = OF = 1, если старшее слово не 0</td>
+</tr>
+<tr>
+<td><code>MULHU Rd, src</code></td>
+<td>старшее слово произведения без знака</td>
+<td>CF = OF = 0</td>
+</tr>
+<tr>
+<td><code>DIVU Rd, src</code></td>
+<td>частное без знака</td>
+<td>OF = 1 при делении на 0</td>
+</tr>
+<tr>
+<td><code>REMU Rd, src</code></td>
+<td>остаток без знака</td>
+<td>OF = 1 при делении на 0</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Знаковых умножения и деления нет:</strong> они делаются программно из беззнаковых.</li>
+<li><strong>Деление на 0 не вызывает исключения:</strong> <code>DIVU</code> даёт $FFFF, <code>REMU</code> — делимое, и выставляется OF; проверка — <code>JO</code>.</li>
+<li><strong>Многословная арифметика</strong> строится на ADC/SBC. Например, <code>ADD R0, R2</code> и затем <code>ADC R1, R3</code> складывают 32-битные пары. Библиотека даёт готовые <code>add32</code>, <code>sub32</code>, <code>mul32</code>, <code>divu32</code>.</li>
+</ul>
+<p>Пример: 10! в 32 битах через <code>mul32</code> из библиотеки.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R0, #1          ; R1:R0 = 1
+        LD      R1, #0
+        LD      R4, #2          ; множитель (R4 библиотека сохраняет)
+@next:  LD      R2, R4          ; R3:R2 = R4
+        LD      R3, #0
+        CALL    mul32           ; R1:R0 *= R3:R2
+        INC     R4
+        CMP     R4, #10
+        JBE     @next
+        CALL    print_u32
+        WFI
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">3628800
+</code></pre>
+<h3>5.3. Логика и биты</h3>
+<table>
+<thead>
+<tr>
+<th>Команда</th>
+<th>Действие</th>
+<th>Флаги</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AND</code>, <code>OR</code>, <code>XOR</code></td>
+<td>побитовые операции</td>
+<td>ZF, SF; CF = OF = 0</td>
+</tr>
+<tr>
+<td><code>TEST Ra, src</code></td>
+<td>как AND, но Ra не меняется</td>
+<td>ZF, SF; CF = OF = 0</td>
+</tr>
+<tr>
+<td><code>NOT Rd</code></td>
+<td>инверсия</td>
+<td>не меняет</td>
+</tr>
+<tr>
+<td><code>BSX Rd</code></td>
+<td>знаковое расширение младшего байта</td>
+<td>не меняет</td>
+</tr>
+</tbody>
+</table>
+<p>Приёмы с битом номер 5 (маска <code>$20</code>):</p>
+<pre><code class="language-asm">        OR      R0, #$20        ; установить
+        AND     R0, #~$20       ; сбросить
+        XOR     R0, #$20        ; инвертировать
+        TEST    R0, #$20        ; проверить: JNZ - бит установлен
+        JNZ     bit_set
+</code></pre>
+<h3>5.4. Сдвиги</h3>
+<table>
+<thead>
+<tr>
+<th>Команда</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SHL Rd, n</code></td>
+<td>логический влево</td>
+</tr>
+<tr>
+<td><code>SHR Rd, n</code></td>
+<td>логический вправо</td>
+</tr>
+<tr>
+<td><code>SAR Rd, n</code></td>
+<td>арифметический вправо (копирует знак)</td>
+</tr>
+<tr>
+<td><code>ROR Rd, n</code></td>
+<td>циклический вправо</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Счётчик берётся из младших 4 бит операнда (0..15) и может лежать в регистре.</li>
+<li>CF получает последний выдвинутый бит. Сдвиг на 0 ничего не меняет, даже флаги.</li>
+<li>Циклический сдвиг влево на k — это <code>ROR Rd, #16-k</code>, а обмен байтами слова — <code>ROR Rd, #8</code>.</li>
+</ul>
+<p>Пример: подсчёт единичных битов, где выдвинутый бит попадает в CF и прибавляется через ADC.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R1, #$BEEF      ; число
+        LD      R0, #0          ; счётчик
+@bit:   SHR     R1, #1          ; младший бит -&gt; CF
+        ADC     R0, #0          ; R0 += CF
+        TEST    R1, R1
+        JNZ     @bit
+        CALL    print_u16
+        WFI
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">13
+</code></pre>
+<h3>5.5. Переходы</h3>
+<p><code>JMP метка</code> — безусловный переход. Условные переходы проверяют флаги после <code>CMP</code>, <code>SUB</code>, <code>TEST</code> и т. п.:</p>
+<table>
+<thead>
+<tr>
+<th>Условие</th>
+<th>Без знака</th>
+<th>Со знаком</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>равно / не равно</td>
+<td><code>JZ</code> (<code>JE</code>) / <code>JNZ</code> (<code>JNE</code>)</td>
+<td>те же</td>
+</tr>
+<tr>
+<td>меньше</td>
+<td><code>JB</code> (<code>JC</code>)</td>
+<td><code>JL</code></td>
+</tr>
+<tr>
+<td>меньше или равно</td>
+<td><code>JBE</code></td>
+<td><code>JLE</code></td>
+</tr>
+<tr>
+<td>больше</td>
+<td><code>JA</code></td>
+<td><code>JG</code></td>
+</tr>
+<tr>
+<td>больше или равно</td>
+<td><code>JAE</code> (<code>JNC</code>)</td>
+<td><code>JGE</code></td>
+</tr>
+<tr>
+<td>знак, переполнение</td>
+<td><code>JS</code>, <code>JNS</code></td>
+<td><code>JO</code>, <code>JNO</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Ассемблер сам выбирает форму перехода: в пределах ±64 слов однословную, дальше — двухсловную.</li>
+<li>Переход может брать адрес из регистра (<code>JMP R1</code>) или из памяти (<code>JMP [R1+table]</code>). Так делается выбор по номеру («switch»).</li>
+</ul>
+<p>Пример: одна и та же пара чисел как беззнаковые и как знаковые.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R4, #$FFFF      ; 65535 без знака, -1 со знаком
+        CMP     R4, #1
+        JB      @u_less
+        LD      R0, #msg_u_ge
+        JMP     @u_done
+@u_less: LD     R0, #msg_u_lt
+@u_done: CALL   puts
+        CMP     R4, #1
+        JL      @s_less
+        LD      R0, #msg_s_ge
+        JMP     @s_done
+@s_less: LD     R0, #msg_s_lt
+@s_done: CALL   puts
+        WFI
+msg_u_lt: .asciz &#34;unsigned: less\n&#34;
+msg_u_ge: .asciz &#34;unsigned: greater or equal\n&#34;
+msg_s_lt: .asciz &#34;signed: less\n&#34;
+msg_s_ge: .asciz &#34;signed: greater or equal\n&#34;
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">unsigned: greater or equal
+signed: less
+</code></pre>
+<p>Пример: таблица переходов.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R0, #2          ; номер случая 0..2
+        ADD     R0, R0          ; * 2: размер слова
+        JMP     [R0+cases]      ; адрес берётся из таблицы
+cases:  .word   case0, case1, case2
+case0:  LD      R0, #&#39;A&#39;
+        JMP     show            ; общая метка: локальная @show из case0 не видна
+case1:  LD      R0, #&#39;B&#39;
+        JMP     show
+case2:  LD      R0, #&#39;C&#39;
+show:   CALL    putc
+        WFI
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">C
+</code></pre>
+<h3>5.6. Подпрограммы</h3>
+<ul>
+<li><code>CALL метка</code> кладёт адрес возврата в <strong>LR</strong> (стек не трогается) и переходит.</li>
+<li><code>RET</code> — это <code>LD IP, LR</code>.</li>
+<li>Подпрограмма, которая сама ничего не вызывает (листовая), обходится вообще без стека.</li>
+<li>Подпрограмма, которая вызывает другие, сохраняет свой LR. Выход удобно делать через <code>POP IP</code>: он одновременно восстанавливает адрес и возвращается.</li>
+</ul>
+<pre><code class="language-asm">leaf:   ADD     R0, R1          ; листовая: стек не нужен
+        RET
+
+outer:  PUSH    LR              ; вызывает другие: сохранить LR
+        PUSH    R4              ; и все R4..R11, которые портит
+        ...
+        CALL    leaf
+        ...
+        POP     R4
+        POP     IP              ; возврат по сохранённому LR
+</code></pre>
+<p><strong>Соглашение о вызове</strong> (его соблюдает стандартная библиотека):</p>
+<ul>
+<li>аргументы — в R0..R3, результат — в R0..R3;</li>
+<li>R0..R3, LR и FLAGS вызываемая подпрограмма может испортить;</li>
+<li>R4..R11 и SP она обязана вернуть такими, какими получила;</li>
+<li>если аргументов больше четырёх, остальные кладутся в стек перед вызовом, а после возврата их снимает вызывающий.</li>
+</ul>
+<p>Пример: пятый аргумент в стеке.</p>
+<!-- run -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R0, #1
+        LD      R1, #2
+        LD      R2, #3
+        LD      R3, #4
+        LD      R4, #5
+        PUSH    R4              ; 5-й аргумент
+        CALL    sum5
+        ADD     SP, #2          ; снять аргумент
+        CALL    print_u16
+        WFI
+
+; sum5: R0 = R0 + R1 + R2 + R3 + [SP] (5-й аргумент)
+sum5:   ADD     R0, R1
+        ADD     R0, R2
+        ADD     R0, R3
+        ADD     R0, [SP]        ; CALL ничего не кладёт в стек: аргумент на вершине
+        RET
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">15
+</code></pre>
+<p>Если подпрограмма сделала <code>PUSH LR</code>, тот же аргумент окажется по адресу <code>[SP+2]</code>.</p>
+<p><strong>Хвостовой вызов.</strong> Если последнее действие подпрограммы — вызов другой подпрограммы, вместо <code>CALL</code> и <code>RET</code> достаточно <code>JMP</code>: LR уже указывает на вызывающего. Так в библиотеке устроены <code>print_s16</code> и <code>print_hex32</code>.</p>
+<h3>5.7. Прерывания</h3>
+<ul>
+<li><strong>Источники:</strong> восемь внешних запросов IRQ0..IRQ7, программный вызов <code>TRAP #n</code> и исключение ERRCMD.</li>
+<li><strong>Таблица векторов:</strong> 16 слов по адресу <code>$FF00</code>; вектор n лежит по адресу <code>$FF00 + 2·n</code>.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Вектор</th>
+<th>Назначение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0..7</td>
+<td>IRQ0..IRQ7</td>
+</tr>
+<tr>
+<td>8</td>
+<td>ERRCMD</td>
+</tr>
+<tr>
+<td>9..15</td>
+<td>программные вызовы <code>TRAP #9</code>..<code>TRAP #15</code></td>
+</tr>
+</tbody>
+</table>
+<p>При входе в прерывание процессор кладёт в стек IP, затем FLAGS, сбрасывает IF и переходит по вектору. <code>IRET</code> восстанавливает FLAGS и IP.</p>
+<table>
+<thead>
+<tr>
+<th>Команда</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>STI</code>, <code>CLI</code></td>
+<td>разрешить / запретить прерывания (<code>CLI</code> попутно обнуляет OF)</td>
+</tr>
+<tr>
+<td><code>TRAP #n</code></td>
+<td>программное прерывание по вектору n</td>
+</tr>
+<tr>
+<td><code>IRET</code></td>
+<td>возврат из обработчика</td>
+</tr>
+<tr>
+<td><code>WFI</code></td>
+<td>ждать прерывания</td>
+</tr>
+</tbody>
+</table>
+<p>Обработчик обязан сохранить <strong>всё</strong>, что меняет, включая R0..R3 и LR. Прерванный код никого не вызывал и не ожидает, что эти регистры изменятся. Флаги восстановит <code>IRET</code>.</p>
+<pre><code class="language-asm">on_irq: PUSH    LR
+        PUSH    R0
+        PUSH    R1
+        PUSH    R2
+        PUSH    R3
+        ...                     ; работа, в том числе вызовы библиотеки
+        POP     R3
+        POP     R2
+        POP     R1
+        POP     R0
+        POP     LR
+        IRET
+</code></pre>
+<p>Критическая секция, которая восстанавливает прежнее состояние IF:</p>
+<pre><code class="language-asm">        PUSH    FLAGS
+        CLI
+        ...                     ; прерывания запрещены
+        POP     FLAGS
+</code></pre>
+<h3>5.8. Ввод-вывод</h3>
+<p>Консоль занимает порт <code>$FF20</code>, в библиотеке он доступен как константа <code>CONSOLE</code>:</p>
+<ul>
+<li>запись байта (<code>STB [CONSOLE], R0</code>) выводит символ;</li>
+<li>чтение байта (<code>LDZX R0, [CONSOLE]</code>) даёт следующий байт ввода или 0, если ввода нет.</li>
+</ul>
+<p>Порт нужно читать байтовыми командами, а байт 0 во вводе неотличим от «ввода нет». В эмуляторе командной строки ввод идёт из stdin, в веб-отладчике — из панели консоли.</p>
+<p>Это лишь самый простой способ работы с консолью. Та же консоль — дисплей 80×25 с цветом и выводом в любую позицию, а клавиатура выдаёт ещё и сканкоды клавиш; рядом есть таймер 50 Гц. Всё это описано в документе «Машина CPU16: память и устройства», подпрограммы — в приложении А, а примеры <code>display_demo.asm</code>, <code>keys.asm</code>, <code>stopwatch.asm</code> и <code>snake.asm</code> показывают их в работе.</p>
+<p>Пример: прочитать строку и вывести её задом наперёд.</p>
+<!-- run stdin="stressed\n" -->
+<pre><code class="language-asm">        LD      SP, #$FF00
+        LD      R0, #buf
+        LD      R1, #32         ; размер буфера
+        LD      R2, #0          ; без эха
+        CALL    gets            ; R0 = длина
+        LD      R4, R0
+        ADD     R4, #buf        ; R4 = адрес за последним символом
+@back:  CMP     R4, #buf
+        JZ      @done
+        DEC     R4
+        LDZX    R0, [R4]
+        CALL    putc
+        JMP     @back
+@done:  CALL    newline
+        WFI
+buf:    .space  32
+        .include &#34;stdlib.asm&#34;
+</code></pre>
+<pre><code class="language-text">desserts
+</code></pre>
+<h2>6. Память системы и запуск программы</h2>
+<h3>6.1. Типичная раскладка памяти</h3>
+<table>
+<thead>
+<tr>
+<th>Адреса</th>
+<th>Что лежит</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$0000..$7FFF</code></td>
+<td><strong>ПЗУ:</strong> код, константы (строки, таблицы), библиотека</td>
+</tr>
+<tr>
+<td><code>$8000..</code></td>
+<td><strong>ОЗУ:</strong> переменные, растут вверх</td>
+</tr>
+<tr>
+<td><code>..$FEFF</code></td>
+<td><strong>ОЗУ:</strong> стек, растёт вниз от <code>$FF00</code></td>
+</tr>
+<tr>
+<td><code>$FF00..$FF1F</code></td>
+<td><strong>ОЗУ:</strong> таблица векторов прерываний (16 слов)</td>
+</tr>
+<tr>
+<td><code>$FF20..$FFFF</code></td>
+<td>устройства ввода-вывода (<code>$FF20</code> — консоль)</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">$0000 +----------------------+
+      | код, константы, ПЗУ  |
+$8000 +----------------------+
+      | переменные     |     |
+      |                v     |
+      |                      |
+      |                ^     |
+      | стек           |     |
+$FF00 +----------------------+
+      | векторы прерываний   |
+$FF20 +----------------------+
+      | ввод-вывод           |
+$FFFF +----------------------+
+</code></pre>
+<p>Два следствия:</p>
+<ul>
+<li><strong>Содержимое ОЗУ при включении питания не определено.</strong> Переменные объявляются через <code>.space</code>, а начальные значения задаёт код пролога. Строки и таблицы, которые не меняются, лежат в ПЗУ.</li>
+<li><strong>Таблица векторов тоже в ОЗУ</strong>, поэтому её заполняет программа. Пока она не заполнена, любое прерывание, в том числе ERRCMD, уйдёт по мусорному адресу.</li>
+</ul>
+<p>В эмуляторе вся память — ОЗУ, и образ загружается целиком. Но если программа следует этим правилам, она будет работать и на настоящей системе.</p>
+<h3>6.2. Что происходит при сбросе</h3>
+<p>После сброса:</p>
+<ul>
+<li>все регистры равны 0, включая SP;</li>
+<li>прерывания запрещены (IF = 0);</li>
+<li>выполнение начинается с адреса <code>$0000</code>.</li>
+</ul>
+<p>Значит, первая команда программы должна лежать по адресу 0, а первым делом нужно установить стек.</p>
+<h3>6.3. Стандартный пролог</h3>
+<ol>
+<li><strong>Стек:</strong> <code>LD SP, #$FF00</code>. Первое слово ляжет в <code>$FEFE</code>, сразу под таблицей векторов.</li>
+<li><strong>Вектор ERRCMD — первым делом.</strong> Тогда ошибка в любом последующем коде будет поймана.</li>
+<li><strong>Остальные векторы</strong> — на заглушку, которая сообщает о неожиданном прерывании. Затем ставятся рабочие обработчики.</li>
+<li><strong>Обнуление переменных</strong> (<code>memset</code> по области <code>.space</code>).</li>
+<li><strong><code>STI</code></strong> — разрешить прерывания.</li>
+<li><strong><code>CALL main</code></strong>, а после возврата — остановка: <code>CLI</code>, затем <code>WFI</code> в цикле.</li>
+</ol>
+<h3>6.4. Скелет программы</h3>
+<p>Полный пример (файл <code>skeleton.asm</code>).</p>
+<ul>
+<li>Пролог по разделу 6.3.</li>
+<li>Программа просит число и печатает его в шестнадцатеричном виде и его квадрат.</li>
+<li>Затем она ждёт три прерывания таймера IRQ0, а каждый «тик» печатает точку. В веб-отладчике прерывание подаётся кнопкой IRQ 0. В эмуляторе командной строки источника прерываний нет, поэтому программа останавливается на ожидании.</li>
+</ul>
+<!-- run stdin="250\n" -->
+<pre><code class="language-asm">        .equ    RAM_START,  $8000
+        .equ    VECTORS,    $FF00       ; 16 слов: IRQ0..7, ERRCMD (8), TRAP 9..15
+        .equ    VEC_ERRCMD, VECTORS + 2*8
+        .equ    STACK_TOP,  $FF00
+
+; ---------------- ПЗУ: код ----------------
+        .org    $0000
+reset:  LD      SP, #STACK_TOP          ; 1. стек
+        LD      R0, #on_errcmd          ; 2. вектор ERRCMD - первым делом
+        ST      [VEC_ERRCMD], R0
+        LD      R0, #VECTORS            ; 3. все векторы - на заглушку
+        LD      R1, #on_unexpected
+        LD      R2, #16
+@vec:   ST      [R0++], R1
+        DEC     R2
+        JNZ     @vec
+        LD      R0, #on_errcmd          ;    и рабочие обработчики
+        ST      [VEC_ERRCMD], R0
+        LD      R0, #on_tick
+        ST      [VECTORS + 2*0], R0     ;    IRQ0 - таймер
+        LD      R0, #bss_start          ; 4. обнулить переменные
+        LD      R1, #0
+        LD      R2, #bss_end - bss_start
+        CALL    memset
+        STI                             ; 5. разрешить прерывания
+        CALL    main                    ; 6. программа
+halt:   CLI                             ;    и остановка
+@stop:  WFI
+        JMP     @stop
+
+main:   PUSH    LR
+        LD      R0, #msg_hello
+        CALL    puts
+        LD      R0, #msg_ask
+        CALL    puts
+        LD      R0, #1                  ; с эхом
+        CALL    read_dec
+        TEST    R1, R1
+        JNZ     @bad
+        LD      R4, R0
+        LD      R0, #msg_hex
+        CALL    puts
+        LD      R0, R4
+        CALL    print_hex16
+        LD      R0, #msg_square
+        CALL    puts
+        LD      R0, R4
+        LD      R1, R4
+        CALL    mulu16                  ; R1:R0 = R4 * R4
+        CALL    print_u32
+        CALL    newline
+        JMP     @wait
+@bad:   LD      R0, #msg_bad
+        CALL    puts
+@wait:  LD      R0, #msg_wait
+        CALL    puts
+@tick:  WFI                             ; ждать прерываний
+        LD      R0, [ticks]
+        CMP     R0, #3
+        JB      @tick
+        LD      R0, #msg_done
+        CALL    puts
+        POP     IP
+
+on_tick:                                ; IRQ0: сохраняет всё, что трогает
+        PUSH    LR
+        PUSH    R0
+        PUSH    R1
+        PUSH    R2
+        PUSH    R3
+        LD      R0, [ticks]
+        INC     R0
+        ST      [ticks], R0
+        LD      R0, #&#39;.&#39;
+        CALL    putc
+        POP     R3
+        POP     R2
+        POP     R1
+        POP     R0
+        POP     LR
+        IRET
+
+on_errcmd:                              ; в стеке: [SP] - FLAGS, [SP+2] - адрес команды
+        LD      R0, #msg_errcmd
+        CALL    puts
+        LD      R0, [SP+2]
+        CALL    print_hex16
+        CALL    newline
+        JMP     halt
+
+on_unexpected:
+        LD      R0, #msg_unexp
+        CALL    puts
+        JMP     halt
+
+msg_hello:  .asciz  &#34;CPU16 skeleton\n&#34;
+msg_ask:    .asciz  &#34;Enter a number: &#34;
+msg_hex:    .asciz  &#34;hex: $&#34;
+msg_square: .asciz  &#34;, square: &#34;
+msg_bad:    .asciz  &#34;\nnot a number\n&#34;
+msg_wait:   .asciz  &#34;Waiting for 3 timer interrupts (IRQ 0)&#34;
+msg_done:   .asciz  &#34; done\n&#34;
+msg_errcmd: .asciz  &#34;\nERRCMD at $&#34;
+msg_unexp:  .asciz  &#34;\nunexpected interrupt\n&#34;
+
+        .include &#34;stdlib.asm&#34;
+
+; ---------------- ОЗУ: переменные ----------------
+        .org    RAM_START
+bss_start:
+ticks:  .space  2
+bss_end:
+</code></pre>
+<p>Вывод в эмуляторе командной строки (ввод <code>250</code>; ожидание прерываний не заканчивается):</p>
+<pre><code class="language-text">CPU16 skeleton
+Enter a number: 250
+hex: $00FA, square: 62500
+Waiting for 3 timer interrupts (IRQ 0)
+</code></pre>
+<p>В веб-отладчике после трёх нажатий IRQ 0 к последней строке добавится <code>... done</code>.</p>
+<p>Если в такой программе встретится недопустимая команда, обработчик ERRCMD напечатает её адрес, например <code>ERRCMD at $0044</code>, и остановит процессор.</p>
+<h2>7. Инструменты</h2>
+<ul>
+<li><strong><code>cpu16asm prog.asm -l prog.lst -m prog.map</code></strong> — сборка с листингом и картой символов. Образ <code>prog.bin</code> начинается с адреса 0. Если в программе есть область ОЗУ (<code>.org $8000</code>), образ доходит до неё.</li>
+<li><strong><code>cpu16 prog.bin &lt; input.txt</code></strong> — запуск с вводом из файла. Остальные ключи:
+<ul>
+<li><code>-t</code> — трассировка каждой команды;</li>
+<li><code>-n N</code> — ограничение числа шагов;</li>
+<li><code>--strict-align</code> — сообщения об обращениях к словам по нечётным адресам.</li>
+</ul>
+</li>
+<li><strong>Веб-отладчик:</strong>
+<ul>
+<li>вкладка «Source» — редактор со сборкой по Ctrl+B и отладкой по строкам: F7 шаг, F8 шаг с обходом CALL, F4 до курсора, F5 точка останова, F9 выполнение;</li>
+<li>вкладка «Disassembly» — машинный код;</li>
+<li>кнопки IRQ подают прерывания, панель консоли принимает ввод;</li>
+<li>«Download .zip» сохраняет исходник, образ, листинг и карту.</li>
+</ul>
+</li>
+</ul>
+<h2>Приложение А. Стандартная библиотека</h2>
+<p>Файл <code>stdlib.asm</code>. Подключается строкой <code>.include &quot;stdlib.asm&quot;</code>, обычно после основного кода: библиотека не использует переменных в памяти и может лежать в ПЗУ. Она также определяет константу <code>CONSOLE</code> = <code>$FF20</code>.</p>
+<p>32-битные числа передаются парой регистров: старшее слово в R1 (R3), младшее в R0 (R2); запись R1:R0.</p>
+<h3>Вывод</h3>
+<table>
+<thead>
+<tr>
+<th>Подпрограмма</th>
+<th>Вход</th>
+<th>Результат</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>putc</code></td>
+<td>R0 — символ</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>newline</code></td>
+<td>—</td>
+<td>перевод строки</td>
+</tr>
+<tr>
+<td><code>puts</code></td>
+<td>R0 — адрес строки с нулём в конце</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>print_u16</code> / <code>print_s16</code></td>
+<td>R0</td>
+<td>число без знака / со знаком</td>
+</tr>
+<tr>
+<td><code>print_hex8</code> / <code>print_hex16</code></td>
+<td>R0</td>
+<td>2 / 4 шестнадцатеричные цифры</td>
+</tr>
+<tr>
+<td><code>print_u32</code> / <code>print_s32</code></td>
+<td>R1:R0</td>
+<td>32-битное число без знака / со знаком</td>
+</tr>
+<tr>
+<td><code>print_hex32</code></td>
+<td>R1:R0</td>
+<td>8 шестнадцатеричных цифр</td>
+</tr>
+</tbody>
+</table>
+<h3>Ввод</h3>
+<table>
+<thead>
+<tr>
+<th>Подпрограмма</th>
+<th>Вход</th>
+<th>Результат</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>getc</code></td>
+<td>—</td>
+<td>R0 — байт ввода; ждёт его появления</td>
+</tr>
+<tr>
+<td><code>getc_nb</code></td>
+<td>—</td>
+<td>R0 — байт или 0 без ожидания; ZF = 1, если 0</td>
+</tr>
+<tr>
+<td><code>gets</code></td>
+<td>R0 — буфер, R1 — его размер (≥ 1), R2 — эхо (0/1)</td>
+<td>строка без <code>\n</code> с нулём в конце; R0 — длина; обрабатывает возврат на символ</td>
+</tr>
+<tr>
+<td><code>read_dec</code></td>
+<td>R0 — эхо (0/1)</td>
+<td>R0 — число (может быть со знаком <code>-</code>); R1 = 0 — успех, 1 — нет цифр или переполнение</td>
+</tr>
+</tbody>
+</table>
+<p><code>read_dec</code> пропускает начальные пробелы и забирает из ввода символ, на котором число закончилось, например перевод строки.</p>
+<h3>Память и строки</h3>
+<table>
+<thead>
+<tr>
+<th>Подпрограмма</th>
+<th>Вход</th>
+<th>Результат</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memcpy</code></td>
+<td>R0 — куда, R1 — откуда, R2 — число байт</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>memset</code></td>
+<td>R0 — куда, R1 — байт, R2 — число байт</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>strlen</code></td>
+<td>R0 — строка</td>
+<td>R0 — длина</td>
+</tr>
+</tbody>
+</table>
+<h3>32-битная арифметика (a = R1:R0, b = R3:R2)</h3>
+<table>
+<thead>
+<tr>
+<th>Подпрограмма</th>
+<th>Результат</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>add32</code> / <code>sub32</code></td>
+<td>R1:R0 = a ± b; CF — перенос / заём</td>
+</tr>
+<tr>
+<td><code>neg32</code></td>
+<td>R1:R0 = −a</td>
+</tr>
+<tr>
+<td><code>cmp32u</code></td>
+<td>флаги для <code>JZ</code>, <code>JNZ</code>, <code>JB</code>, <code>JAE</code>, <code>JA</code>, <code>JBE</code> (сравнение без знака)</td>
+</tr>
+<tr>
+<td><code>mulu16</code></td>
+<td>R1:R0 = R0 × R1 (16 × 16 = 32 бита)</td>
+</tr>
+<tr>
+<td><code>mul32</code></td>
+<td>R1:R0 = младшие 32 бита a × b</td>
+</tr>
+<tr>
+<td><code>divu32</code></td>
+<td>a / R2: R1:R0 — частное, R2 — остаток; деление на 0 — OF = 1, частное $FFFFFFFF</td>
+</tr>
+</tbody>
+</table>
+<h3>Дисплей, клавиатура, таймер</h3>
+<p>Устройства описаны в документе «Машина CPU16: память и устройства». Библиотека определяет константы портов (<code>CON_CTRL</code>, <code>CON_ATTR</code>, <code>CON_COL</code>, <code>CON_ROW</code>, <code>CON_CMD</code>, <code>TIMER</code>), режимов (<code>MODE_TTY</code>, <code>MODE_CURSOR</code>, <code>MODE_ATTR</code>), команд (<code>CMD_CLEAR</code>, <code>CMD_CLEOL</code>…), цветов (<code>BLACK</code>…<code>WHITE</code>, <code>UNDERLINE</code>, <code>INVERSE</code>; атрибут — <code>ФОН &lt;&lt; 3 | ТЕКСТ</code>) и сканкодов (<code>SC_ESC</code>, <code>SC_ENTER</code>, <code>SC_UP</code>, <code>SC_F1</code>…).</p>
+<table>
+<thead>
+<tr>
+<th>Подпрограмма</th>
+<th>Вход</th>
+<th>Результат</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scr_mode</code></td>
+<td>R0 — режим (<code>MODE_TTY | MODE_CURSOR | MODE_ATTR</code>; 0 — координатный без курсора)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>scr_attr</code></td>
+<td>R0 — атрибут</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>scr_goto</code></td>
+<td>R0 — столбец, R1 — строка</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>scr_clear</code></td>
+<td>—</td>
+<td>экран очищен текущим атрибутом, позиция (0, 0)</td>
+</tr>
+<tr>
+<td><code>scr_print_at</code></td>
+<td>R0 — столбец, R1 — строка, R2 — строка текста</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>scr_paint</code></td>
+<td>R0 — атрибут, R1 — число ячеек</td>
+<td>атрибуты ячеек от позиции изменены, текст цел</td>
+</tr>
+<tr>
+<td><code>scr_box</code></td>
+<td>R0, R1 — левый верхний угол, R2 — ширина, R3 — высота</td>
+<td>двойная рамка (в координатном режиме)</td>
+</tr>
+<tr>
+<td><code>getkey</code></td>
+<td>—</td>
+<td>R0 — символ (младший байт) и сканкод (старший); ждёт нажатия</td>
+</tr>
+<tr>
+<td><code>getkey_nb</code></td>
+<td>—</td>
+<td>R0 — символ и сканкод или 0 без ожидания; ZF = 1, если 0</td>
+</tr>
+<tr>
+<td><code>timer_on</code>, <code>timer_off</code></td>
+<td>—</td>
+<td>таймер 50 Гц на IRQ0 включён / выключен</td>
+</tr>
+</tbody>
+</table>
+<p>Специальные клавиши (стрелки, Esc, F1–F12) проверяйте по сканкоду, печатаемые (пробел, буквы) — по символу: при вводе из stdin в эмуляторе командной строки у обычных символов сканкода нет.</p>
+<p>Все подпрограммы сохраняют R4..R11.</p>
+<h3>Исходный текст</h3>
+<pre><code class="language-asm">; stdlib.asm - небольшая стандартная библиотека CPU16 (спецификация, ревизия 6).
+;
+; Подключение: .include &#34;stdlib.asm&#34; в том месте программы, где должен лежать код
+; библиотеки (обычно после основного кода, в ПЗУ). Библиотека не использует
+; переменных в памяти, поэтому её можно размещать в ПЗУ.
+;
+; Соглашение о вызове
+;   - аргументы в R0..R3 (если их больше - через стек, их снимает вызывающий);
+;   - результат в R0..R3;
+;   - R0..R3, LR и FLAGS подпрограмма может портить (оперативные регистры);
+;   - R4..R11 и SP подпрограмма обязана сохранить;
+;   - 32-битные числа - в паре регистров: старшее слово в R1 (R3), младшее в R0 (R2),
+;     запись R1:R0.
+;
+; Консоль - порт $FF20 («Машина CPU16: память и устройства»): запись байта выводит символ,
+; чтение байта даёт символ следующего нажатия или 0, если нажатий нет; чтение слова - символ
+; и сканкод. Байт 0 во вводе неотличим от «ввода нет», поэтому getc ждёт ненулевой байт.
+; Раздел «Дисплей, клавиатура, таймер» в конце файла - координатный вывод, цвет, клавиши
+; со сканкодами и таймер 50 Гц.
+
+        .equ    CONSOLE, $FF20
+
+; ============================================================================
+; Вывод
+; ============================================================================
+
+; putc - вывести символ. R0 - символ.
+putc:   STB     [CONSOLE], R0
+        RET
+
+; newline - перевод строки.
+newline:
+        LD      R0, #10
+        STB     [CONSOLE], R0
+        RET
+
+; puts - вывести строку с нулём в конце. R0 - адрес строки.
+puts:   LDZX    R1, [R0++]
+        CMP     R1, #0
+        JZ      @done
+        STB     [CONSOLE], R1
+        JMP     puts
+@done:  RET
+
+; print_u16 - вывести число без знака в десятичном виде. R0 - число.
+print_u16:
+        LD      R2, #0          ; число цифр в стеке
+@div:   LD      R1, R0
+        REMU    R1, #10         ; младшая цифра
+        DIVU    R0, #10
+        ADD     R1, #&#39;0&#39;
+        PUSH    R1
+        INC     R2
+        CMP     R0, #0
+        JNZ     @div
+@out:   POP     R1              ; цифры из стека идут от старшей к младшей
+        STB     [CONSOLE], R1
+        DEC     R2
+        JNZ     @out
+        RET
+
+; print_s16 - вывести число со знаком в десятичном виде. R0 - число.
+print_s16:
+        TEST    R0, R0
+        JNS     print_u16       ; неотрицательное: печатаем как есть
+        LD      R1, #&#39;-&#39;
+        STB     [CONSOLE], R1
+        NEG     R0              ; -32768 даёт $8000 = 32768, что и нужно
+        JMP     print_u16       ; хвостовой вызов: LR указывает на вызывающего
+
+; print_hex8 - вывести младший байт R0 двумя шестнадцатеричными цифрами.
+print_hex8:
+        SHL     R0, #8          ; байт в старшую половину
+        LD      R2, #2
+        JMP     _hex_digits
+
+; print_hex16 - вывести R0 четырьмя шестнадцатеричными цифрами.
+print_hex16:
+        LD      R2, #4
+_hex_digits:                    ; R0 - значение (старшие цифры вверху), R2 - число цифр
+        ROR     R0, #12         ; циклический сдвиг влево на 4: старшая тетрада вниз
+        LD      R1, R0
+        AND     R1, #15
+        CMP     R1, #10
+        JB      @digit
+        ADD     R1, #&#39;A&#39;-&#39;0&#39;-10
+@digit: ADD     R1, #&#39;0&#39;
+        STB     [CONSOLE], R1
+        DEC     R2
+        JNZ     _hex_digits
+        RET
+
+; print_hex32 - вывести R1:R0 восемью шестнадцатеричными цифрами.
+print_hex32:
+        PUSH    LR
+        PUSH    R0
+        LD      R0, R1
+        CALL    print_hex16     ; старшее слово
+        POP     R0
+        POP     LR
+        JMP     print_hex16     ; младшее слово, хвостовой вызов
+
+; print_u32 - вывести R1:R0 без знака в десятичном виде.
+print_u32:
+        PUSH    LR
+        PUSH    R4
+        LD      R4, #0          ; число цифр в стеке
+@div:   LD      R2, #10
+        CALL    divu32          ; R1:R0 = R1:R0 / 10, R2 = остаток
+        ADD     R2, #&#39;0&#39;
+        PUSH    R2
+        INC     R4
+        LD      R3, R0
+        OR      R3, R1          ; частное ещё не ноль?
+        JNZ     @div
+@out:   POP     R0
+        STB     [CONSOLE], R0
+        DEC     R4
+        JNZ     @out
+        POP     R4
+        POP     IP              ; возврат: на вершине сохранённый LR
+
+; print_s32 - вывести R1:R0 со знаком в десятичном виде.
+print_s32:
+        TEST    R1, R1
+        JNS     print_u32
+        LD      R2, #&#39;-&#39;
+        STB     [CONSOLE], R2
+        NOT     R0              ; R1:R0 = -R1:R0
+        NOT     R1
+        ADD     R0, #1
+        ADC     R1, #0
+        JMP     print_u32
+
+; ============================================================================
+; Ввод
+; ============================================================================
+
+; getc - дождаться байта ввода. Результат: R0 - байт (не 0).
+; Если ввод закончился, ждёт вечно (0 во вводе неотличим от «ввода нет»).
+getc:   LDZX    R0, [CONSOLE]
+        TEST    R0, R0
+        JZ      getc
+        RET
+
+; getc_nb - взять байт ввода без ожидания. Результат: R0 - байт или 0; ZF = 1, если 0.
+getc_nb:
+        LDZX    R0, [CONSOLE]
+        TEST    R0, R0
+        RET
+
+; gets - прочитать строку до перевода строки.
+;   R0 - буфер, R1 - размер буфера в байтах (не меньше 1), R2 - эхо (0 - нет, иначе да).
+; В буфер кладётся строка без &#39;\n&#39; с нулём в конце; лишние символы отбрасываются.
+; Возврат (8 или 127) удаляет последний символ, CR (13) игнорируется.
+; Результат: R0 - длина строки.
+gets:   PUSH    LR
+        PUSH    R4
+        PUSH    R5
+        PUSH    R6
+        PUSH    R7
+        LD      R4, R0          ; начало буфера
+        LD      R5, R0          ; текущая позиция
+        LD      R6, R1
+        DEC     R6              ; сколько символов ещё поместится
+        LD      R7, R2          ; эхо
+@next:  CALL    getc
+        CMP     R0, #10
+        JZ      @end
+        CMP     R0, #13
+        JZ      @next
+        CMP     R0, #8
+        JZ      @back
+        CMP     R0, #127
+        JZ      @back
+        TEST    R6, R6
+        JZ      @next           ; буфер полон
+        STB     [R5++], R0
+        DEC     R6
+        TEST    R7, R7
+        JZ      @next
+        STB     [CONSOLE], R0
+        JMP     @next
+@back:  CMP     R5, R4
+        JZ      @next           ; удалять нечего
+        DEC     R5
+        INC     R6
+        TEST    R7, R7
+        JZ      @next
+        LD      R0, #8          ; эхо: шаг назад, пробел, шаг назад
+        STB     [CONSOLE], R0
+        LD      R0, #&#39; &#39;
+        STB     [CONSOLE], R0
+        LD      R0, #8
+        STB     [CONSOLE], R0
+        JMP     @next
+@end:   LD      R0, #0
+        STB     [R5], R0
+        TEST    R7, R7
+        JZ      @len
+        LD      R0, #10
+        STB     [CONSOLE], R0
+@len:   LD      R0, R5
+        SUB     R0, R4
+        POP     R7
+        POP     R6
+        POP     R5
+        POP     R4
+        POP     IP
+
+; read_dec - прочитать десятичное число: пробелы, необязательный &#39;-&#39;, цифры.
+; Чтение заканчивается на первом символе, который не цифра (он забирается из ввода).
+;   R0 - эхо (0 - нет, иначе да).
+; Результат: R0 - число (отрицательное - в дополнительном коде),
+;            R1 - 0, если число прочитано; 1 - нет цифр или переполнение
+;                 (больше 65535, а для отрицательных меньше -32768).
+read_dec:
+        PUSH    LR
+        PUSH    R4
+        PUSH    R5
+        PUSH    R6
+        PUSH    R7
+        LD      R6, R0          ; эхо
+        LD      R4, #0          ; значение
+        LD      R5, #0          ; 1 - был минус
+        LD      R7, #0          ; 0 - цифр нет, 1 - есть, 2 - переполнение
+@next:  CALL    getc
+        TEST    R6, R6
+        JZ      @check
+        STB     [CONSOLE], R0
+@check: CMP     R0, #&#39;0&#39;
+        JB      @other
+        CMP     R0, #&#39;9&#39;
+        JA      @other
+        SUB     R0, #&#39;0&#39;
+        MUL     R4, #10
+        JC      @ovf            ; произведение не поместилось в 16 бит
+        ADD     R4, R0
+        JC      @ovf
+        CMP     R7, #2
+        JZ      @next           ; переполнение уже было
+        LD      R7, #1
+        JMP     @next
+@ovf:   LD      R7, #2
+        JMP     @next
+@other: TEST    R7, R7
+        JNZ     @done           ; конец числа
+        CMP     R0, #&#39; &#39;
+        JZ      @next           ; пробелы перед числом
+        CMP     R0, #&#39;-&#39;
+        JNZ     @done           ; ни цифры, ни знака: ошибка
+        TEST    R5, R5
+        JNZ     @done           ; второй минус: ошибка
+        LD      R5, #1
+        JMP     @next
+@done:  LD      R1, #1          ; по умолчанию - ошибка
+        CMP     R7, #1
+        JNZ     @ret
+        TEST    R5, R5
+        JZ      @ok
+        CMP     R4, #$8000
+        JA      @ret            ; меньше -32768
+        NEG     R4
+@ok:    LD      R1, #0
+@ret:   LD      R0, R4
+        POP     R7
+        POP     R6
+        POP     R5
+        POP     R4
+        POP     IP
+
+; ============================================================================
+; Память и строки
+; ============================================================================
+
+; memcpy - скопировать R2 байт из R1 в R0.
+memcpy: TEST    R2, R2
+        JZ      @done
+@loop:  LDZX    R3, [R1++]
+        STB     [R0++], R3
+        DEC     R2
+        JNZ     @loop
+@done:  RET
+
+; memset - заполнить R2 байт по адресу R0 значением R1.
+memset: TEST    R2, R2
+        JZ      @done
+@loop:  STB     [R0++], R1
+        DEC     R2
+        JNZ     @loop
+@done:  RET
+
+; strlen - длина строки с нулём в конце. R0 - адрес. Результат: R0 - длина.
+strlen: LD      R1, R0
+@loop:  LDZX    R2, [R1++]
+        TEST    R2, R2
+        JNZ     @loop
+        SUB     R1, R0
+        DEC     R1
+        LD      R0, R1
+        RET
+
+; ============================================================================
+; 32-битная арифметика. Операнды: a = R1:R0, b = R3:R2.
+; ============================================================================
+
+; add32 - R1:R0 = a + b. CF - перенос из старшего слова.
+add32:  ADD     R0, R2
+        ADC     R1, R3
+        RET
+
+; sub32 - R1:R0 = a - b. CF - заём (a &lt; b без знака).
+sub32:  SUB     R0, R2
+        SBC     R1, R3
+        RET
+
+; neg32 - R1:R0 = -a.
+neg32:  NOT     R0
+        NOT     R1
+        ADD     R0, #1
+        ADC     R1, #0
+        RET
+
+; cmp32u - сравнить a и b без знака; результат во флагах
+; для JZ, JNZ, JB, JAE, JA, JBE (знаковые условия после неё не работают).
+cmp32u: CMP     R1, R3
+        JNZ     @done
+        CMP     R0, R2
+@done:  RET
+
+; mulu16 - R1:R0 = R0 * R1 (16 x 16 = 32 бита, без знака).
+mulu16: LD      R2, R0
+        MUL     R0, R1          ; младшее слово
+        MULHU   R2, R1          ; старшее слово
+        LD      R1, R2
+        RET
+
+; mul32 - R1:R0 = младшие 32 бита a * b (одинаково для чисел со знаком и без).
+mul32:  PUSH    R4
+        LD      R4, R0
+        MULHU   R4, R2          ; старшее слово a0*b0
+        MUL     R1, R2          ; a1*b0, младшее слово
+        ADD     R4, R1
+        LD      R1, R0
+        MUL     R1, R3          ; a0*b1, младшее слово
+        ADD     R1, R4          ; старшее слово результата
+        MUL     R0, R2          ; младшее слово a0*b0
+        POP     R4
+        RET
+
+; divu32 - деление R1:R0 на 16-битное R2 без знака.
+; Результат: R1:R0 - частное, R2 - остаток, OF = 0.
+; Деление на 0: R1:R0 = $FFFFFFFF, R2 = младшее слово делимого, OF = 1 (как у DIVU).
+divu32: TEST    R2, R2
+        JNZ     @go
+        LD      R2, R0
+        LD      R0, #$FFFF
+        LD      R1, R0
+        OR      FLAGS, #$10     ; OF = 1
+        RET
+@go:    PUSH    R4
+        LD      R3, #0          ; остаток
+        LD      R4, #32         ; бит частного
+@loop:  ADD     R0, R0          ; сдвиг делимого влево, старший бит - в остаток
+        ADC     R1, R1
+        ADC     R3, R3
+        JC      @sub            ; остаток стал 17-битным: точно не меньше делителя
+        CMP     R3, R2
+        JB      @next
+@sub:   SUB     R3, R2
+        INC     R0              ; очередной бит частного = 1
+@next:  DEC     R4
+        JNZ     @loop
+        LD      R2, R3
+        POP     R4
+        AND     FLAGS, #$FFEF   ; OF = 0, остальные флаги не трогаем
+        RET
+
+; ============================================================================
+; Дисплей, клавиатура, таймер («Машина CPU16: память и устройства»)
+; ============================================================================
+
+        .equ    CON_CTRL,   $FF22       ; режим: MODE_TTY | MODE_CURSOR | MODE_ATTR
+        .equ    CON_ATTR,   $FF23       ; текущий атрибут
+        .equ    CON_COL,    $FF24       ; столбец позиции 0..79
+        .equ    CON_ROW,    $FF25       ; строка позиции 0..24
+        .equ    CON_CMD,    $FF26       ; команда
+        .equ    CON_COLS,   $FF27       ; ширина экрана (80)
+        .equ    CON_ROWS,   $FF28       ; высота экрана (25)
+        .equ    TIMER,      $FF29       ; бит 0 - таймер 50 Гц на IRQ0
+
+        .equ    MODE_TTY,    1          ; телетайп: \n \r \b \t, прокрутка
+        .equ    MODE_CURSOR, 2          ; курсор виден
+        .equ    MODE_ATTR,   4          ; запись меняет только атрибуты
+
+        .equ    CMD_CLEAR,  1           ; очистить экран, позиция (0, 0)
+        .equ    CMD_CLEOL,  2           ; очистить до конца строки
+        .equ    CMD_CLEOS,  3           ; очистить до конца экрана
+        .equ    CMD_SCROLLUP,   4       ; прокрутить вверх
+        .equ    CMD_SCROLLDOWN, 5       ; прокрутить вниз
+
+        ; цвета; атрибут = ФОН &lt;&lt; 3 | ТЕКСТ, плюс UNDERLINE и INVERSE
+        .equ    BLACK, 0
+        .equ    BLUE, 1
+        .equ    GREEN, 2
+        .equ    CYAN, 3
+        .equ    RED, 4
+        .equ    YELLOW, 5
+        .equ    GRAY, 6
+        .equ    WHITE, 7
+        .equ    UNDERLINE, $40
+        .equ    INVERSE, $80
+
+        ; сканкоды (старший байт кода клавиши)
+        .equ    SC_ESC,   $01
+        .equ    SC_BACKSPACE, $0E
+        .equ    SC_TAB,   $0F
+        .equ    SC_ENTER, $1C
+        .equ    SC_SPACE, $39
+        .equ    SC_F1,    $3B           ; F1..F10 - $3B..$44 подряд
+        .equ    SC_F11,   $57
+        .equ    SC_F12,   $58
+        .equ    SC_HOME,  $47
+        .equ    SC_UP,    $48
+        .equ    SC_PGUP,  $49
+        .equ    SC_LEFT,  $4B
+        .equ    SC_RIGHT, $4D
+        .equ    SC_END,   $4F
+        .equ    SC_DOWN,  $50
+        .equ    SC_PGDN,  $51
+        .equ    SC_INS,   $52
+        .equ    SC_DEL,   $53
+
+; scr_mode - режим дисплея. R0 - MODE_TTY | MODE_CURSOR | MODE_ATTR.
+scr_mode:
+        STB     [CON_CTRL], R0
+        RET
+
+; scr_attr - текущий атрибут. R0 - атрибут.
+scr_attr:
+        STB     [CON_ATTR], R0
+        RET
+
+; scr_goto - позиция. R0 - столбец, R1 - строка.
+scr_goto:
+        STB     [CON_COL], R0
+        STB     [CON_ROW], R1
+        RET
+
+; scr_clear - очистить экран текущим атрибутом, позиция (0, 0).
+scr_clear:
+        LD      R0, #CMD_CLEAR
+        STB     [CON_CMD], R0
+        RET
+
+; scr_print_at - вывести строку в позицию. R0 - столбец, R1 - строка, R2 - адрес строки.
+scr_print_at:
+        STB     [CON_COL], R0
+        STB     [CON_ROW], R1
+        LD      R0, R2
+        JMP     puts                    ; хвостовой вызов
+
+; scr_paint - сменить атрибут R1 ячеек от позиции, не меняя текст. R0 - атрибут, R1 - число ячеек.
+; Позиция сдвигается на R1 ячеек.
+scr_paint:
+        LDZX    R2, [CON_CTRL]          ; запомнить режим
+        LD      R3, R2
+        OR      R3, #MODE_ATTR
+        STB     [CON_CTRL], R3
+        TEST    R1, R1
+        JZ      @done
+@loop:  STB     [CONSOLE], R0           ; в режиме атрибутов запись меняет только атрибут
+        DEC     R1
+        JNZ     @loop
+@done:  STB     [CON_CTRL], R2
+        RET
+
+; scr_box - двойная рамка в координатном режиме. R0 - столбец, R1 - строка левого верхнего угла,
+; R2 - ширина, R3 - высота (обе не меньше 2). Рисуется текущим атрибутом.
+scr_box:
+        PUSH    LR                      ; вызывает _box_run: LR нужно сохранить
+        PUSH    R4
+        PUSH    R5
+        STB     [CON_COL], R0
+        STB     [CON_ROW], R1
+        LD      R4, R2
+        SUB     R4, #2                  ; ширина без углов
+        LD      R5, #&#39;╔&#39;
+        STB     [CONSOLE], R5
+        LD      R5, #&#39;═&#39;
+        CALL    _box_run
+        LD      R5, #&#39;╗&#39;
+        STB     [CONSOLE], R5
+        LD      R5, R3                  ; боковые стороны: R5 - сколько строк осталось
+        SUB     R5, #2
+@side:  TEST    R5, R5
+        JZ      @bottom
+        INC     R1
+        STB     [CON_ROW], R1
+        STB     [CON_COL], R0
+        LD      R4, #&#39;║&#39;
+        STB     [CONSOLE], R4
+        LD      R4, R0
+        ADD     R4, R2
+        DEC     R4
+        STB     [CON_COL], R4
+        LD      R4, #&#39;║&#39;
+        STB     [CONSOLE], R4
+        DEC     R5
+        JMP     @side
+@bottom:
+        INC     R1
+        STB     [CON_ROW], R1
+        STB     [CON_COL], R0
+        LD      R4, R2
+        SUB     R4, #2
+        LD      R5, #&#39;╚&#39;
+        STB     [CONSOLE], R5
+        LD      R5, #&#39;═&#39;
+        CALL    _box_run
+        LD      R5, #&#39;╝&#39;
+        STB     [CONSOLE], R5
+        POP     R5
+        POP     R4
+        POP     IP
+_box_run:                               ; R4 раз вывести символ R5 (листовая: LR не трогает)
+        TEST    R4, R4
+        JZ      @done
+@loop:  STB     [CONSOLE], R5
+        DEC     R4
+        JNZ     @loop
+@done:  RET
+
+; getkey - дождаться нажатия. Результат: R0 - символ (младший байт) и сканкод (старший).
+getkey: LD      R0, [CONSOLE]           ; чтение слова: символ и сканкод одного нажатия
+        TEST    R0, R0
+        JZ      getkey
+        RET
+
+; getkey_nb - нажатие без ожидания. Результат: R0 - символ и сканкод или 0; ZF = 1, если 0.
+getkey_nb:
+        LD      R0, [CONSOLE]
+        TEST    R0, R0
+        RET
+
+; timer_on, timer_off - таймер 50 Гц на IRQ0. Перед включением заполните вектор IRQ0.
+timer_on:
+        LD      R0, #1
+        STB     [TIMER], R0
+        RET
+timer_off:
+        LD      R0, #0
+        STB     [TIMER], R0
+        RET
+</code></pre>
+<h2>Приложение Б. Шпаргалка по командам</h2>
+<table>
+<thead>
+<tr>
+<th>Группа</th>
+<th>Команды</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Пересылка</td>
+<td><code>LD</code>/<code>MOV</code> <code>ST</code> <code>LDZX</code> <code>LDSX</code> <code>STB</code> <code>XCHB</code> <code>LEA</code> <code>PUSH</code> <code>POP</code></td>
+</tr>
+<tr>
+<td>Арифметика</td>
+<td><code>ADD</code> <code>ADC</code> <code>SUB</code> <code>SBC</code> <code>CMP</code> <code>NEG</code> <code>INC</code> <code>DEC</code> <code>MUL</code> <code>MULHU</code> <code>DIVU</code> <code>REMU</code></td>
+</tr>
+<tr>
+<td>Логика</td>
+<td><code>AND</code> <code>OR</code> <code>XOR</code> <code>TEST</code> <code>NOT</code> <code>BSX</code></td>
+</tr>
+<tr>
+<td>Сдвиги</td>
+<td><code>SHL</code> <code>SHR</code> <code>SAR</code> <code>ROR</code></td>
+</tr>
+<tr>
+<td>Переходы</td>
+<td><code>JMP</code> <code>JZ</code> <code>JNZ</code> <code>JC</code>/<code>JB</code> <code>JNC</code>/<code>JAE</code> <code>JA</code> <code>JBE</code> <code>JS</code> <code>JNS</code> <code>JO</code> <code>JNO</code> <code>JL</code> <code>JGE</code> <code>JG</code> <code>JLE</code></td>
+</tr>
+<tr>
+<td>Подпрограммы</td>
+<td><code>CALL</code> <code>RET</code></td>
+</tr>
+<tr>
+<td>Прерывания</td>
+<td><code>STI</code> <code>CLI</code> <code>TRAP</code> <code>IRET</code> <code>WFI</code></td>
+</tr>
+<tr>
+<td>Флаги</td>
+<td><code>STC</code> <code>CLC</code> <code>CMC</code> (и <code>AND</code>/<code>OR</code>/<code>XOR</code> над <code>FLAGS</code>)</td>
+</tr>
+<tr>
+<td>Прочее</td>
+<td><code>NOP</code></td>
+</tr>
+</tbody>
+</table>
+
+</body></html>

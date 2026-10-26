@@ -1,0 +1,51 @@
+// run: bs /ex/wordfreq.bs 5 /ex/data/poem.txt /ex/data/notes.txt
+// wordfreq.bs - the most frequent words of files: a dictionary, sorting, formatting.
+//
+//   wordfreq N file ...
+include "lib/text.bs"
+
+fn normalize(w: string): string {
+    // strip punctuation at the edges, convert to lower case
+    var s = 0
+    var e = w.len()
+    while s < e && !is_letter(w[s]) { s++ }
+    while e > s && !is_letter(w[e - 1]) { e-- }
+    return w.slice(s, e).lower()
+}
+
+fn is_letter(c: int): bool {
+    return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 192
+}
+
+if args.len() < 2 {
+    eprintln("usage: wordfreq N file ...")
+    return 2
+}
+var top, nerr = args[0].to_int()
+if nerr != null {
+    warn(nerr)
+    return 2
+}
+var freq = {}
+for name in args.slice(1) {
+    for line in fs.read_text(name).lines() {
+        for w in words(line) {
+            var k = normalize(w)
+            if k != "" { freq[k] = freq.get(k, 0) + 1 }
+        }
+    }
+}
+// sort key: the repeat count in reverse order, then the word
+var keys = []
+for k in freq.keys() {
+    keys.push(str(9999 - freq[k]).pad_left(4, '0') + " " + k)
+}
+keys.sort()
+var n = 0
+for k in keys {
+    if n >= top { break }
+    var w = k.slice(5)
+    println($"{|rjust(freq[w], 4)|} {|w|}")
+    n++
+}
+println($"{|freq.len()|} different words")

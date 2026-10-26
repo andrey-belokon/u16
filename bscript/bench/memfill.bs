@@ -1,0 +1,8 @@
+// how many 10-byte strings fit in the heap
+var a = []
+var i = 0
+loop {
+    a.push("s" + str(i).pad_left(9, '0'))
+    i++
+    if i % 100 == 0 { print(".") }
+}

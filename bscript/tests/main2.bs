@@ -1,0 +1,4 @@
+fn main() {
+    println("main2")
+    var t = fs.read_text("missing.txt")
+}

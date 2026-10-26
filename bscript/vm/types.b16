@@ -1,0 +1,84 @@
+// types.b16 - bsvm types and constants shared by the resident part and the overlays.
+
+struct Val {
+    v: uint
+    t: uint
+}
+
+// The heap object header (the specification, sect. 12.3): type and flags, the data size in bytes,
+// the handle number. The data begins after the header (offset 0 in the heap.b16 access functions).
+struct Obj {
+    fl: uint
+    size: uint
+    h: uint
+}
+const OBJ_HDR = 6
+
+const F_MARK = $8000
+const F_SCAN = $4000
+const F_STATIC = $2000
+const F_TYPE = $00FF
+
+// Layout of object data (offsets in bytes from the start of the data):
+//   string   bytes 0..size-1
+//   array    0: length; 2 + 4 * i: element i (Val)
+//   dictionary  0: count, 2: used, 4: cap, 6: nb; 8 + 8 * i: entry i; then the buckets (map.b16)
+//   error    0: code, 2: text (handle), 4: object (handle or 0), 6: place ($FFFF - none)
+//   file     0: the file table entry number (0 - closed), 2: path (handle)
+const A_LEN = 0
+const A_VALS = 2
+const M_COUNT = 0
+const M_USED = 2
+const M_CAP = 4
+const M_NB = 6
+const M_ENTS = 8
+const E_CODE = 0
+const E_TEXT = 2
+const E_OBJ = 4
+const E_WPC = 6
+const FO_SLOT = 0
+const FO_PATH = 2
+
+// streams and files (io.b16)
+const SBUF = 192
+const NSLOT = 11
+const SL_IN = 0
+const SL_OUT = 1
+const SL_ERR = 2
+const SL_FILE0 = 3
+const SM_FREE = 0
+const SM_READ = 1
+const SM_WRITE = 2
+
+struct Slot {
+    fd: uint
+    mode: uint
+    n: uint             // bytes in the buffer
+    pos: uint           // read position
+    eof: uint
+    con: uint           // console: write at \n
+    werr: uint          // deferred write error
+    buf: [SBUF]byte
+}
+
+struct Frame {
+    ret: uint           // return offset in the module code
+    base: ptr Val
+    fnum: uint
+    mode: uint
+}
+const FRMAX = 100
+const TRMAX = 16
+
+// overlays (ovl.b16, sect. 12.9): the overlay number, the number of entries of the ov_table
+const OV_BASE = $C000           // window: page 6
+const OV_PAGE = 6
+const OV_FS = 0
+const OV_SYS = 1
+const OV_GC = 2
+const NOV = 3
+const NOV_FS = 22
+const NOV_SYS = 18
+const NOV_GC = 10
+const OV_INIT = NOV             // loader: in the file after the window overlays, address $A000
+const NOV_INIT = 1

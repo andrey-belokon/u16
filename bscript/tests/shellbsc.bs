@@ -1,0 +1,3 @@
+// run: bsc /t/shellbsc.bs ; /t/shellbsc.bsc x "y z" ; cd /t ; shellbsc.bsc ; SHELLBSC.BSC w
+// A compiled .bsc script from the shell: A:/bin/bsvm.cx path -- arguments (sect. 11.4)
+println($"{|proc.name()|}: {|str.join(args, ",")|} ({|args.len()|})")

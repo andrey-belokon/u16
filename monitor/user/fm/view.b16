@@ -1,0 +1,237 @@
+// view.b16 - file viewing (F3): text with line wrapping or a hexadecimal view.
+// The file is not read whole: a window from position vtop is read to the screen, so the file size
+// is not limited by memory.
+
+const VROWS = 23                // text rows: 1..23
+const VBUF = 2048               // the read window (in cbuf from ops.b16)
+const A_VIEW = $0B
+const A_VSTAT = $18
+
+var vh: uint                    // the file descriptor
+var vsize: ulong
+var vtop: ulong                 // the position of the first screen line
+var vnext: ulong                // the position of the second line (the step down)
+var vend: ulong                 // the position after the last screen line
+var vhex: uint
+var hexd = "0123456789ABCDEF"
+var vkeys: [10]ptr byte = { "", "", "Quit", "Hex", "", "", "", "", "", "Quit" }
+var vkeysh: [10]ptr byte = { "", "", "Quit", "Text", "", "", "", "", "", "Quit" }
+
+// n bytes from position pos into cbuf: how many were read.
+fn vread(pos: ulong, n: uint): uint {
+    var e, got: uint
+    var np: ulong
+    e, np = sys_seek(vh, long(pos), SEEK_SET)
+    if e != OK { return 0 }
+    e, got = sys_read(vh, &cbuf[0], n)
+    return got
+}
+
+// A screen line from index i of the buffer (n bytes): the index of the start of the next one. draw - output.
+// A tab goes to a column that is a multiple of 8; \r is skipped; a long line wraps.
+fn vrow(i: uint, n: uint, draw: uint): uint {
+    var col: uint = 0
+    while i < n && col < COLS {
+        var c: uint = cbuf[i]
+        if c == $0A { break }
+        i++
+        if c == $0D { continue }
+        if c == 9 {
+            loop {
+                if draw != 0 { CON_DATA = ' ' }
+                col++
+                if col & 7 == 0 || col >= COLS { break }
+            }
+            continue
+        }
+        if draw != 0 { CON_DATA = byte(c) }
+        col++
+    }
+    while i < n && cbuf[i] == $0D { i++ }
+    if i < n && cbuf[i] == $0A { i++ }
+    if draw != 0 { while col < COLS { CON_DATA = ' '; col++ } }
+    return i
+}
+
+fn vdraw_text() {
+    var n: uint = vread(vtop, VBUF)
+    var i: uint = 0
+    var r: uint = 0
+    vnext = vtop
+    while r < VROWS {
+        if r == 1 { vnext = vtop + i }
+        gotoxy(0, 1 + r)
+        CON_ATTR = A_VIEW
+        i = vrow(i, n, 1)
+        r++
+    }
+    vend = vtop + i
+}
+
+// The start of the screen line before position pos (pos is the start of a screen line).
+fn vprev(pos: ulong): ulong {
+    if pos == 0 { return 0 }
+    var start: ulong = 0
+    if pos > VBUF { start = pos - VBUF }
+    var n: uint = vread(start, uint(pos - start))
+    if n == 0 { return 0 }
+    // the start of the logical line holding byte pos - 1
+    var ls: uint = 0
+    var found: uint = 0
+    var j: uint = n - 1
+    while j != 0 {
+        j--
+        if cbuf[j] == $0A { ls = j + 1; found = 1; break }
+    }
+    if found == 0 && start != 0 {
+        if pos > COLS { return pos - COLS }
+        return 0
+    }
+    var i: uint = ls
+    var last: uint = ls
+    while i < n {
+        last = i
+        i = vrow(i, n, 0)
+    }
+    return start + last
+}
+
+fn hex2(v: uint) {
+    CON_DATA = hexd[(v >> 4) & 15]
+    CON_DATA = hexd[v & 15]
+}
+
+fn vdraw_hex() {
+    var n: uint = vread(vtop, 16 * VROWS)
+    var r: uint = 0
+    while r < VROWS {
+        gotoxy(0, 1 + r)
+        CON_ATTR = A_VIEW
+        var b: uint = r * 16
+        if b < n {
+            var off: ulong = vtop + b
+            hex2(uint(off >> 24))
+            hex2(uint(off >> 16))
+            hex2(uint(off >> 8))
+            hex2(uint(off))
+            CON_DATA = ':'
+            CON_DATA = ' '
+            var k: uint = 0
+            while k < 16 {
+                if b + k < n { hex2(cbuf[b + k]); CON_DATA = ' ' } else { CON_DATA = ' '; CON_DATA = ' '; CON_DATA = ' ' }
+                if k == 7 { CON_DATA = ' ' }
+                k++
+            }
+            CON_DATA = ' '
+            k = 0
+            while k < 16 {
+                var c: uint = ' '
+                if b + k < n { c = cbuf[b + k]; if c < $20 { c = '.' } }
+                CON_DATA = byte(c)
+                k++
+            }
+            k = 8 + 2 + 16 * 3 + 1 + 1 + 16
+            while k < COLS { CON_DATA = ' '; k++ }
+        } else {
+            fill(0, 1 + r, COLS, ' ', A_VIEW)
+        }
+        r++
+    }
+    vend = vtop + n
+    vnext = vtop + 16
+}
+
+fn vstatus(name: ptr byte) {
+    putsn(0, 0, A_VSTAT, " ", 1)
+    putsn(1, 0, A_VSTAT, name, 40)
+    mb_clear()
+    mb_ul(vtop)
+    mb_c('/')
+    mb_ul(vsize)
+    mb_s("  ")
+    var pct: uint = 100
+    if vsize != 0 && vend < vsize {
+        if vsize >= 1000000 { pct = uint(vend / (vsize / 100)) } else { pct = uint(vend * 100 / vsize) }
+    }
+    if pct > 100 { pct = 100 }
+    mb_ul(ulong(pct))
+    mb_s("% ")
+    var n: uint = mbn
+    fill(41, 0, COLS - 41 - n, ' ', A_VSTAT)
+    putsa(COLS - n, 0, A_VSTAT, &mb[0])
+}
+
+// A binary file: many control characters in the first bytes.
+fn looks_binary(): uint {
+    var n: uint = vread(0, 256)
+    var bad: uint = 0
+    var i: uint = 0
+    while i < n {
+        var c: uint = cbuf[i]
+        if c < 8 || (c > $0D && c < $20 && c != $1A) { bad++ }
+        i++
+    }
+    return bad * 8 > n
+}
+
+fn view_entry(s: ptr Stat) {
+    var nm: [33]byte
+    ename(s, &nm[0])
+    var path: [300]byte
+    strcpy(&path[0], &pn[act].path[0])
+    if pjoin(&path[0], &nm[0]) == $FFFF { return }
+    var e: uint
+    e, vh = sys_open(&path[0], O_READ, 0)
+    if e != OK {
+        mb_clear()
+        mb_err(e)
+        dlg_msg("Error", &path[0], &mb[0], 1)
+        redraw()
+        return
+    }
+    var st: Stat
+    vsize = s.size & SIZE_MASK
+    if sys_fstat(vh, &st) == OK { vsize = st.size & SIZE_MASK }
+    vtop = 0
+    vhex = looks_binary()
+    cursor_off()
+    loop {
+        if vhex != 0 { vdraw_hex(); draw_keys_with(&vkeysh[0]) } else { vdraw_text(); draw_keys_with(&vkeys[0]) }
+        vstatus(&path[0])
+        var ev: uint = getkey()
+        var c: uint = ev & $FF
+        var sc: uint = ev >> 8
+        if c == C_ESC || c == 'q' || c == 'Q' || (c == 0 && (sc == K_F3 || sc == K_F10)) { break }
+        if c != 0 { continue }
+        var page: ulong = 16 * VROWS
+        var k: uint
+        if sc == K_F4 {
+            vhex ^= 1
+            if vhex != 0 { vtop = vtop - vtop % 16 }
+        } else if sc == K_HOME {
+            vtop = 0
+        } else if vhex != 0 {
+            if sc == K_UP { if vtop >= 16 { vtop -= 16 } else { vtop = 0 } }
+            else if sc == K_DOWN { if vtop + 16 < vsize { vtop += 16 } }
+            else if sc == K_PGUP { if vtop > page { vtop -= page } else { vtop = 0 } }
+            else if sc == K_PGDN { if vtop + page < vsize { vtop += page } }
+            else if sc == K_END {
+                var rows: ulong = (vsize + 15) / 16
+                vtop = 0
+                if rows > VROWS { vtop = (rows - VROWS) * 16 }
+            }
+        } else {
+            if sc == K_UP { vtop = vprev(vtop) }
+            else if sc == K_DOWN { if vend < vsize { vtop = vnext } }
+            else if sc == K_PGUP { k = 0; while k < VROWS { vtop = vprev(vtop); k++ } }
+            else if sc == K_PGDN { if vend < vsize { vtop = vend } }
+            else if sc == K_END {
+                vtop = vsize
+                k = 0
+                while k < VROWS { vtop = vprev(vtop); k++ }
+            }
+        }
+    }
+    sys_close(vh)
+    redraw()
+}

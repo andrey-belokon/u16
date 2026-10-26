@@ -1,0 +1,16 @@
+1. map/filter/reduce
+3 14 15 92 6 5 35 8 
+14 92 6 8 
+196 8464 36 64 
+sum 8760, maximum 8464
+196 8464 
+2. bytecode: ((0 + 7) * 6 - 2) & 31 = 8
+3. objects
+rectangle: area 15, perimeter 16
+triangle: area 24, perimeter 24
+square: area 16, perimeter 16
+4. state machine: letters 7, digits 6, groups 7
+5. choosing a function
+sq(12) = 144
+neg(12) = -12
+cube(12) = ?

@@ -1,0 +1,26 @@
+// Kernel module (option target = kernel): no startup code, entry points are marked export.
+// tests/kernel/boot.asm sets up the stack, calls __init_data (data lives at $8000,
+// initialized data is copied from the image) and the exported function kentry.
+option target = kernel
+option code = $1000
+option data = $8000
+include "console.b16"
+
+var counter: uint = 40
+var ticks: ulong = 4000000000
+var buf: [8]byte
+var msg = "kernel"
+
+static fn helper(x: uint): uint { return x * 3 }
+
+// Not called from anywhere and not exported: it does not get into the image.
+fn kmod_unused() { puts("never") }
+
+export fn kentry(n: uint): uint {
+    counter += helper(n)
+    ticks += ulong(n) * 100000
+    buf[0] = 'o'
+    buf[1] = 'k'
+    puts(&msg[0]); putc(' '); putu(counter); putc(' '); puts(&buf[0]); putc(' '); putul(ticks); putnl()
+    return counter
+}

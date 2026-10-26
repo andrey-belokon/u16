@@ -1,0 +1,31 @@
+// Far memory (sect. 12.10): an array and a dictionary larger than the near heap, a check of the contents
+var n = 8000
+var a = []
+var i = 0
+while i < n { a.push("item-" + str(i)); i++ }
+var bad = 0
+i = 0
+while i < n { if a[i] != "item-" + str(i) { bad++ }; i++ }
+println($"array {|a.len()|} bad {|bad|} last {|a[n - 1]|}")
+var m = {}
+i = 0
+while i < 3000 { m["k" + str(i)] = i * 2; i++ }
+i = 0
+while i < 3000 { m.delete("k" + str(i)); i += 3 }
+var sum = 0
+bad = 0
+i = 0
+while i < 3000 {
+    var v = m.get("k" + str(i), -1)
+    if i % 3 == 0 { if v != -1 { bad++ } } else { if v != i * 2 { bad++ }; sum += v }
+    i++
+}
+println($"map {|m.len()|} bad {|bad|} sum {|sum|}")
+var ks = m.keys()
+println($"keys {|ks.len()|} first {|ks[0]|} last {|ks[ks.len() - 1]|}")
+a.sort()
+println($"sorted {|a[0]|} {|a[n - 1]|}")
+var nested = []
+i = 0
+while i < 300 { nested.push({"id": i, "tags": ["t" + str(i), "x"]}); i++ }
+println(nested[299]["tags"][0] + " " + str(nested[150]["id"]))

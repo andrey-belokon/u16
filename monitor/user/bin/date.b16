@@ -1,0 +1,24 @@
+// date [YYYY-MM-DD HH:MM:SS] - print or set the date and time.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "date"
+    var e: uint
+    var t: ulong
+    if argc == 1 {
+        e, t = sys_time_get()
+        if e != OK { fail(0, e); return 1 }
+        fputtime(STDOUT, t, 1)
+        putnl()
+        return 0
+    }
+    if argc != 3 { return usage("[YYYY-MM-DD HH:MM:SS]") }
+    var ok: uint
+    var tt: ulong
+    ok, tt = parse_time(argv[1], argv[2])
+    if ok == 0 { return usage("[YYYY-MM-DD HH:MM:SS]") }
+    e = sys_time_set(tt)
+    if e != OK { fail(argv[1], e); return 1 }
+    return 0
+}

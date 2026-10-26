@@ -1,0 +1,17 @@
+// halt: stop at __halt when a timer request hangs with IF = 0 (template: run_tests.sh substitutes
+// @OUTER@ - the number of loop passes of 180 thousand instructions each, @DI@ - di() or nothing)
+var OUT at $FF20: byte
+var TIMER at $FF29: byte
+
+fn main(): int {
+    OUT = 'd'; OUT = 'o'; OUT = 'n'; OUT = 'e'; OUT = 10
+    TIMER = 1                // enable the timer
+    @DI@
+    var j: uint = 0
+    while j < @OUTER@ {      // in this time the timer manages to raise the IRQ0 request
+        var i: uint = 0
+        while i < 60000 { i++ }
+        j++
+    }
+    return 0                 // jump to __halt
+}

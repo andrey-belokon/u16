@@ -1,0 +1,2 @@
+include "lib.bs"
+fn three(): int { return 3 }

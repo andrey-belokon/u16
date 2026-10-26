@@ -1,0 +1,11 @@
+// Function results take at most four words: long and ulong take two each (sect. 5.5, 9.3).
+fn ok1(): long, long { return 1, 2 }
+fn ok2(): long, uint, uint { return 1, 2, 3 }
+fn bad1(): long, long, uint { return 1, 2, 3 }
+fn bad2(): ulong, ulong, ulong { return 1, 2, 3 }
+var fp: ptr fn(): long, long, uint
+fn main() {
+    var a: long
+    var b: long
+    a, b = ok1()
+}

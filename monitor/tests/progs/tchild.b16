@@ -1,0 +1,249 @@
+// tchild.b16 - children for the tests: A:/bin/tchild.cx ROLE [arguments].
+//   2: a chain, level 2 (launches role 3, waits for 33, returns 22 via RET through LR)
+//   3: a chain, level 3 (launches role 4, waits for 40, EXIT with code 33)
+//   4: the chain leaf (returns 40)
+//   5: an illegal instruction ($8008)
+//   6: IF = 1 at launch: code 0 (1 if IF = 0)
+//   7: recursion up to the chain limit: the child's code + 1
+//   8: an infinite loop (Ctrl+C)
+//   9: TICKHOOK: sets a handler and exits without removing it (code 9)
+//  10: exits with IF = 0, code 11
+//  11: litters its memory with the pattern $DEAD
+//  12: checks that free memory is zero
+//  13: waits for a keyboard event (Ctrl+C during CON_GETEV)
+//  14: TRAP #10 ($8009)
+//  15: arguments: argc = 5, "a b", "", "xy zw"
+//  16: the code = the PIB flags and the kind of descriptors 0, 1: flags | kind0 << 4 | kind1 << 8
+//  17: sets console mode RAW | NOBREAK and exits (the parent checks its own mode)
+//  18: waits in SLEEP (Ctrl+C during SLEEP)
+//  19: waits for a console line (Ctrl+C during READ)
+//  20: prints "redirected\n", the code is the PIB flags
+//  21: EXEC of role 22 with arguments (the descriptors and current directory are preserved)
+//  22: after EXEC: argc = 4, argv[2] = "a b", code 22
+//  23: EXEC of a nonexistent program: an error and continuation, code 23
+//  24: opens dev:nul (descriptor 3), sets NOBREAK, EXEC of role 25
+//  25: after EXEC: descriptor 3 is dev:nul, console mode 0, no handlers; code 25
+//  26: a Ctrl+C handler, a loop until the handler is called, code 26
+//  27: a Ctrl+C handler, waiting for an event: CON_GETEV -> INTR, the handler is called, code 27
+//  28: an illegal-instruction handler skips it, code 28
+//  29: an illegal-instruction handler terminates the process by calling EXIT(29)
+//  30: the parent's Ctrl+C handler does not act while the child (role 8) runs: code 30
+//  31: ONEVENT errors: an unknown event, an address outside memory; code 31
+//  32: XALLOC of 3 frames and exit without freeing them (code 32)
+//  33: XALLOC of 2 frames and EXEC of role 4 (code 40)
+include "tlib.b16"
+include asm "tchild.asm"
+
+extern fn t_bad_insn()
+extern fn t_if(): uint
+extern fn t_dirty(p: ptr uint, words: uint)
+extern fn t_nonzero(p: ptr uint, words: uint): uint
+extern fn t_sp(): uint
+extern fn t_trap10()
+extern interrupt fn t_skip_insn()
+extern fn t_onevent_raw(h: uint): uint
+
+var hook_n: uint
+
+interrupt fn hook() { hook_n++ }
+
+var brk_n: uint
+interrupt fn on_break() { brk_n++ }
+interrupt fn on_bad_exit() { sys_exit(29) }
+
+fn spawn(cmd: ptr byte): uint {
+    var e, code: uint
+    e, code = run(cmd)
+    if e != 0 { return $FFFF }
+    return code
+}
+
+fn atou(s: ptr byte): uint {
+    var n: uint = 0
+    while *s >= '0' && *s <= '9' { n = n * 10 + (*s - '0'); s++ }
+    return n
+}
+
+var lbuf: [64]byte
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    if argc < 2 { return $7776 }
+    var n: uint = atou(argv[1])
+    var c, e, x: uint
+    if n == 2 {
+        puts("l2\n")
+        c = spawn("A:/bin/tchild.cx 3")
+        check(c == 33, "chain: level 2 got code 33 from level 3")
+        if fails != 0 { return 1 }
+        return 22
+    }
+    if n == 3 {
+        puts("l3\n")
+        c = spawn("A:/bin/tchild.cx 4")
+        check(c == 40, "chain: level 3 got code 40 from level 4")
+        sys_exit(33)
+    }
+    if n == 4 { puts("l4\n"); return 40 }
+    if n == 5 {
+        t_bad_insn()
+        puts("not reached\n")
+        return 0
+    }
+    if n == 6 {
+        if t_if() == 0 { return 1 }
+        return 0
+    }
+    if n == 7 {
+        var e2: uint
+        e2, c = run("A:/bin/tchild.cx 7")
+        if e2 == E_NOPROC { return 0 }
+        if e2 != OK { return $7000 + e2 }
+        return c + 1
+    }
+    if n == 8 { puts("SPIN\n"); loop { } }
+    if n == 9 {
+        var old: ptr interrupt fn()
+        e, old = sys_tickhook(hook)
+        if e != 0 { return 1 }
+        while hook_n < 5 { }
+        puts("child hook runs\n")
+        return 9
+    }
+    if n == 10 { di(); return 11 }
+    if n == 11 {
+        var sp: uint = t_sp()
+        var from: uint = (uint(argv) + 64) & $FFFE
+        t_dirty(ptr uint(from), (sp - 256 - from) >> 1)
+        return 0
+    }
+    if n == 12 {
+        var sp2: uint = t_sp()
+        var from2: uint = (uint(argv) + 64) & $FFFE
+        return int(t_nonzero(ptr uint(from2), (sp2 - 256 - from2) >> 1))
+    }
+    if n == 13 {
+        puts("GETEV\n")
+        e, x = sys_con_getev(0)
+        return $7777
+    }
+    if n == 14 { t_trap10(); return 0 }
+    if n == 15 {
+        if argc != 5 { return 1 }
+        if streq(argv[2], "a b") == 0 { return 2 }
+        if streq(argv[3], "") == 0 { return 3 }
+        if streq(argv[4], "xy zw") == 0 { return 4 }
+        return 0
+    }
+    if n == 16 {
+        var pib: ptr uint = ptr uint(4)
+        var k0, k1, m: uint
+        e, k0, m = sys_hinfo(0)
+        e, k1, m = sys_hinfo(1)
+        return int(pib[3] | k0 << 4 | k1 << 8)
+    }
+    if n == 17 {
+        e, x = sys_con_mode(CM_RAW | CM_NOBREAK)
+        return 17
+    }
+    if n == 18 {
+        puts("SLEEP\n")
+        e = sys_sleep(60000)
+        return $7778
+    }
+    if n == 19 {
+        puts("READ\n")
+        e, x = sys_read(STDIN, &lbuf[0], 64)
+        return $7779
+    }
+    if n == 20 {
+        puts("redirected\n")
+        var pib2: ptr uint = ptr uint(4)
+        return int(pib2[3])
+    }
+    if n == 21 {
+        e = sys_exec("A:/bin/tchild.cx 22 \"a b\" c")
+        return $7021
+    }
+    if n == 22 {
+        if argc != 4 || streq(argv[2], "a b") == 0 || streq(argv[3], "c") == 0 { return $7022 }
+        return 22
+    }
+    if n == 23 {
+        e = sys_exec("A:/bin/none.cx")
+        if e != E_NOENT { return $7023 }
+        return 23
+    }
+    if n == 24 {
+        var h: uint
+        e, h = sys_open("dev:nul", O_READ, 0)
+        if h != 3 { return $7024 }
+        var old: ptr interrupt fn()
+        e, old = sys_onevent(EVT_BREAK, on_break)
+        e, x = sys_con_mode(CM_NOBREAK)
+        e = sys_exec("A:/bin/tchild.cx 25")
+        return $7124
+    }
+    if n == 25 {
+        var k, m, md: uint
+        e, k, m = sys_hinfo(3)
+        if e != OK || k != H_NUL { return $7025 }
+        e, md = sys_con_mode($FFFF)
+        if md != 0 { return $7125 }
+        var o2: ptr interrupt fn()
+        e, o2 = sys_onevent(EVT_BREAK, 0)
+        if o2 != 0 { return $7225 }
+        return 25
+    }
+    if n == 26 {
+        var o3: ptr interrupt fn()
+        e, o3 = sys_onevent(EVT_BREAK, on_break)
+        puts("SPIN2\n")
+        while brk_n == 0 { }
+        puts("caught\n")
+        return 26
+    }
+    if n == 27 {
+        var o4: ptr interrupt fn()
+        e, o4 = sys_onevent(EVT_BREAK, on_break)
+        puts("WAITB\n")
+        e, x = sys_con_getev(0)
+        if e != E_INTR || brk_n != 1 { return $7027 }
+        return 27
+    }
+    if n == 28 {
+        var o5: ptr interrupt fn()
+        e, o5 = sys_onevent(EVT_BADINSN, t_skip_insn)
+        t_bad_insn()
+        t_bad_insn()
+        return 28
+    }
+    if n == 29 {
+        var o6: ptr interrupt fn()
+        e, o6 = sys_onevent(EVT_BADINSN, on_bad_exit)
+        t_bad_insn()
+        return $7029
+    }
+    if n == 30 {
+        var o7: ptr interrupt fn()
+        e, o7 = sys_onevent(EVT_BREAK, on_break)
+        var c2: uint
+        e, c2 = run("A:/bin/tchild.cx 8")
+        if c2 != EXIT_BREAK || brk_n != 0 { return $7030 }
+        return 30
+    }
+    if n == 32 || n == 33 {
+        var f: uint
+        var k2: uint = 0
+        while k2 < 35 - n { e, f = sys_xalloc(); k2++ }
+        if n == 33 { e = sys_exec("A:/bin/tchild.cx 4") }
+        return 32
+    }
+    if n == 31 {
+        var o8: ptr interrupt fn()
+        e, o8 = sys_onevent(7, on_break)
+        if e != E_INVAL { return $7031 }
+        if t_onevent_raw($FFFE) != E_FAULT { return $7131 }
+        return 31
+    }
+    return $7777
+}

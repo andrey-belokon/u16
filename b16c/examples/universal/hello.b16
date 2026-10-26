@@ -1,0 +1,6 @@
+// hello.b16 - a minimal program.
+include "../../lib/io.b16"
+
+fn main() {
+    puts("Hello, CPU16!\n")
+}

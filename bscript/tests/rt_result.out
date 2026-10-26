@@ -1,0 +1,2 @@
+bsvm: A:/t/rt_result.bs:1: in function bad: type mismatch: int expected, got string
+exit code 125

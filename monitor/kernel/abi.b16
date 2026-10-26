@@ -1,0 +1,204 @@
+// abi.b16 - the monitor binary interface: call numbers, error codes, constants and
+// structures ("CPU16 Monitor: System Calls", sect. 8, 9.1, 10.2).
+// It is included by both the kernel and programs (through user/sys.b16). Assembly modules see
+// these constants and structure layouts through .equ lines that the compiler emits.
+
+// ---- call numbers (sect. 9.1) ---------------------------------------------------
+const SYS_EXIT = $00
+const SYS_SPAWN = $01
+const SYS_EXEC = $02
+const SYS_ONEVENT = $03
+const SYS_OPEN = $10
+const SYS_CLOSE = $11
+const SYS_READ = $12
+const SYS_WRITE = $13
+const SYS_SEEK = $14
+const SYS_DUP = $15
+const SYS_HINFO = $16
+const SYS_SETSIZE = $17
+const SYS_FSTAT = $18
+const SYS_STAT = $20
+const SYS_DELETE = $21
+const SYS_RENAME = $22
+const SYS_MKDIR = $23
+const SYS_CHDIR = $24
+const SYS_GETCWD = $25
+const SYS_READDIR = $26
+const SYS_SETATTR = $27
+const SYS_VOLINFO = $28
+const SYS_MOUNT = $29
+const SYS_UNMOUNT = $2A
+const SYS_SYNC = $2B
+const SYS_SETMTIME = $2C
+const SYS_CON_MODE = $30
+const SYS_CON_GETEV = $31
+const SYS_CON_FLUSH = $32
+const SYS_MEMINFO = $40
+const SYS_SETTOP = $41
+const SYS_XALLOC = $42
+const SYS_XFREE = $43
+const SYS_XMAP = $44
+const SYS_TIME_GET = $50
+const SYS_TIME_SET = $51
+const SYS_TICKS = $52
+const SYS_SLEEP = $53
+const SYS_TICKHOOK = $54
+const SYS_DISK_INFO = $60
+const SYS_DISK_IO = $61
+const SYS_SYSINFO = $62
+const SYS_SHUTDOWN = $63
+const SYS_SESS_INFO = $70
+const SYS_SESS_NEW = $71
+const SYS_SESS_SWITCH = $72
+const SYS_SESS_KILL = $73
+const SYS_PREEMPT = $7F         // monitor: a session switch from a tick (page 7, PREEMPT_PROC)
+const NSYS = $80
+
+// ---- error codes (sect. 8) ---------------------------------------------------------
+const OK = 0
+const E_NOSYS = 1
+const E_INVAL = 2
+const E_FAULT = 3
+const E_NOENT = 4
+const E_EXIST = 5
+const E_NOTDIR = 6
+const E_ISDIR = 7
+const E_NOTEMPTY = 8
+const E_RDONLY = 9
+const E_NOSPC = 10
+const E_BADNAME = 11
+const E_BADPATH = 12
+const E_BADF = 13
+const E_MFILE = 14
+const E_NODEV = 15
+const E_IO = 16
+const E_NOEXEC = 17
+const E_BADVER = 18
+const E_ARGS = 19
+const E_NOMEM = 20
+const E_NOPROC = 21
+const E_AGAIN = 22
+const E_BUSY = 23
+const E_INTR = 24
+const E_XDEV = 25
+const E_NOTFS = 26
+
+// ---- standard descriptors ---------------------------------------------------------
+const STDIN = 0
+const STDOUT = 1
+const STDERR = 2
+const SAME = $FFFF
+
+// ---- OPEN ------------------------------------------------------------------------------
+const O_READ = $01
+const O_WRITE = $02
+const O_CREATE = $04
+const O_TRUNC = $08
+const O_EXCL = $10
+const O_APPEND = $20
+
+const SZ_ZERO = $01
+
+const SEEK_SET = 0
+const SEEK_CUR = 1
+const SEEK_END = 2
+
+const H_FILE = 0
+const H_DIR = 1
+const H_CON = 2
+const H_NUL = 3
+
+const A_DIR = $8000
+const A_RDONLY = $4000
+const A_HIDDEN = $2000
+const A_SYSTEM = $1000
+const SIZE_MASK = $07FFFFFF
+
+// ---- console -----------------------------------------------------------------------------
+const CM_RAW = $01
+const CM_NOECHO = $02
+const CM_NOBREAK = $04
+const EV_NOWAIT = $01
+const EVM_SHIFT = $01        // event modifiers (R2 of CON_GETEV; the machine, sect. 2.6: MODS)
+const EVM_CTRL = $02
+const EVM_ALT = $04
+
+// XMAP: the page's own frame (or the junk frame above top)
+const XM_OWN = $FFFF
+
+// ---- ONEVENT events ----------------------------------------------------------------------------
+const EVT_BREAK = 1             // Ctrl+C
+const EVT_BADINSN = 2           // an illegal instruction
+
+// ---- volumes and disks ------------------------------------------------------------------------
+const MOUNT_RDONLY = $01            // MOUNT: read-only
+const MOUNT_REMOUNT = $02           // MOUNT: remount a mounted volume
+const MNT_RDONLY = $01
+const MNT_DIRTY = $02
+const MNT_PROTECT = $04
+const DI_MOUNTED = $01
+const DI_RDONLY = $02
+const DIO_READ = 1
+const DIO_WRITE = 2
+
+// ---- sessions (sect. 2.4, 9.9) ---------------------------------------------------------------
+const MAXSESS = 4
+const SF_CUR = $01                  // SESS_INFO: the current session
+const SN_BACK = $01                 // SESS_NEW: do not switch to the new session
+const SK_FORCE = $01                // SESS_KILL: also terminate a session with several processes
+const PS_RUN = 1                    // ProcInfo.state: running (the top process of the current session)
+const PS_WAIT = 2                   // waiting for a child
+const PS_SUSP = 3                   // the top process of another session: frozen
+const PI_CMDLEN = 56                // ProcInfo.cmd: the start of the command line with a zero
+
+// ---- monitor exit codes ---------------------------------------------------------------
+const EXIT_BREAK = $8001
+const EXIT_BADINSN = $8008
+const EXIT_KILLED = $8009
+
+// ---- structures (sect. 10.2) -------------------------------------------------------------
+struct Stat {
+    name: [32]byte
+    size: ulong
+    mtime: ulong
+}
+assert sizeof(Stat) == 40, "Stat"
+
+struct VolInfo {
+    label: [16]byte
+    serial: ulong
+    clusters: uint
+    free: uint
+    flags: uint
+}
+assert sizeof(VolInfo) == 26, "VolInfo"
+
+struct DiskReq {
+    op: uint
+    drive: uint
+    count: uint
+    buf: ptr
+    lba: ulong
+}
+assert sizeof(DiskReq) == 12, "DiskReq"
+
+struct SysInfo {
+    version: uint
+    frames: uint
+    free_frames: uint
+    depth: uint
+    max_depth: uint
+    mounted: uint
+    session: uint               // the current session
+    max_sess: uint              // at most this many sessions
+}
+assert sizeof(SysInfo) == 16, "SysInfo"
+
+struct ProcInfo {
+    pid: uint                   // process descriptor number
+    state: uint                 // PS_RUN, PS_WAIT, PS_SUSP
+    top: uint                   // the boundary of own memory
+    frames: uint                // frames: own and extended memory
+    cmd: [PI_CMDLEN]byte        // the launch command line (the beginning), with a zero
+}
+assert sizeof(ProcInfo) == 64, "ProcInfo"

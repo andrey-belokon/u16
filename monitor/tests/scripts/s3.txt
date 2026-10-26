@@ -1,0 +1,3 @@
+echo booted from the copy
+ls /sys
+exit

@@ -1,0 +1,162 @@
+// cache.b16 - the sector cache: 8 buffers of 512 bytes in page 7 ($EE00-$FDFF).
+// The key is (disk, LBA). LRU eviction, a "modified" flag (the write is deferred),
+// pinning a buffer while it is being worked with.
+//
+// A buffer pointer is valid until eviction. The least recently used unpinned buffer
+// is evicted, so the pointer obtained last
+// survives at least the next 7 accesses. Code that holds a buffer longer
+// (walking an index cluster with freeing) pins it.
+
+const NBUF     = 8
+const CBUF_ADDR = $EE00
+var cbuf at CBUF_ADDR: [NBUF][SECSIZE]byte
+
+const C_VALID = 1
+const C_DIRTY = 2
+const C_PIN   = 4
+const C_NODRV = $FF                 // the key of a temporary buffer: not a disk
+
+struct CDesc {
+    lba: ulong
+    drv: byte
+    fl: byte
+    use: uint                       // the LRU stamp
+}
+var cdesc: [NBUF]CDesc
+var cclock: uint
+var c_hits, c_miss: uint            // statistics
+
+static fn cslot(b: ptr byte): ptr CDesc {
+    return &cdesc[(uint(b) - CBUF_ADDR) >> 9]
+}
+
+static fn ctouch(d: ptr CDesc) {
+    cclock++
+    if cclock == 0 {                // stamp overflow: start counting again
+        var i: uint = 0
+        while i < NBUF { cdesc[i].use = 0; i++ }
+        cclock = 1
+    }
+    d.use = cclock
+}
+
+// Write buffer i to disk if it is modified.
+static fn cwriteback(i: uint): uint {
+    var d = &cdesc[i]
+    if d.fl & C_DIRTY == 0 { return E_OK }
+    var e = disk_io(DK_WRITE, d.drv, d.lba, &cbuf[i][0], 1)
+    if e != E_OK { return e }
+    d.fl &= ~C_DIRTY
+    return E_OK
+}
+
+// Find a sector's buffer or take a new one. rd != 0 - read the sector on a miss.
+static fn cget(drv: uint, lba: ulong, rd: uint): ptr byte, uint {
+    var i: uint = 0
+    var v: uint = NBUF
+    var best: uint = $FFFF
+    while i < NBUF {
+        var d = &cdesc[i]
+        if d.fl & C_VALID == 0 {
+            if best != 0 { v = i; best = 0 }
+        } else {
+            if d.lba == lba && d.drv == drv {
+                c_hits++
+                ctouch(d)
+                return &cbuf[i][0], E_OK
+            }
+            if d.fl & C_PIN == 0 && d.use < best { v = i; best = d.use }
+        }
+        i++
+    }
+    c_miss++
+    if v == NBUF { return 0, E_NOBUF }
+    var e = cwriteback(v)
+    if e != E_OK { return 0, e }
+    var d = &cdesc[v]
+    d.fl = 0
+    var b = &cbuf[v][0]
+    if rd != 0 {
+        e = disk_io(DK_READ, drv, lba, b, 1)
+        if e != E_OK { return 0, e }
+    }
+    d.lba = lba
+    d.drv = drv
+    d.fl = C_VALID
+    ctouch(d)
+    return b, E_OK
+}
+
+// A buffer with the sector contents.
+fn cache_get(drv: uint, lba: ulong): ptr byte, uint {
+    var b: ptr byte
+    var e: uint
+    b, e = cget(drv, lba, 1)
+    return b, e
+}
+
+// A sector buffer without reading: the sector will be overwritten entirely.
+fn cache_new(drv: uint, lba: ulong): ptr byte, uint {
+    var b: ptr byte
+    var e: uint
+    b, e = cget(drv, lba, 0)
+    return b, e
+}
+
+// Whether the sector is in the cache (without changing LRU).
+fn cache_has(drv: uint, lba: ulong): uint {
+    var i: uint = 0
+    while i < NBUF {
+        var d = &cdesc[i]
+        if d.fl & C_VALID != 0 && d.lba == lba && d.drv == drv { return 1 }
+        i++
+    }
+    return 0
+}
+
+fn cache_dirty(b: ptr byte) { cslot(b).fl |= C_DIRTY }
+
+// Write a buffer immediately (for the write order of sect. 10 of FS16).
+fn cache_write(b: ptr byte): uint {
+    var d = cslot(b)
+    d.fl |= C_DIRTY
+    return cwriteback((uint(b) - CBUF_ADDR) >> 9)
+}
+
+fn cache_pin(b: ptr byte) { cslot(b).fl |= C_PIN }
+fn cache_unpin(b: ptr byte) { cslot(b).fl &= ~C_PIN }
+
+// A temporary pinned buffer not tied to a disk.
+fn cache_tmp(): ptr byte, uint {
+    var b: ptr byte
+    var e: uint
+    b, e = cget(C_NODRV, $FFFFFFFF, 0)
+    if e == E_OK { cache_pin(b) }
+    return b, e
+}
+
+// Release a buffer (temporary or unneeded): it becomes invalid.
+fn cache_release(b: ptr byte) { cslot(b).fl = 0 }
+
+// Write all modified buffers of a disk.
+fn cache_flush(drv: uint): uint {
+    var i: uint = 0
+    var e: uint = E_OK
+    while i < NBUF {
+        if cdesc[i].drv == drv {
+            var r = cwriteback(i)
+            if r != E_OK { e = r }
+        }
+        i++
+    }
+    return e
+}
+
+// Forget all buffers of a disk (after unmounting; changes are not written).
+fn cache_drop(drv: uint) {
+    var i: uint = 0
+    while i < NBUF {
+        if cdesc[i].drv == drv { cdesc[i].fl = 0 }
+        i++
+    }
+}

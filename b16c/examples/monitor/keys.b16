@@ -1,0 +1,36 @@
+// keys.b16 - the keyboard under the monitor: the console's raw mode and CON_GETEV events.
+//
+//     keys
+//
+// Under the monitor the keyboard belongs to the monitor, port $FF20 must not be read ("System Calls",
+// sect. 2.2); events - character, scancode and modifiers - are returned by the CON_GETEV call (sect. 6.1).
+// RAW | NOBREAK mode: no line editor and no echo, Ctrl+C is an ordinary event with character $03.
+// The mode belongs to the process: on exit the monitor restores the shell's mode. Esc exits.
+// Compare with ../bare/devices.b16, which reads the same events directly from the port.
+include "sys.b16"                       // monitor calls and output: puts, putnl, putdec, puthex
+include "mon.b16"                       // how the program was started, and output of numbers and errors
+option max_top = $2000
+
+fn mod(m, bit: uint, name: ptr byte) { if m & bit != 0 { puts(name) } }
+
+fn main(): int {
+    if on_monitor() == 0 { return 1 }    // there are no monitor calls on a bare machine
+    var e, old: uint
+    e, old = sys_con_mode(CM_RAW | CM_NOBREAK)
+    puts("press keys, Esc - exit\n")
+    loop {
+        var ev, m: uint
+        e, ev, m = sys_con_getev(0)             // wait for an event
+        if e != OK { return 1 }
+        var ch = ev & $FF
+        puts("scancode $"); puthexn(ev >> 8, 2)
+        puts("  character $"); puthexn(ch, 2)
+        if ch >= ' ' && ch != $7F { puts(" '"); putc(byte(ch)); puts("'") }
+        else if ch == 3 { puts(" Ctrl+C") }
+        mod(m, EVM_SHIFT, "  Shift"); mod(m, EVM_CTRL, "  Ctrl"); mod(m, EVM_ALT, "  Alt")
+        putnl()
+        if ch == $1B { break }
+    }
+    e, old = sys_con_mode(old)
+    return 0
+}

@@ -1,0 +1,3 @@
+include "lib2.bs"
+const GREET = "hi"
+fn twice(s: string): string { return s + s }

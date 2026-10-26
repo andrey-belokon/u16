@@ -1,0 +1,86 @@
+// list.b16 - structs and linked lists, a node pool instead of a heap.
+include "../../lib/io.b16"
+
+struct Node {
+    next: ptr Node
+    key: int
+    tag: byte
+}
+
+const POOL = 32
+var pool: [POOL]Node
+var free_list: ptr Node
+
+fn pool_init() {
+    var i: uint = 0
+    while i < POOL - 1 { pool[i].next = &pool[i + 1]; i++ }
+    pool[POOL - 1].next = 0
+    free_list = &pool[0]
+}
+
+fn alloc(): ptr Node {
+    var n = free_list
+    if n != 0 { free_list = n.next }
+    return n
+}
+
+fn release(n: ptr Node) { n.next = free_list; free_list = n }
+
+fn push(head: ptr Node, key: int, tag: byte): ptr Node {
+    var n = alloc()
+    if n == 0 { return head }
+    n.key = key
+    n.tag = tag
+    n.next = head
+    return n
+}
+
+fn reverse(head: ptr Node): ptr Node {
+    var prev: ptr Node = 0
+    while head != 0 {
+        var next = head.next
+        head.next = prev
+        prev = head
+        head = next
+    }
+    return prev
+}
+
+// Delete all nodes with the key key. A pointer to a pointer: no special case for the head.
+fn remove_all(head: ptr Node, key: int): ptr Node {
+    var link: ptr ptr Node = &head
+    while *link != 0 {
+        var n = *link
+        if n.key == key { *link = n.next; release(n) } else { link = &n.next }
+    }
+    return head
+}
+
+fn length_and_sum(head: ptr Node): uint, int {
+    var n: uint = 0
+    var s: int = 0
+    while head != 0 { n++; s += head.key; head = head.next }
+    return n, s
+}
+
+fn show(head: ptr Node) {
+    while head != 0 { puti(head.key); putc(head.tag); putc(' '); head = head.next }
+    putnl()
+}
+
+fn main() {
+    pool_init()
+    var list: ptr Node = 0
+    var i = 1
+    while i <= 8 { list = push(list, i % 3, 'a' + byte(i)); i++ }
+    show(list)
+    list = reverse(list)
+    show(list)
+    list = remove_all(list, 0)
+    show(list)
+    var n: uint
+    var s: int
+    n, s = length_and_sum(list)
+    puts("nodes: "); putu(n); puts(", sum: "); puti(s); putnl()
+    puts("sizeof(Node) = "); putu(sizeof(Node)); putnl()
+}

@@ -1,0 +1,14 @@
+# the sessfm script: fm in session 0, the shell in session 1; the fm screen after switching there and back
+after "A:/> " steps 2000 type "session new -b\n"
+after "A:/> " steps 2000 type "fm\n"
+screen "Quit" steps 20000 key 1D 00
+# session 1: its own empty screen and a prompt
+after "A:/> " steps 30000 type "echo in session 1\n"
+after "in session 1\n" steps 2000 dump
+after "" steps 2000 key 00 1B 2
+# back to session 0: the fm screen is restored; keys go to fm again
+after "" steps 300000 dump
+after "" steps 2000 key 00 44
+after "" steps 30000 key 79 15
+after "A:/> " steps 2000 type "session kill 1\n"
+after "A:/> " steps 2000 type "exit\n"

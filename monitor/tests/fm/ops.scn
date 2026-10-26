@@ -1,0 +1,55 @@
+# manual check of fm: tests/fm/run.sh tests/fm/ops.scn 2>/dev/null | python3 tests/fm/show.py
+after "A:/> " steps 2000 type "cd /data\n"
+after "A:/data> " steps 2000 type "fm 1:\n"
+screen " B:/ " steps 300000 key 00 4F
+# cursor on ro (the last one): F8 -> confirmation -> the read-only question
+after "" steps 30000 key 00 42
+screen "Delete the file" steps 30000 type "y"
+screen "read-only object" steps 300000 dump
+after "" steps 10 type "y"
+# F6 hello.txt -> rename to renamed.txt (in the same directory)
+after "" steps 500000 key 00 47
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 40
+screen "Rename or move" steps 30000 type "\x15renamed.txt\n"
+after "" steps 500000 dump
+# mark big and renamed.txt (Ins) and move to 1:
+after "" steps 10 key 00 47
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 52
+after "" steps 30000 key 00 52
+after "" steps 60000 dumpa
+after "" steps 10 key 00 40
+screen "2 objects" steps 30000 type "\n"
+after "" steps 3000000 dump
+# F9 on a_very_long: +h
+after "" steps 10 key 00 47
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 43
+screen "Attributes" steps 30000 type "h"
+after "" steps 30000 dump
+after "" steps 10 type "\n"
+after "" steps 300000 dumpa
+# F5 onto itself: the same file error
+after "" steps 10 key 00 3F
+screen " to:" steps 30000 type "\x15.\n"
+screen "same file" steps 300000 dump
+after "" steps 10 type "\x1b"
+# F2: volume selection
+after "" steps 200000 key 00 3C
+screen " Drive " steps 30000 dump
+after "" steps 10 type "1"
+after "" steps 300000 dump
+# history
+after "" steps 10 type "echo one\n"
+screen "press any key" steps 2000000 type " "
+after "" steps 600000 type "\x05"
+after "" steps 30000 dump
+after "" steps 10 type "\x1b"
+after "" steps 30000 key 00 44
+screen "quit fm" steps 2000 type "y"
+after "A:/data> " steps 2000 type "exit\n"

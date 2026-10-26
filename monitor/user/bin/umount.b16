@@ -1,0 +1,13 @@
+// umount X - unmount volume X: A-H (or number 0-7).
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "umount"
+    if argc != 2 { return usage("A-H") }
+    var d: uint = drive_arg(argv[1])
+    if d == $FFFF { return usage("A-H") }
+    var e: uint = sys_unmount(d)
+    if e != OK { fail(argv[1], e); return 1 }
+    return 0
+}

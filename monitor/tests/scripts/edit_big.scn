@@ -1,0 +1,31 @@
+# the editbig script: files larger than process memory - blocks in extended-memory frames.
+# big.txt (280000 bytes, 40 blocks): an edit at the end and at the start, search (the found text is a selection),
+# selecting 28 KB to the end (Shift+Ctrl+End), copy (Ctrl+C) and paste at the end (Ctrl+V), undo of
+# the paste and the paste again, writing. crlf.txt (\r\n, 59500 bytes): reading and writing without
+# changes. The file contents after the run are checked by run_tests.py.
+after "A:/> " steps 2000 type "cd /data\n"
+after "A:/data> " steps 2000 type "edit big.txt\n"
+screen "Ln 1/10001" steps 2000 key 00 4F 2
+screen "Ln 10001/10001" steps 2000 type "END"
+after "" steps 2000 key 00 47 2
+screen "Ln 1/10001  Col 1" steps 2000 type "BEG"
+after "" steps 2000 key 00 41
+screen "Search for" steps 2000 type "line 009000\n"
+screen "Ln 9001/10001" steps 2000 key 00 47
+after "" steps 2000 key 00 4F 3
+after "" steps 2000 key 03 2E 2
+after "" steps 2000 key 00 4F 2
+after "" steps 2000 key 16 2F 2
+screen "Ln 11001/11001" steps 2000 dump
+after "" steps 10 key 1A 2C 2
+screen "Ln 10001/10001" steps 2000 key 16 2F 2
+screen "Ln 11001/11001" steps 2000 key 13 1F
+screen "saved" steps 2000 dump
+after "" steps 10 key 1B 01
+after "A:/data> " steps 2000 type "edit crlf.txt\n"
+screen "Ln 1/3501" steps 2000 key 05 12
+screen "Ln 3501/3501" steps 2000 key 13 1F
+screen "saved" steps 2000 dump
+after "" steps 10 key 1B 01
+after "A:/data> " steps 2000 type "ls -l\n"
+after "A:/data> " steps 2000 type "exit\n"

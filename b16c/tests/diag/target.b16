@@ -1,0 +1,2 @@
+// main of the std target: only fn main() or fn main(argc: uint, argv: ptr ptr byte), the result is int.
+fn main(argc: int): uint { return 0 }

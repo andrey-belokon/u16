@@ -1,0 +1,42 @@
+// time.b16 - time: the clock, ticks, SLEEP, TICKHOOK ("System Calls", sect. 9.7).
+
+export fn sys_time_get(): (uint, ulong) {
+    RTC_CMD = 1
+    return OK, ulong(RTC_DATE) << 16 | RTC_TIME
+}
+
+export fn sys_time_set(t: ulong): uint {
+    RTC_TIME = uint(t)
+    RTC_DATE = uint(t >> 16)
+    RTC_CMD = 2
+    if RTC_CMD & 1 != 0 { return E_INVAL }
+    return OK
+}
+
+export fn sys_ticks(): (uint, ulong) {
+    return OK, RES.ticks
+}
+
+export fn sys_sleep(n: uint): uint {
+    var t0: ulong = RES.ticks
+    while RES.ticks - t0 < ulong(n) {
+        if RES.abort != 0 && RES.nobreak == 0 { return E_INTR }
+        if RES.sw_req != 0 {
+            KF[0] = n - uint(RES.ticks - t0)    // again - the remainder: time in another session does not pass
+            return wait_restart()
+        }
+        wfi()
+        ei()
+        di()
+    }
+    return OK
+}
+
+export fn sys_tickhook(h: uint): (uint, uint) {
+    var p = curp()
+    if h != 0 && (uvalid(p, h) == 0 || h & 1 != 0) { return E_FAULT, 0 }
+    var old: uint = p.hook
+    p.hook = h
+    RES.hook = h
+    return OK, old
+}

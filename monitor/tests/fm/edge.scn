@@ -1,0 +1,38 @@
+# manual check of fm: tests/fm/run.sh tests/fm/edge.scn 2>/dev/null | python3 tests/fm/show.py
+after "A:/> " steps 2000 type "cd /data\n"
+after "A:/data> " steps 2000 type "fm sub/deep\n"
+screen "A:/data/sub/deep" steps 300000 key 00 47
+# big (position 3) copy to 1:, abort with Esc
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 3F
+screen " to:" steps 30000 type "\x151:/\n"
+screen "bytes" steps 300000 type "\x1b"
+screen "Abort the operation" steps 300000 dump
+after "" steps 10 type "y"
+after "" steps 600000 dump
+# delete sub (the right panel is open there)
+after "" steps 10 key 00 47
+after "" steps 30000 key 00 50
+after "" steps 30000 key 00 42
+screen "Delete the directory" steps 30000 type "y"
+after "" steps 2000000 dump
+# cd .. and launch mem.cx with Enter
+after "" steps 10 type "cd ../bin\n"
+screen "A:/bin " steps 300000 key 00 4F
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 key 00 48
+after "" steps 60000 dump
+after "" steps 10 type "\n"
+screen "press any key" steps 2000000 dump
+after "" steps 10 type " "
+after "" steps 600000 key 00 44
+screen "quit fm" steps 2000 type "y"
+after "A:/data> " steps 2000 type "exit\n"

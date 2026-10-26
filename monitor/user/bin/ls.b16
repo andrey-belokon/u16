@@ -1,0 +1,75 @@
+// ls [-l] [-a] [path ...] - a directory listing or information about a file.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var lflag, aflag: uint
+var st: Stat
+var nm: [33]byte
+
+fn show(s: ptr Stat, name: ptr byte) {
+    var fl: uint = uint(s.size >> 16)
+    if fl & A_HIDDEN != 0 && aflag == 0 { return }
+    if lflag != 0 {
+        if fl & A_DIR != 0 { puts("d") } else { puts("-") }
+        if fl & A_RDONLY != 0 { puts("r") } else { puts("-") }
+        if fl & A_HIDDEN != 0 { puts("h") } else { puts("-") }
+        if fl & A_SYSTEM != 0 { puts("s") } else { puts("-") }
+        fputul(STDOUT, s.size & SIZE_MASK, 10)
+        puts("  ")
+        fputtime(STDOUT, s.mtime, 0)
+        puts("  ")
+    }
+    puts(name)
+    if fl & A_DIR != 0 && lflag == 0 { puts("/") }
+    putnl()
+}
+
+fn entname(s: ptr Stat): ptr byte {
+    var j: uint = 0
+    while j < 32 { nm[j] = s.name[j]; j++ }
+    nm[32] = 0
+    return &nm[0]
+}
+
+fn list(path: ptr byte): uint {
+    var e: uint = sys_stat(path, &st)
+    if e != OK { fail(path, e); return 1 }
+    if uint(st.size >> 16) & A_DIR == 0 {
+        show(&st, path)
+        return 0
+    }
+    var h, got: uint
+    e, h = sys_open(path, O_READ, 0)
+    if e != OK { fail(path, e); return 1 }
+    loop {
+        e, got = sys_readdir(h, &st)
+        if e != OK { fail(path, e); break }
+        if got == 0 { break }
+        show(&st, entname(&st))
+    }
+    ign = sys_close(h)
+    if e != OK { return 1 }
+    return 0
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "ls"
+    var i: uint = 1
+    while i < argc && argv[i][0] == '-' {
+        var f = argv[i] + 1
+        while *f != 0 {
+            if *f == 'l' { lflag = 1 } else if *f == 'a' { aflag = 1 } else { return usage("[-l] [-a] [path ...]") }
+            f++
+        }
+        i++
+    }
+    if i == argc { return int(list(".")) }
+    var bad: uint = 0
+    var many: uint = argc - i > 1
+    while i < argc {
+        if many != 0 { puts(argv[i]); puts(":\n") }
+        bad |= list(argv[i])
+        i++
+    }
+    return int(bad)
+}

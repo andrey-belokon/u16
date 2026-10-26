@@ -1,0 +1,41 @@
+// args.b16 - a program under the monitor: arguments, standard streams, memory, exit code.
+//
+//     args [word ...]
+//
+// Prints argv (argv[0] is the first word of the command line as is), where the standard
+// streams are directed (PIB flags: "CPU16 Monitor: Executable File Format and Program Startup", sect. 4) and how much memory the
+// monitor gave, writes a line to the error stream and exits with a code equal to the number of arguments: the shell
+// shows it as the line "exit code N" ("Shell", sect. 4.2). Try:
+//     args one two "three four"
+//     args > A:/tmp/a.txt          (output goes to a file, the error stream still goes to the console)
+include "sys.b16"                       // monitor calls and output: puts, putnl, putdec, puthex
+include "mon.b16"                       // how the program was started, and output of numbers and errors
+option max_top = $2000          // 8 KB is one page: the program needs no more
+
+var PIB_FLAGS at $000A: uint    // bit 0 - input is not from the console, bit 1 - output is not to the console
+var PIB_ARGS_END at $0012: uint // the first byte after the argument block
+
+fn stream(name: ptr byte, redirected: uint) {
+    puts(name)
+    if redirected != 0 { puts(": redirected\n") } else { puts(": console\n") }
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    if on_monitor() == 0 { return 1 }    // there are no monitor calls on a bare machine
+    puts("argc = "); putdec(argc); putnl()
+    var i: uint = 0
+    while i < argc {
+        puts("argv["); putdec(i); puts("] = \""); puts(argv[i]); puts("\"\n")
+        i++
+    }
+    stream("input", PIB_FLAGS & 1)
+    stream("output", PIB_FLAGS & 2)
+    var e, top, free, xf: uint
+    e, top, free, xf = sys_meminfo()
+    puts("memory: top = $"); puthex(top)
+    puts(", image and bss up to $"); puthex(uint(__bss_end))
+    puts(", arguments up to $"); puthex(PIB_ARGS_END)
+    puts(", free frames "); putdec(free); putnl()
+    eputs("args: this line is in the error stream\n")
+    return int(argc - 1)
+}

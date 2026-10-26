@@ -1,0 +1,4 @@
+tests/diag/wide_abi.b16:4: error: results take 5 words: at most 4 (long and ulong take 2)
+tests/diag/wide_abi.b16:5: error: results take 6 words: at most 4 (long and ulong take 2)
+tests/diag/wide_abi.b16:6: error: results take 5 words: at most 4 (long and ulong take 2)
+rc 1

@@ -1,0 +1,12 @@
+screen 80x25, mode $03, attribute $07, timer 0
+keys (until 'q'):
+  character 'a' code $61
+  character 'Ж' code $C6
+  key ↑ scancode $48
+  key ↓ scancode $50
+  key ← scancode $4B
+  key → scancode $4D
+  key Home scancode $47
+  key Del scancode $53
+  key F1 scancode $3B
+12345 <- the cursor moved by 5

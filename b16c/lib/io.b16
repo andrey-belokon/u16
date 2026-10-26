@@ -1,0 +1,150 @@
+// io.b16 - text input-output for universal programs: the same image works on a bare
+// machine and under the monitor. How the program was started is determined on every access by the signature
+// at address $0004, as the startup code does (B16, sect. 9.2): "CXPB" - the monitor's PIB,
+// "CX16" - the image header on a bare machine.
+//
+//   bare machine  output is a write to the console port $FF20 (teletype), input is keyboard polling;
+//   monitor       standard streams: WRITE to descriptor 1 (errors - to 2), READ from descriptor 0
+//                 ("System Calls", sect. 5, 9.2). Output is redirected to a file, input
+//                 is taken from a file: prog > out.txt, prog < in.txt.
+//
+// For the std target only: in the kernel target anything may lie at address $0004. It is not included together with
+// console.b16 - the output functions have the same names (putc, puts, putu ...). A program that needs
+// both the screen and universal output gets by with console.b16: writing to the display under the monitor is allowed
+// ("System Calls", sect. 2.2), but it bypasses output redirection.
+//
+// Monitor calls are asm inserts (TRAP #9, the call number is the word after the instruction), so
+// the library does not need sys.asm and is included without the monitor's directories.
+
+var IO_SIG at $0006: uint           // the second half of the signature: "PB" - monitor, "16" - bare machine
+const IO_SIG_MONITOR = $4250        // 'P' | 'B' << 8
+var IO_DATA at $FF20: byte          // bare machine: write - a character, read - the key's character or 0
+
+const IO_EOF = $FFFF                // readc: input ended (under the monitor only)
+
+// 1 - the program was started by the monitor.
+fn on_monitor(): uint {
+    if IO_SIG == IO_SIG_MONITOR { return 1 }
+    return 0
+}
+
+// ---- monitor calls ----------------------------------------------------------------------
+// The register layout matches the B16 convention: arguments in R0..R2, results in R0, R1.
+// The body begins with asm, so on entry to the block R0-R2 are the arguments (B16, sect. 10.2, item 7);
+// after TRAP the parameter registers h and buf hold the error code and the byte count.
+
+fn io_sys_read(h, buf, n: uint): uint, uint {      // $12 READ: R1 = bytes read, 0 - end
+    asm {
+        TRAP  #9
+        .word $12
+    }
+    return h, buf
+}
+
+fn io_sys_write(h, buf, n: uint): uint, uint {     // $13 WRITE: R1 = bytes written
+    asm {
+        TRAP  #9
+        .word $13
+    }
+    return h, buf
+}
+
+// ---- output ----------------------------------------------------------------------------------
+
+// n bytes from address p to stream h (1 - output, 2 - errors; on a bare machine both are the console).
+fn io_out(h: uint, p: ptr byte, n: uint) {
+    if on_monitor() != 0 {
+        var e, w: uint
+        e, w = io_sys_write(h, uint(p), n)
+        return
+    }
+    while n != 0 { IO_DATA = *p++; n-- }
+}
+
+fn io_len(s: ptr byte): uint {
+    var n: uint = 0
+    while s[n] != 0 { n++ }
+    return n
+}
+
+fn putc(c: byte) {
+    var b: [2]byte
+    b[0] = c
+    io_out(1, &b[0], 1)
+}
+
+fn puts(s: ptr byte) { io_out(1, s, io_len(s)) }
+fn putnl() { putc('\n') }
+
+// Error message: under the monitor - to descriptor 2, on a bare machine - to the console.
+fn eputs(s: ptr byte) { io_out(2, s, io_len(s)) }
+
+// Unsigned decimal: the digits are collected from the end of the buffer and written out in a single write.
+fn putul(v: ulong) {
+    var buf: [10]byte
+    var i: uint = 10
+    loop {
+        i--
+        buf[i] = byte(v % 10) + '0'
+        v /= 10
+        if v == 0 { break }
+    }
+    io_out(1, &buf[i], 10 - i)
+}
+
+fn putu(v: uint) { putul(ulong(v)) }
+
+fn putl(v: long) {
+    if v < 0 { putc('-'); v = -v }      // -(-2147483648) = 2147483648 as ulong: also correct
+    putul(ulong(v))
+}
+
+fn puti(v: int) { putl(long(v)) }
+
+// Hexadecimal output of the low digits (1..8) digits.
+fn puthexl(v: ulong, digits: uint) {
+    var buf: [8]byte
+    if digits > 8 { digits = 8 }
+    var i = digits
+    while i != 0 {
+        i--
+        var d = uint(v) & 15
+        if d < 10 { buf[i] = byte(d) + '0' } else { buf[i] = byte(d) + ('A' - 10) }
+        v >>= 4
+    }
+    io_out(1, &buf[0], digits)
+}
+
+fn puthex(v: uint, digits: uint) { puthexl(ulong(v), digits) }
+
+// ---- input -----------------------------------------------------------------------------------
+
+// The next input character; waits for it. IO_EOF - input ended (under the monitor: end of file with
+// redirection, Ctrl+D is not provided; on a bare machine input never ends).
+fn readc(): uint {
+    if on_monitor() != 0 {
+        var b: [2]byte
+        var e, n: uint
+        e, n = io_sys_read(0, uint(&b[0]), 1)
+        if e != 0 || n == 0 { return IO_EOF }
+        return b[0]
+    }
+    var c: byte
+    while (c = IO_DATA) == 0 {}
+    return c
+}
+
+// A line up to '\n' (the '\n' itself and a '\r' before it are not stored), no longer than max - 1 bytes; extra
+// characters of the line are discarded. The string is terminated with zero. Result: the length and 1, or 0, 0 if
+// input ended before at least one character arrived.
+fn readline(buf: ptr byte, max: uint): uint, uint {
+    var n: uint = 0
+    var c = readc()
+    if c == IO_EOF { buf[0] = 0; return 0, 0 }
+    while c != IO_EOF && c != '\n' {
+        if c != '\r' && n + 1 < max { buf[n] = byte(c); n++ }
+        c = readc()
+    }
+    buf[n] = 0
+    return n, 1
+}

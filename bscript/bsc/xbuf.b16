@@ -1,0 +1,80 @@
+// xbuf.b16 - the bsc buffers in extended memory: code, constants, the line table.
+//
+// A buffer is a linear space of bytes in 8 KB frames (XALLOC on growth). The frame being accessed
+// is placed in the window - page 6 (XMAP); max_top of bsc = $C000. The code is written
+// sequentially, so the window is almost always occupied by the current code frame; the constants and the line
+// table are mapped on writing and comparison. An address from xaddr is valid until the next xaddr.
+
+const XW_BASE = $C000
+const XW_PAGE = 6
+const XB_CODE = 0
+const XB_KONST = 1
+const XB_LINES = 2
+const XB_NBUF = 3
+const XB_FRAMES = 4             // frames per buffer: up to 32 KB
+
+var xb_frame: [XB_NBUF * XB_FRAMES]uint
+var xw_cur: uint                // the frame in the window, 0 - its own
+
+// The address in the window of byte off of buffer b; a frame is allocated at first access.
+fn xaddr(b: uint, off: uint): uint {
+    var i = b * XB_FRAMES + (off >> 13)
+    var f = xb_frame[i]
+    if f == 0 {
+        var e: uint
+        e, f = sys_xalloc()
+        if e != OK { fatal("not enough memory", 0, 0) }
+        xb_frame[i] = f
+    }
+    if f != xw_cur {
+        var e, old: uint
+        e, old = sys_xmap(XW_PAGE, f)
+        if e != OK { fatal("not enough memory", 0, 0) }
+        xw_cur = f
+    }
+    return XW_BASE + (off & $1FFF)
+}
+
+fn xput(b: uint, off: uint, v: uint) { *ptr byte(xaddr(b, off)) = byte(v) }
+fn xget(b: uint, off: uint): uint { return uint(*ptr byte(xaddr(b, off))) }
+
+// copying between a buffer and near memory in pieces within a frame
+fn xwrite(b: uint, off: uint, p: ptr byte, n: uint) {
+    while n != 0 {
+        var k = $2000 - (off & $1FFF)
+        if k > n { k = n }
+        memcpy(ptr byte(xaddr(b, off)), p, k)
+        off += k; p += k; n -= k
+    }
+}
+
+fn xread(b: uint, off: uint, p: ptr byte, n: uint) {
+    while n != 0 {
+        var k = $2000 - (off & $1FFF)
+        if k > n { k = n }
+        memcpy(p, ptr byte(xaddr(b, off)), k)
+        off += k; p += k; n -= k
+    }
+}
+
+// n bytes of the buffer from off match the near bytes at p
+fn xeq(b: uint, off: uint, p: ptr byte, n: uint): uint {
+    while n != 0 {
+        var k = $2000 - (off & $1FFF)
+        if k > n { k = n }
+        if memeq(ptr byte(xaddr(b, off)), p, k) == 0 { return 0 }
+        off += k; p += k; n -= k
+    }
+    return 1
+}
+
+// write the first n bytes of the buffer to the output file (wr, bsc.b16)
+fn xfile(b: uint, n: uint) {
+    var off: uint = 0
+    while n != 0 {
+        var k = $2000 - (off & $1FFF)
+        if k > n { k = n }
+        wr(ptr byte(xaddr(b, off)), k)
+        off += k; n -= k
+    }
+}

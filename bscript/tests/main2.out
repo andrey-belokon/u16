@@ -1,0 +1,3 @@
+main2
+main2: missing.txt: no such file or directory
+exit code 1

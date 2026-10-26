@@ -1,0 +1,211 @@
+// mm.b16 - frames, the process map, windows and access to process memory
+// ("CPU16 Monitor: Kernel Internals", sect. 2.1, 2.3, 2.6).
+
+// Frame owners (sect. 2.1 of the kernel design): 0 - free, OWN_SYS - the kernel and frames 0-13,
+// OWN_SESS - session frames, otherwise the process descriptor number + 1 (OWN_TMP - a new program for
+// the duration of EXEC).
+const OWN_SYS = $FF
+const OWN_TMP = $FE
+var owner: [256]byte
+var nfree: uint
+
+const TOOLONG = $FFFF           // ustr: no zero within the length
+
+fn frames_init() {
+    var i: uint = 0
+    while i < 256 {
+        if i < FIRST_PFRAME { owner[i] = OWN_SYS } else { owner[i] = 0 }
+        i++
+    }
+    nfree = NPOOL
+}
+
+// A free pool frame for owner oid, or 0.
+fn frame_alloc(oid: uint): uint {
+    var i: uint = FIRST_PFRAME
+    while i < 256 {
+        if owner[i] == 0 {
+            owner[i] = byte(oid)
+            nfree--
+            return i
+        }
+        i++
+    }
+    return 0
+}
+
+fn frame_free(f: uint) {
+    if owner[f] != 0 && owner[f] != OWN_SYS {
+        owner[f] = 0
+        nfree++
+    }
+}
+
+// Free all frames of owner oid (own and extended memory).
+fn frames_free_owner(oid: uint) {
+    var i: uint = FIRST_PFRAME
+    while i < 256 {
+        if owner[i] == oid { owner[i] = 0; nfree++ }
+        i++
+    }
+}
+
+fn frames_count(oid: uint): uint {
+    var n: uint = 0
+    var i: uint = FIRST_PFRAME
+    while i < 256 { if owner[i] == oid { n++ }; i++ }
+    return n
+}
+
+// ---- the current process map (sect. 2.3) ----------------------------------------------------
+// The main copy of the current process's map is RES.cmap; Proc.map is kept only for processes that
+// are not current (waiting for a child, loading). The map passes between them only when the current
+// process changes: cmap_set on entering a process, cmap_save for the parent before SPAWN.
+
+// Frame f is an extended-memory frame of the current process (RES.xbits).
+fn xbit(f: uint): uint { return uint(RES.xbits[f >> 3] >> (f & 7)) & 1 }
+
+fn xbit_put(f: uint, v: uint) {
+    var m: byte = byte(1 << (f & 7))
+    if v != 0 { RES.xbits[f >> 3] |= m } else { RES.xbits[f >> 3] &= ~m }
+}
+
+// The current process p's own map into RES.omap (after nfr or fr changes).
+fn omap_set(p: ptr Proc) {
+    var i: uint = 0
+    while i < 7 {
+        if i < p.nfr { RES.omap[i] = p.fr[i] } else { RES.omap[i] = GARBAGE }
+        i++
+    }
+    RES.omap[7] = FRAME_C
+}
+
+// Process p becomes current: the map, the own map, the extended-memory frames.
+fn cmap_set(p: ptr Proc) {
+    var i: uint = 0
+    while i < 7 { RES.cmap[i] = p.map[i]; i++ }
+    RES.cmap[7] = FRAME_C
+    omap_set(p)
+    kzero(&RES.xbits[0], 32)
+    if p.nx == 0 { return }     // a new process, a process without extended memory
+    var oid: uint = proc_id(p)
+    var f: uint = FIRST_PFRAME
+    while f < 256 { if owner[f] == oid { xbit_put(f, 1) }; f++ }
+    i = 0
+    while i < p.nfr { xbit_put(p.fr[i], 0); i++ }
+}
+
+// The current process p stops being current (SPAWN): the map goes into its descriptor.
+fn cmap_save(p: ptr Proc) {
+    var i: uint = 0
+    while i < 7 { p.map[i] = RES.cmap[i]; i++ }
+}
+
+// The map of process p: RES.cmap for the current one, Proc.map for the others.
+fn pmap(p: ptr Proc): ptr byte {
+    if cur != NONE && p == curp() { return &RES.cmap[0] }
+    return &p.map[0]
+}
+
+// A process's own map: its own frames below top, the junk frame above.
+fn map_own(p: ptr Proc) {
+    var i: uint = 0
+    while i < 7 {
+        if i < p.nfr { p.map[i] = p.fr[i] } else { p.map[i] = GARBAGE }
+        i++
+    }
+}
+
+// Windows W0/W1 onto address ua of process p (no check): the address in the window and how many bytes are visible.
+fn pwin(p: ptr Proc, ua: uint): (ptr byte, uint) {
+    var pg: uint = ua >> 13
+    var m = pmap(p)
+    PAGE[5] = m[pg]
+    if pg < 6 { PAGE[6] = m[pg + 1] } else { PAGE[6] = GARBAGE }
+    return ptr byte(WIN0 + (ua & $1FFF)), $4000 - (ua & $1FFF)
+}
+
+fn win_idle() {
+    PAGE[5] = GARBAGE
+    PAGE[6] = GARBAGE
+}
+
+// Whether address ua is process p's memory: a page with an own frame or an extended-memory frame.
+fn uvalid(p: ptr Proc, ua: uint): uint {
+    if ua >= $E000 || pmap(p)[ua >> 13] == GARBAGE { return 0 }
+    return 1
+}
+
+// The buffer [ua, ua + n) in the current process's memory: OK or E_FAULT (sect. 3.3 of the calls).
+fn uchk(ua: uint, n: uint): uint {
+    if n == 0 { return OK }
+    if ua >= $E000 || n > $E000 - ua { return E_FAULT }
+    var pg: uint = ua >> 13
+    var last: uint = (ua + n - 1) >> 13
+    while pg <= last {
+        if RES.cmap[pg] == GARBAGE { return E_FAULT }
+        pg++
+    }
+    return OK
+}
+
+// Copying into process p's memory in pieces through the windows; the addresses are checked in advance.
+fn pcopyout(p: ptr Proc, ua: uint, src: ptr byte, n: uint) {
+    while n != 0 {
+        var k: ptr byte
+        var a: uint
+        k, a = pwin(p, ua)
+        if a > n { a = n }
+        kcopy(k, src, a)
+        ua += a
+        src += a
+        n -= a
+    }
+}
+
+fn ucopyout(ua: uint, src: ptr byte, n: uint): uint {
+    if uchk(ua, n) != OK { return E_FAULT }
+    pcopyout(curp(), ua, src, n)
+    return OK
+}
+
+fn ucopyin(dst: ptr byte, ua: uint, n: uint): uint {
+    if uchk(ua, n) != OK { return E_FAULT }
+    var p = curp()
+    while n != 0 {
+        var k: ptr byte
+        var a: uint
+        k, a = pwin(p, ua)
+        if a > n { a = n }
+        kcopy(dst, k, a)
+        ua += a
+        dst += a
+        n -= a
+    }
+    return OK
+}
+
+// A process string with a zero into the kernel buffer dst (at least max + 1 bytes).
+// Result: OK and the length without the zero; E_FAULT; TOOLONG - no zero within max bytes.
+fn ustr(dst: ptr byte, ua: uint, max: uint): (uint, uint) {
+    var p = curp()
+    var n: uint = 0
+    while n <= max {
+        if uvalid(p, ua) == 0 { return E_FAULT, 0 }
+        var k: ptr byte
+        var a: uint
+        k, a = pwin(p, ua)
+        var lim: uint = $2000 - (ua & $1FFF)    // up to the end of the page: the next one will be checked by uvalid
+        if a > lim { a = lim }
+        while a != 0 && n <= max {
+            var c: byte = *k
+            dst[n] = c
+            if c == 0 { return OK, n }
+            k++
+            ua++
+            n++
+            a--
+        }
+    }
+    return TOOLONG, 0
+}

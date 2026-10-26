@@ -1,0 +1,5 @@
+fn get(a: array, i: int): value {
+    return a[i]
+}
+println(get([1, 2], 1))
+println(get([1, 2], 2))

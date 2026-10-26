@@ -1,0 +1,5 @@
+     5     18     113  /ex/data/poem.txt
+wc: /ex/data/none.txt: no such file or directory
+     2      5      29  /ex/data/notes.txt
+     7     23     142  total
+exit code 1

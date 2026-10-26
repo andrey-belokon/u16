@@ -1,0 +1,3 @@
+// run: mv /bin/bsvm.ovl /bin/bsvm.old ; bs /t/ovlmiss.bs ; mv /bin/bsvm.old /bin/bsvm.ovl
+println("before")
+println("x".repeat(2))

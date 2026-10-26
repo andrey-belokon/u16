@@ -1,0 +1,69 @@
+// sort.b16 - sorting: function pointers, recursion, pointer arithmetic.
+include "../../lib/io.b16"
+include "../../lib/string.b16"
+include "../../lib/math.b16"
+
+// Comparison of two words: negative, 0 or positive.
+fn cmp_asc(a, b: int): int { if a < b { return -1 }; return int(a > b) }
+fn cmp_desc(a, b: int): int { return cmp_asc(b, a) }
+
+// Quicksort of [lo, hi] over pointers.
+fn qsort(lo, hi: ptr int, cmp: ptr fn(int, int): int) {
+    while lo < hi {
+        var pivot = *(lo + (hi - lo) / 2)
+        var i = lo
+        var j = hi
+        while i <= j {
+            while cmp(*i, pivot) < 0 { i++ }
+            while cmp(*j, pivot) > 0 { j-- }
+            if i <= j {
+                var t = *i; *i = *j; *j = t
+                i++
+                j--
+            }
+        }
+        // recurse into the smaller part, loop over the larger: stack depth O(log n)
+        if j - lo < hi - i {
+            qsort(lo, j, cmp)
+            lo = i
+        } else {
+            qsort(i, hi, cmp)
+            hi = j
+        }
+    }
+}
+
+// Insertion sort for strings (an array of pointers).
+fn sort_strings(v: ptr ptr byte, n: uint) {
+    var i: uint = 1
+    while i < n {
+        var key = v[i]
+        var j = i
+        while j > 0 && strcmp(v[j - 1], key) > 0 { v[j] = v[j - 1]; j-- }
+        v[j] = key
+        i++
+    }
+}
+
+var data: [16]int
+var words: [6]ptr byte = {"груша", "apple", "яблоко", "banana", "арбуз", "cherry"}
+
+fn show(p: ptr int, n: uint) {
+    while n != 0 { puti(*p++); putc(' '); n-- }
+    putnl()
+}
+
+fn main() {
+    srand(2024)
+    var i: uint = 0
+    while i < 16 { data[i] = int(rand() % 200) - 100; i++ }
+    show(&data[0], 16)
+    qsort(&data[0], &data[15], cmp_asc)
+    show(&data[0], 16)
+    qsort(&data[0], &data[15], cmp_desc)
+    show(&data[0], 16)
+    sort_strings(&words[0], 6)
+    i = 0
+    while i < 6 { puts(words[i]); putc(' '); i++ }
+    putnl()
+}

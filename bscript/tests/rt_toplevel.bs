@@ -1,0 +1,5 @@
+// An error not intercepted deep in the call stack
+fn a() { b() }
+fn b() { var t = fs.read_text("/no/such") }
+a()
+println("unreachable")

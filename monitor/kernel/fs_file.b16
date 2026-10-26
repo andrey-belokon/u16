@@ -1,0 +1,451 @@
+// file.b16 - FS16 files: the in-memory entry descriptor, the cluster address by position
+// (sect. 6), reading, writing with file growth, truncation (sect. 9).
+
+// Node and File are in ktypes.b16: open files refer to a shared node ("CPU16 Monitor: Kernel Internals", sect. 6.5).
+
+// ---- directory entries
+
+// The sector and offset of an entry by its address.
+static fn ent_sector(clu: uint, idx: uint): ulong, uint {
+    if clu == 0 { return 0, offsetof(Super, root) }
+    return ulong(clu) << 2 | (idx >> 3), (idx & 7) << 6
+}
+
+// A pointer to an entry in a cache buffer, and the buffer itself.
+fn ent_get(drv: uint, clu: uint, idx: uint): ptr DirEnt, ptr byte, uint {
+    var sec: ulong
+    var off: uint
+    sec, off = ent_sector(clu, idx)
+    var b: ptr byte
+    var e: uint
+    b, e = cache_get(drv, sec)
+    if e != E_OK { return 0, 0, e }
+    return ptr DirEnt(b + off), b, E_OK
+}
+
+// Write the sector with the modified entry; for ROOT - recompute CHECKSUM.
+fn ent_put(b: ptr byte, clu: uint): uint {
+    if clu == 0 { sb_fix(ptr Super(b)) }
+    return cache_write(b)
+}
+
+fn node_fill(n: ptr Node, d: ptr DirEnt, drv: uint, clu: uint, idx: uint) {
+    n.drv = drv
+    n.eclu = clu
+    n.eidx = idx
+    n.size = d.size & SZ_MASK
+    n.flags = uint(d.size >> 16) & F_MASK
+    n.mtime = d.mtime
+    kmemcpy(ptr byte(&n.addr[0]), ptr byte(&d.addr[0]), 24)
+}
+
+fn node_load(n: ptr Node, drv: uint, clu: uint, idx: uint): uint {
+    var d: ptr DirEnt
+    var b: ptr byte
+    var e: uint
+    d, b, e = ent_get(drv, clu, idx)
+    if e != E_OK { return e }
+    node_fill(n, d, drv, clu, idx)
+    return E_OK
+}
+
+// Write the size, flags, MTIME and addresses into the entry on disk.
+fn node_store(n: ptr Node): uint {
+    var d: ptr DirEnt
+    var b: ptr byte
+    var e: uint
+    d, b, e = ent_get(n.drv, n.eclu, n.eidx)
+    if e != E_OK { return e }
+    d.size = n.size | ulong(n.flags) << 16
+    d.mtime = n.mtime
+    kmemcpy(ptr byte(&d.addr[0]), ptr byte(&n.addr[0]), 24)
+    return ent_put(b, n.eclu)
+}
+
+// The number of data clusters C = ceil(size / 2048).
+fn nclus(n: ptr Node): uint {
+    var c = uint(n.size >> 11)
+    if uint(n.size) & 2047 != 0 { c++ }
+    return c
+}
+
+// ---- index clusters
+
+fn idx_get(drv: uint, clu: uint, i: uint): uint, uint {
+    var b: ptr byte
+    var e: uint
+    b, e = cache_get(drv, ulong(clu) << 2 | (i >> 8))
+    if e != E_OK { return 0, e }
+    return ptr uint(b)[i & 255], E_OK
+}
+
+static fn idx_set(drv: uint, clu: uint, i: uint, v: uint): uint {
+    var b: ptr byte
+    var e: uint
+    b, e = cache_get(drv, ulong(clu) << 2 | (i >> 8))
+    if e != E_OK { return e }
+    ptr uint(b)[i & 255] = v
+    return cache_write(b)
+}
+
+// Fill a cluster with zeros; v != 0 - the first element of a new index cluster.
+fn clu_init(drv: uint, clu: uint, v: uint): uint {
+    var s: uint = 0
+    while s < 4 {
+        var b: ptr byte
+        var e: uint
+        b, e = cache_new(drv, ulong(clu) << 2 | s)
+        if e != E_OK { return e }
+        kmemzero(b, SECSIZE)
+        if s == 0 { ptr uint(b)[0] = v }
+        e = cache_write(b)
+        if e != E_OK { return e }
+        s++
+    }
+    return E_OK
+}
+
+// The disk cluster number for cluster k of the file (0 - not allocated).
+fn bmap(n: ptr Node, k: uint): uint, uint {
+    if k < 10 { return n.addr[k], E_OK }
+    var c, e: uint
+    if k < 1034 {
+        c = n.addr[A_IND]
+        if c == 0 { return 0, E_OK }
+        c, e = idx_get(n.drv, c, k - 10)
+        return c, e
+    }
+    var j = k - 1034
+    c = n.addr[A_DIND]
+    if c == 0 { return 0, E_OK }
+    c, e = idx_get(n.drv, c, j >> 10)
+    if e != E_OK || c == 0 { return 0, e }
+    c, e = idx_get(n.drv, c, j & 1023)
+    return c, e
+}
+
+// bmap remembering the last address in the file descriptor.
+static fn fbmap(f: ptr File, k: uint): uint, uint {
+    if f.lk == k + 1 { return f.lc, E_OK }
+    var c, e: uint
+    c, e = bmap(f.n, k)
+    if e != E_OK { return 0, e }
+    if c == 0 { return 0, E_NOTFS }             // no cluster within the size
+    f.lk = k + 1
+    f.lc = c
+    return c, E_OK
+}
+
+// ---- adding a cluster (sect. 9, steps 1-4)
+
+// The clusters allocated by node_alloc: data and new index ones.
+struct NewClu { c, ind, dind, l2: uint }
+var nal: NewClu
+
+// Steps 1-2: allocate a data cluster for cluster k = C of the file and the needed index
+// clusters; if space runs out, roll back what was allocated. The map is written at allocation.
+fn node_alloc(v: ptr Vol, k: uint): uint {
+    nal.ind = 0
+    nal.dind = 0
+    nal.l2 = 0
+    var c, e: uint
+    c, e = bm_alloc(v)
+    if e != E_OK { return e }
+    nal.c = c
+    if k == 10 {
+        c, e = bm_alloc(v)
+        if e != E_OK { bm_free(v, nal.c); return e }
+        nal.ind = c
+    } else if k >= 1034 && (k - 1034) & 1023 == 0 {
+        if k == 1034 {
+            c, e = bm_alloc(v)
+            if e != E_OK { bm_free(v, nal.c); return e }
+            nal.dind = c
+        }
+        c, e = bm_alloc(v)
+        if e != E_OK {
+            bm_free(v, nal.c)
+            if nal.dind != 0 { bm_free(v, nal.dind) }
+            return e
+        }
+        nal.l2 = c
+    }
+    return E_OK
+}
+
+// Return to the map everything node_alloc allocated.
+static fn nal_free(v: ptr Vol) {
+    bm_free(v, nal.c)
+    if nal.ind != 0 { bm_free(v, nal.ind) }
+    if nal.dind != 0 { bm_free(v, nal.dind) }
+    if nal.l2 != 0 { bm_free(v, nal.l2) }
+}
+
+// Steps 3-4 after writing the data: new index clusters with an address and zeros,
+// the address into an existing index cluster. The directory entry is written by the caller.
+fn node_link(n: ptr Node, k: uint): uint {
+    var c = nal.c
+    var drv = n.drv
+    var e: uint
+    if k < 10 {
+        n.addr[k] = c
+        return E_OK
+    }
+    if k < 1034 {
+        if nal.ind != 0 {
+            e = clu_init(drv, nal.ind, c)
+            n.addr[A_IND] = nal.ind
+            return e
+        }
+        return idx_set(drv, n.addr[A_IND], k - 10, c)
+    }
+    var j = k - 1034
+    if nal.l2 != 0 {
+        e = clu_init(drv, nal.l2, c)
+        if e != E_OK { return e }
+        if nal.dind != 0 {
+            e = clu_init(drv, nal.dind, nal.l2)
+            n.addr[A_DIND] = nal.dind
+            return e
+        }
+        return idx_set(drv, n.addr[A_DIND], j >> 10, nal.l2)
+    }
+    var t: uint
+    t, e = idx_get(drv, n.addr[A_DIND], j >> 10)
+    if e != E_OK { return e }
+    return idx_set(drv, t, j & 1023, c)
+}
+
+// ---- freeing (truncation, deletion)
+
+// Free the clusters listed in elements [from, to) of an index cluster.
+// keep != 0 - the cluster stays in the file: the elements are first zeroed on disk.
+static fn idx_release(v: ptr Vol, clu: uint, from: uint, to: uint, keep: uint): uint {
+    var drv = v.drv
+    var i = from
+    while i < to {
+        var s = i >> 8
+        var end = (s + 1) << 8
+        if end > to { end = to }
+        var b: ptr byte
+        var t: ptr byte = 0
+        var e: uint
+        b, e = cache_get(drv, ulong(clu) << 2 | s)
+        if e != E_OK { return e }
+        cache_pin(b)
+        var src: ptr uint = ptr uint(b)
+        if keep != 0 {
+            t, e = cache_tmp()
+            if e != E_OK { cache_unpin(b); return e }
+            kmemcpy(t, b, SECSIZE)
+            kmemzero(b + ((i & 255) << 1), (end - i) << 1)
+            e = cache_write(b)
+            if e != E_OK { cache_release(t); cache_unpin(b); return e }
+            src = ptr uint(t)
+        }
+        while i < end {
+            var c = src[i & 255]
+            if c != 0 { bm_free(v, c) }
+            i++
+        }
+        if keep != 0 { cache_release(t) }
+        cache_unpin(b)
+    }
+    return E_OK
+}
+
+// Free data clusters C2..C-1 and the index clusters that became unneeded.
+// a - the addresses from the entry before the change; the entry with the new addresses is already written.
+fn node_release(v: ptr Vol, a: ptr uint, c: uint, c2: uint): uint {
+    var e: uint
+    var k = c2
+    while k < c && k < 10 { bm_free(v, a[k]); k++ }
+    if c > 10 {
+        var from: uint = 0
+        if c2 > 10 { from = c2 - 10 }
+        var to = c - 10
+        if to > 1024 { to = 1024 }
+        e = idx_release(v, a[A_IND], from, to, c2 > 10)
+        if e != E_OK { return e }
+        if c2 <= 10 { bm_free(v, a[A_IND]) }
+    }
+    if c > 1034 {
+        var d = a[A_DIND]
+        var keepd = c2 > 1034
+        var j: uint = 0
+        if keepd { j = (c2 - 1034) >> 10 }
+        var jl = (c - 1 - 1034) >> 10
+        while j <= jl {
+            var base = 1034 + (j << 10)
+            var lo: uint = 0
+            if c2 > base { lo = c2 - base }
+            var hi = c - base
+            if hi > 1024 { hi = 1024 }
+            var l2: uint
+            l2, e = idx_get(v.drv, d, j)
+            if e != E_OK { return e }
+            if lo == 0 && keepd {
+                e = idx_set(v.drv, d, j, 0)
+                if e != E_OK { return e }
+            }
+            e = idx_release(v, l2, lo, hi, lo != 0)
+            if e != E_OK { return e }
+            if lo == 0 { bm_free(v, l2) }
+            j++
+        }
+        if !keepd { bm_free(v, d) }
+    }
+    return E_OK
+}
+
+// ---- file operations
+
+fn fs_stat(path: ptr byte, n: ptr Node): uint {
+    var e: uint
+    e, _ = path_walk(path, n, 0)
+    return e
+}
+
+// The position is not past the end of the file: no holes.
+fn fs_seek(f: ptr File, pos: ulong): uint {
+    if pos > f.n.size { return E_INVAL }
+    f.pos = pos
+    return E_OK
+}
+
+// Reading from the current position. Result: the error code, the number of bytes read.
+fn fs_read(f: ptr File, buf: ptr byte, len: uint): uint, uint {
+    var n = f.n
+    var done: uint = 0
+    while len != 0 {
+        var rem = n.size - f.pos
+        if rem == 0 { break }
+        if rem < len { len = uint(rem) }
+        var chunk = len
+        var c, e: uint
+        c, e = fbmap(f, uint(f.pos >> 11))
+        if e != E_OK { return e, done }
+        var off = uint(f.pos) & 511
+        var s = uint(f.pos >> 9) & 3
+        var lba = ulong(c) << 2 | s
+        var m: uint = 0
+        if off == 0 && chunk >= SECSIZE {
+            // whole sectors go straight into the buffer if they are not in the cache
+            var ns = chunk >> 9
+            if ns > 4 - s { ns = 4 - s }
+            while m < ns && !cache_has(n.drv, lba + m) { m++ }
+        }
+        if m != 0 {
+            e = disk_io(DK_READ, n.drv, lba, buf, m)
+            if e != E_OK { return e, done }
+            chunk = m << 9
+        } else {
+            var b: ptr byte
+            b, e = cache_get(n.drv, lba)
+            if e != E_OK { return e, done }
+            if chunk > SECSIZE - off { chunk = SECSIZE - off }
+            kmemcpy(buf, b + off, chunk)
+        }
+        buf += chunk
+        f.pos += chunk
+        done += chunk
+        len -= chunk
+    }
+    return E_OK, done
+}
+
+// Writing from the current position with file growth. Each data sector is written at once,
+// a new cluster is linked to the file after its data is written, the directory entry
+// with the new size and MTIME is written at the end of the call.
+fn fs_write(f: ptr File, buf: ptr byte, len: uint): uint, uint {
+    if f.mode & FM_WRITE == 0 { return E_INVAL, 0 }
+    var n = f.n
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(n.drv)
+    if e != E_OK { return e, 0 }
+    var cc = nclus(n)
+    var done: uint = 0
+    while len != 0 {
+        if f.pos >= $08000000 { e = E_TOOBIG; break }
+        var k = uint(f.pos >> 11)
+        var c: uint
+        var isnew = k >= cc
+        if isnew {
+            e = node_alloc(v, k)
+            if e != E_OK { break }
+            c = nal.c
+        } else {
+            c, e = fbmap(f, k)
+            if e != E_OK { break }
+        }
+        loop {                      // sectors of cluster c
+            var off = uint(f.pos) & 511
+            var chunk = SECSIZE - off
+            if chunk > len { chunk = len }
+            var lba = ulong(c) << 2 | (uint(f.pos >> 9) & 3)
+            var end = f.pos + chunk
+            var b: ptr byte
+            // the old contents are needed if file data remains in the sector
+            if off != 0 || (chunk < SECSIZE && end < n.size) {
+                b, e = cache_get(n.drv, lba)
+            } else {
+                b, e = cache_new(n.drv, lba)
+            }
+            if e != E_OK { break }
+            kmemcpy(b + off, buf, chunk)
+            e = cache_write(b)
+            if e != E_OK { break }
+            buf += chunk
+            f.pos = end
+            done += chunk
+            len -= chunk
+            if end > n.size { n.size = end }
+            if len == 0 || uint(end) & 2047 == 0 { break }
+        }
+        if isnew {
+            if nclus(n) > cc {      // data has been written into the new cluster
+                var e2 = node_link(n, k)
+                if e == E_OK { e = e2 }
+                cc++
+                f.lk = k + 1
+                f.lc = c
+            } else {
+                nal_free(v)
+            }
+        }
+        if e != E_OK { break }
+    }
+    if done != 0 {
+        n.mtime = now()
+        var e3 = node_store(n)
+        if e == E_OK { e = e3 }
+    }
+    return e, done
+}
+
+// Truncation to size, no more than the current one (sect. 9).
+fn fs_truncate(f: ptr File, size: ulong): uint {
+    if f.mode & FM_WRITE == 0 { return E_INVAL }
+    var n = f.n
+    if size > n.size { return E_INVAL }
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(n.drv)
+    if e != E_OK { return e }
+    var c = nclus(n)
+    var old: [12]uint
+    kmemcpy(ptr byte(&old[0]), ptr byte(&n.addr[0]), 24)
+    n.size = size
+    var c2 = nclus(n)
+    var k = c2
+    while k < 10 { n.addr[k] = 0; k++ }
+    if c2 <= 10 { n.addr[A_IND] = 0 }
+    if c2 <= 1034 { n.addr[A_DIND] = 0 }
+    n.mtime = now()
+    e = node_store(n)
+    if e != E_OK { return e }
+    f.lk = 0
+    if f.pos > n.size { f.pos = size }
+    return node_release(v, &old[0], c, c2)
+}

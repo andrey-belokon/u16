@@ -1,0 +1,323 @@
+// scr.b16 - the fm screen: direct output to the display ("System Calls", sect. 6.4; "The Machine", sect. 2),
+// the keyboard through CON_GETEV, message lines and dialogs.
+
+var CON_DATA at $FF20: byte
+var CON_CTRL at $FF22: byte
+var CON_ATTR at $FF23: byte
+var CON_COL at $FF24: byte
+var CON_ROW at $FF25: byte
+var CON_CMD at $FF26: byte
+
+const COLS = 80
+const ROWS = 25
+
+// CTRL: bit 0 teletype, bit 1 cursor
+const CT_COORD = 0
+const CT_CURSOR = 2
+const CT_TTY = 3
+
+// attributes: BACKGROUND << 3 | TEXT (palette: 0 black, 1 blue, 2 green, 3 cyan, 4 red,
+// 5 yellow, 6 gray, 7 white)
+const A_FRAME = $0B             // cyan on blue
+const A_FILE = $0B
+const A_DIRN = $0F              // white on blue
+const A_EXEC = $0A              // green on blue
+const A_HID = $0E               // gray on blue
+const A_HEAD = $0D              // yellow on blue
+const A_MARK = $0D
+const A_CUR = $18               // black on cyan
+const A_CURMARK = $1D           // yellow on cyan
+const A_TITLE = $18
+const A_CMD = $07
+const A_KEYN = $07
+const A_KEYL = $18
+const A_DLG = $38               // black on white
+const A_DLGF = $3F              // white on white: a black frame is also invisible, so the frame is $38
+const A_DLGIN = $18             // input field
+const A_ERR = $27               // white on red
+const A_ERRIN = $1F
+
+// keys: scancodes ("The Machine", sect. 2.7)
+const K_F1 = $3B
+const K_F2 = $3C
+const K_F3 = $3D
+const K_F4 = $3E
+const K_F5 = $3F
+const K_F6 = $40
+const K_F7 = $41
+const K_F8 = $42
+const K_F9 = $43
+const K_F10 = $44
+const K_HOME = $47
+const K_UP = $48
+const K_PGUP = $49
+const K_LEFT = $4B
+const K_RIGHT = $4D
+const K_END = $4F
+const K_DOWN = $50
+const K_PGDN = $51
+const K_INS = $52
+const K_DEL = $53
+const C_ESC = $1B
+const C_ENTER = $0A
+const K_ENTER = $1C              // the Enter scancode: Ctrl+Enter is an event with character 0 and this scancode
+const C_BS = 8
+const C_TAB = 9
+
+fn gotoxy(x: uint, y: uint) {
+    CON_COL = byte(x)
+    CON_ROW = byte(y)
+}
+
+fn putch(c: uint) { CON_DATA = byte(c) }
+
+// n times character c with attribute a from position (x, y).
+fn fill(x: uint, y: uint, n: uint, c: uint, a: uint) {
+    gotoxy(x, y)
+    CON_ATTR = byte(a)
+    while n != 0 { CON_DATA = byte(c); n-- }
+}
+
+// String s in exactly n character cells: cut or padded with spaces.
+fn putsn(x: uint, y: uint, a: uint, s: ptr byte, n: uint) {
+    gotoxy(x, y)
+    CON_ATTR = byte(a)
+    while n != 0 && *s != 0 { CON_DATA = *s; s++; n-- }
+    while n != 0 { CON_DATA = ' '; n-- }
+}
+
+// String s as is.
+fn putsa(x: uint, y: uint, a: uint, s: ptr byte) {
+    gotoxy(x, y)
+    CON_ATTR = byte(a)
+    while *s != 0 { CON_DATA = *s; s++ }
+}
+
+// String s centered in the field [x, x + w).
+fn putsc(x: uint, y: uint, w: uint, a: uint, s: ptr byte) {
+    var n: uint = strlen(s)
+    if n > w { n = w }
+    gotoxy(x + (w - n) / 2, y)
+    CON_ATTR = byte(a)
+    while n != 0 { CON_DATA = *s; s++; n-- }
+}
+
+// A double-line frame with the inside filled.
+fn box(x: uint, y: uint, w: uint, h: uint, a: uint) {
+    fill(x, y, 1, '╔', a)
+    fill(x + 1, y, w - 2, '═', a)
+    fill(x + w - 1, y, 1, '╗', a)
+    var r: uint = 1
+    while r + 1 < h {
+        fill(x, y + r, 1, '║', a)
+        fill(x + 1, y + r, w - 2, ' ', a)
+        fill(x + w - 1, y + r, 1, '║', a)
+        r++
+    }
+    fill(x, y + h - 1, 1, '╚', a)
+    fill(x + 1, y + h - 1, w - 2, '═', a)
+    fill(x + w - 1, y + h - 1, 1, '╝', a)
+}
+
+fn scr_coord() {
+    CON_CTRL = CT_COORD
+    CON_ATTR = A_CMD
+}
+
+// The ordinary console for programs: teletype, cursor, white on black, a clear screen.
+fn scr_tty() {
+    CON_CTRL = CT_TTY
+    CON_ATTR = $07
+    CON_CMD = 1
+}
+
+// The cursor is visible at (x, y).
+fn cursor_at(x: uint, y: uint) {
+    gotoxy(x, y)
+    CON_CTRL = CT_CURSOR
+}
+
+fn cursor_off() { CON_CTRL = CT_COORD }
+
+// ---- keyboard -----------------------------------------------------------------------------
+// Events taken by poll_esc during an operation but not interrupting it: type-ahead is not
+// lost, getkey returns them first. The monitor does not allow peeking at an event without taking it.
+const PENDMAX = 16
+var pend: [PENDMAX]uint
+var pendm: [PENDMAX]byte
+var npend: uint
+const KM_SHIFT = EVM_SHIFT      // bits of kmods: the CON_GETEV modifiers
+const KM_CTRL = EVM_CTRL
+const KM_ALT = EVM_ALT
+var kmods: uint                 // the modifiers of the event that getkey returned last
+
+// An event: the character in the low byte, the scancode in the high one; the modifiers are in kmods.
+fn getkey(): uint {
+    if npend != 0 {
+        var ev: uint = pend[0]
+        kmods = pendm[0]
+        npend--
+        var i: uint = 0
+        while i < npend { pend[i] = pend[i + 1]; pendm[i] = pendm[i + 1]; i++ }
+        return ev
+    }
+    var e, ev2, m: uint
+    loop {
+        e, ev2, m = sys_con_getev(0)
+        if e == OK { kmods = m; return ev2 }
+    }
+}
+
+// Whether there is an Esc among the events that arrived during an operation. The other events are deferred.
+fn poll_esc(): uint {
+    loop {
+        var e, ev, m: uint
+        e, ev, m = sys_con_getev(EV_NOWAIT)
+        if e != OK { return 0 }
+        if ev & $FF == C_ESC { npend = 0; return 1 }
+        if npend < PENDMAX { pend[npend] = ev; pendm[npend] = byte(m); npend++ }
+    }
+}
+
+// A lower-case letter - the same way the monitor compares file names (FS16, sect. 7.1).
+fn lower(c: uint): uint { return chfold(c) }
+
+// ---- the message line ----------------------------------------------------------------------
+// The buffer mb is assembled in parts: mb_clear, mb_s, mb_u, ...
+const MBLEN = 200
+var mb: [MBLEN + 1]byte
+var mbn: uint
+
+fn mb_clear() { mbn = 0; mb[0] = 0 }
+
+fn mb_c(c: uint) {
+    if mbn < MBLEN { mb[mbn] = byte(c); mbn++; mb[mbn] = 0 }
+}
+
+fn mb_s(s: ptr byte) {
+    while *s != 0 { mb_c(*s); s++ }
+}
+
+// Unsigned decimal into buf (at least 11 bytes): the length.
+fn ultoa(buf: ptr byte, v: ulong): uint {
+    var t: [11]byte
+    var i: uint = 0
+    loop {
+        t[i] = byte('0' + uint(v % 10))
+        i++
+        v /= 10
+        if v == 0 { break }
+    }
+    var n: uint = i
+    var k: uint = 0
+    while i != 0 { i--; buf[k] = t[i]; k++ }
+    buf[k] = 0
+    return n
+}
+
+fn mb_ul(v: ulong) {
+    var t: [12]byte
+    ultoa(&t[0], v)
+    mb_s(&t[0])
+}
+
+// The error text: from ulib or "error N".
+fn mb_err(e: uint) {
+    var t = err_text(e)
+    if t != 0 { mb_s(t) } else { mb_s("error "); mb_ul(ulong(e)) }
+}
+
+// ---- dialogs --------------------------------------------------------------------------------
+const DLG_W = 64
+const DLG_FW = DLG_W - 4         // the input field width
+var dlg_x, dlg_y: uint
+
+// A dialog window of height h centered on the screen with a title.
+fn dlg_open(h: uint, title: ptr byte, a: uint) {
+    dlg_x = (COLS - DLG_W) / 2
+    dlg_y = (ROWS - h) / 2 - 1
+    box(dlg_x, dlg_y, DLG_W, h, a)
+    if title != 0 {
+        var t: [70]byte
+        t[0] = ' '
+        strcpy(&t[1], title)
+        strcat(&t[0], " ")
+        putsc(dlg_x, dlg_y, DLG_W, a, &t[0])
+    }
+}
+
+// Dialog text row r (from 1), centered; a long line is shown as its tail.
+fn dlg_line(r: uint, s: ptr byte, a: uint) {
+    var n: uint = strlen(s)
+    if n > DLG_W - 4 { s = s + (n - (DLG_W - 4)) }
+    putsc(dlg_x + 2, dlg_y + r, DLG_W - 4, a, s)
+}
+
+// A message: two lines and a wait for any key. err - a red window.
+fn dlg_msg(title: ptr byte, l1: ptr byte, l2: ptr byte, err: uint) {
+    var a: uint = A_DLG
+    if err != 0 { a = A_ERR }
+    dlg_open(6, title, a)
+    dlg_line(1, l1, a)
+    if l2 != 0 { dlg_line(2, l2, a) }
+    dlg_line(4, "[ OK ]", a)
+    cursor_off()
+    getkey()
+}
+
+// The dlg_ask flags.
+const DA_ERR = 1                // a red window
+const DA_NOENTER = 2            // Enter does not choose an answer: an answer key is needed
+
+// A question: lines l1, l2 and a button row; keys are the allowed characters (lower case), the first one
+// is also for Enter (if there is no DA_NOENTER). Esc gives the result C_ESC.
+fn dlg_ask(title: ptr byte, l1: ptr byte, l2: ptr byte, btn: ptr byte, keys: ptr byte, flags: uint): uint {
+    var a: uint = A_DLG
+    if flags & DA_ERR != 0 { a = A_ERR }
+    dlg_open(7, title, a)
+    dlg_line(1, l1, a)
+    if l2 != 0 { dlg_line(2, l2, a) }
+    dlg_line(4, btn, a)
+    cursor_off()
+    loop {
+        var ev: uint = getkey()
+        var c: uint = lower(ev & $FF)
+        if c == C_ESC { return C_ESC }
+        if c == C_ENTER && flags & DA_NOENTER == 0 { return keys[0] }
+        var p = keys
+        while *p != 0 {
+            if *p == c { return c }
+            p++
+        }
+    }
+}
+
+// An input line: buf with an initial value, no longer than max. 1 - Enter, 0 - Esc.
+fn dlg_input(title: ptr byte, prompt: ptr byte, buf: ptr byte, max: uint): uint {
+    dlg_open(6, title, A_DLG)
+    putsn(dlg_x + 2, dlg_y + 1, A_DLG, prompt, DLG_W - 4)
+    dlg_line(4, "Enter - OK   Esc - cancel", A_DLG)
+    var n: uint = strlen(buf)
+    loop {
+        var s = buf
+        if n >= DLG_FW { s = buf + (n - DLG_FW + 1) }
+        putsn(dlg_x + 2, dlg_y + 2, A_DLGIN, s, DLG_FW)
+        var cx: uint = n
+        if cx >= DLG_FW { cx = DLG_FW - 1 }
+        cursor_at(dlg_x + 2 + cx, dlg_y + 2)
+        var ev: uint = getkey()
+        var c: uint = ev & $FF
+        if c == C_ESC { cursor_off(); return 0 }
+        if c == C_ENTER { cursor_off(); return 1 }
+        if c == C_BS {
+            if n != 0 { n--; buf[n] = 0 }
+        } else if c == $15 {
+            n = 0
+            buf[0] = 0
+        } else if c >= $20 && n < max {
+            buf[n] = byte(c)
+            n++
+            buf[n] = 0
+        }
+    }
+}

@@ -1,0 +1,41 @@
+// test: bare-only (screen snapshot)
+// screen.b16 - the display's coordinate mode: frames in box-drawing characters, colors, attributes.
+// Run: cpu16 --screen screen.bin
+include "../../lib/console.b16"
+
+fn hline(col, row, w: byte, c: byte) {
+    gotoxy(col, row)
+    while w != 0 { putc(c); w-- }
+}
+
+fn box(col, row, w, h: byte, title: ptr byte) {
+    gotoxy(col, row); putc('╔'); hline(col + 1, row, w - 2, '═'); putc('╗')
+    var r = row + 1
+    while r < row + h - 1 {
+        gotoxy(col, r); putc('║')
+        gotoxy(col + w - 1, r); putc('║')
+        r++
+    }
+    gotoxy(col, row + h - 1); putc('╚'); hline(col + 1, row + h - 1, w - 2, '═'); putc('╝')
+    gotoxy(col + 2, row); putc(' '); puts(title); putc(' ')
+}
+
+fn main() {
+    setmode(CTRL_CURSOR)                // coordinate mode
+    setattr(attr(WHITE, BLUE))
+    cls()
+    box(2, 1, 40, 8, "B16 on CPU16")
+    setattr(attr(YELLOW, BLUE))
+    gotoxy(5, 3); puts("Кириллица, ёлки и ░▒▓█ блоки")
+    setattr(attr(WHITE, RED) | ATTR_UNDERLINE)
+    gotoxy(5, 5); puts(" underlined on red ")
+    // attribute mode: recolor already drawn text
+    setmode(CTRL_CURSOR | CTRL_ATTRMODE)
+    gotoxy(5, 3)
+    var i: byte = 0
+    while i < 9 { putc(attr(BLACK, CYAN)); i++ }
+    setmode(CTRL_TTY | CTRL_CURSOR)
+    setattr(attr(WHITE, BLACK))
+    gotoxy(0, 10)
+    puts("done\n")
+}

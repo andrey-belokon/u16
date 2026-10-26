@@ -1,0 +1,9 @@
+ls /tmp
+ls -l /data
+df 0 1
+fsck a -n
+fsck 0
+umount 1
+fsck B:
+mount 1
+exit

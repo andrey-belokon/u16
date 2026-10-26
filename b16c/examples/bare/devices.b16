@@ -1,0 +1,62 @@
+// test: bare-only (its own vector table and interrupts)
+// devices.b16 - the machine's devices accessed directly: the console registers as a struct at a
+// fixed address, the keyboard with scancodes (arrows, F keys), the timer.
+// Run: cpu16 devices.bin < devices.txt
+include "../../lib/console.b16"
+
+// Registers $FF20..$FF29 are consecutive bytes - a struct of byte fields.
+struct ConsoleRegs {
+    data, scan, ctrl, attr, col, row, cmd, cols, rows, timer: byte
+}
+var dev at $FF20: ConsoleRegs
+var key_word at $FF20: uint         // word read: character | scancode << 8
+
+// Names of keys without a character: an array of structs with an initializer (sect. 5.3). An element is a { ... } list:
+// fields by position or by name (.field = value).
+struct KeyName { scan: byte; name: ptr byte }
+const NKEYS = 9
+var keys: [NKEYS]KeyName = {
+    {$48, "↑"}, {$50, "↓"}, {$4B, "←"}, {$4D, "→"}, {$47, "Home"}, {$4F, "End"}, {$53, "Del"},
+    {$3B, "F1"}, {.name = "Esc", .scan = $01}
+}
+
+fn key_title(scan: byte): ptr byte {
+    var i: uint = 0
+    while i < NKEYS {
+        if keys[i].scan == scan { return keys[i].name }
+        i++
+    }
+    return "?"
+}
+
+// Next event: wait until the queue stops being empty.
+fn next_key(): byte, byte {
+    var k: uint
+    while (k = key_word) == 0 {}
+    return byte(k), byte(k >> 8)
+}
+
+fn main() {
+    puts("screen "); putu(dev.cols); putc('x'); putu(dev.rows)
+    puts(", mode $"); puthex(dev.ctrl, 2)
+    puts(", attribute $"); puthex(dev.attr, 2)
+    puts(", timer "); putu(dev.timer & 1); putnl()
+
+    puts("keys (until 'q'):\n")
+    loop {
+        var c, sc: byte
+        c, sc = next_key()
+        if c == 'q' { break }
+        if c != 0 {
+            puts("  character '"); putc(c); puts("' code $"); puthex(c, 2); putnl()
+        } else {
+            puts("  key "); puts(key_title(sc)); puts(" scancode $"); puthex(sc, 2); putnl()
+        }
+    }
+
+    // the cursor position changes on output in teletype mode
+    var col0 = dev.col
+    puts("12345")
+    var moved = dev.col - col0
+    puts(" <- the cursor moved by "); putu(moved); putnl()
+}

@@ -1,0 +1,2 @@
+# the lost script: disconnect disk 1
+after "DETACH\n" steps 10 detach 1

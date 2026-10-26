@@ -1,0 +1,803 @@
+// bigconst.bs - module constants larger than near memory: they are in extended-memory frames (sect. 12.10)
+fn f0(x: int): string {
+    var s = "c000-c000-c000-c000-c000-c000-c000-c000-"
+    if x > 0 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f1(x: int): string {
+    var s = "c001-c001-c001-c001-c001-c001-c001-c001-"
+    if x > 1 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f2(x: int): string {
+    var s = "c002-c002-c002-c002-c002-c002-c002-c002-"
+    if x > 2 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f3(x: int): string {
+    var s = "c003-c003-c003-c003-c003-c003-c003-c003-"
+    if x > 3 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f4(x: int): string {
+    var s = "c004-c004-c004-c004-c004-c004-c004-c004-"
+    if x > 4 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f5(x: int): string {
+    var s = "c005-c005-c005-c005-c005-c005-c005-c005-"
+    if x > 5 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f6(x: int): string {
+    var s = "c006-c006-c006-c006-c006-c006-c006-c006-"
+    if x > 6 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f7(x: int): string {
+    var s = "c007-c007-c007-c007-c007-c007-c007-c007-"
+    if x > 7 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f8(x: int): string {
+    var s = "c008-c008-c008-c008-c008-c008-c008-c008-"
+    if x > 8 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f9(x: int): string {
+    var s = "c009-c009-c009-c009-c009-c009-c009-c009-"
+    if x > 9 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f10(x: int): string {
+    var s = "c010-c010-c010-c010-c010-c010-c010-c010-"
+    if x > 10 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f11(x: int): string {
+    var s = "c011-c011-c011-c011-c011-c011-c011-c011-"
+    if x > 11 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f12(x: int): string {
+    var s = "c012-c012-c012-c012-c012-c012-c012-c012-"
+    if x > 12 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f13(x: int): string {
+    var s = "c013-c013-c013-c013-c013-c013-c013-c013-"
+    if x > 13 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f14(x: int): string {
+    var s = "c014-c014-c014-c014-c014-c014-c014-c014-"
+    if x > 14 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f15(x: int): string {
+    var s = "c015-c015-c015-c015-c015-c015-c015-c015-"
+    if x > 15 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f16(x: int): string {
+    var s = "c016-c016-c016-c016-c016-c016-c016-c016-"
+    if x > 16 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f17(x: int): string {
+    var s = "c017-c017-c017-c017-c017-c017-c017-c017-"
+    if x > 17 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f18(x: int): string {
+    var s = "c018-c018-c018-c018-c018-c018-c018-c018-"
+    if x > 18 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f19(x: int): string {
+    var s = "c019-c019-c019-c019-c019-c019-c019-c019-"
+    if x > 19 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f20(x: int): string {
+    var s = "c020-c020-c020-c020-c020-c020-c020-c020-"
+    if x > 20 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f21(x: int): string {
+    var s = "c021-c021-c021-c021-c021-c021-c021-c021-"
+    if x > 21 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f22(x: int): string {
+    var s = "c022-c022-c022-c022-c022-c022-c022-c022-"
+    if x > 22 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f23(x: int): string {
+    var s = "c023-c023-c023-c023-c023-c023-c023-c023-"
+    if x > 23 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f24(x: int): string {
+    var s = "c024-c024-c024-c024-c024-c024-c024-c024-"
+    if x > 24 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f25(x: int): string {
+    var s = "c025-c025-c025-c025-c025-c025-c025-c025-"
+    if x > 25 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f26(x: int): string {
+    var s = "c026-c026-c026-c026-c026-c026-c026-c026-"
+    if x > 26 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f27(x: int): string {
+    var s = "c027-c027-c027-c027-c027-c027-c027-c027-"
+    if x > 27 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f28(x: int): string {
+    var s = "c028-c028-c028-c028-c028-c028-c028-c028-"
+    if x > 28 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f29(x: int): string {
+    var s = "c029-c029-c029-c029-c029-c029-c029-c029-"
+    if x > 29 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f30(x: int): string {
+    var s = "c030-c030-c030-c030-c030-c030-c030-c030-"
+    if x > 30 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f31(x: int): string {
+    var s = "c031-c031-c031-c031-c031-c031-c031-c031-"
+    if x > 31 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f32(x: int): string {
+    var s = "c032-c032-c032-c032-c032-c032-c032-c032-"
+    if x > 32 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f33(x: int): string {
+    var s = "c033-c033-c033-c033-c033-c033-c033-c033-"
+    if x > 33 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f34(x: int): string {
+    var s = "c034-c034-c034-c034-c034-c034-c034-c034-"
+    if x > 34 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f35(x: int): string {
+    var s = "c035-c035-c035-c035-c035-c035-c035-c035-"
+    if x > 35 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f36(x: int): string {
+    var s = "c036-c036-c036-c036-c036-c036-c036-c036-"
+    if x > 36 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f37(x: int): string {
+    var s = "c037-c037-c037-c037-c037-c037-c037-c037-"
+    if x > 37 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f38(x: int): string {
+    var s = "c038-c038-c038-c038-c038-c038-c038-c038-"
+    if x > 38 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f39(x: int): string {
+    var s = "c039-c039-c039-c039-c039-c039-c039-c039-"
+    if x > 39 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f40(x: int): string {
+    var s = "c040-c040-c040-c040-c040-c040-c040-c040-"
+    if x > 40 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f41(x: int): string {
+    var s = "c041-c041-c041-c041-c041-c041-c041-c041-"
+    if x > 41 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f42(x: int): string {
+    var s = "c042-c042-c042-c042-c042-c042-c042-c042-"
+    if x > 42 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f43(x: int): string {
+    var s = "c043-c043-c043-c043-c043-c043-c043-c043-"
+    if x > 43 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f44(x: int): string {
+    var s = "c044-c044-c044-c044-c044-c044-c044-c044-"
+    if x > 44 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f45(x: int): string {
+    var s = "c045-c045-c045-c045-c045-c045-c045-c045-"
+    if x > 45 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f46(x: int): string {
+    var s = "c046-c046-c046-c046-c046-c046-c046-c046-"
+    if x > 46 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f47(x: int): string {
+    var s = "c047-c047-c047-c047-c047-c047-c047-c047-"
+    if x > 47 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f48(x: int): string {
+    var s = "c048-c048-c048-c048-c048-c048-c048-c048-"
+    if x > 48 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f49(x: int): string {
+    var s = "c049-c049-c049-c049-c049-c049-c049-c049-"
+    if x > 49 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f50(x: int): string {
+    var s = "c050-c050-c050-c050-c050-c050-c050-c050-"
+    if x > 50 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f51(x: int): string {
+    var s = "c051-c051-c051-c051-c051-c051-c051-c051-"
+    if x > 51 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f52(x: int): string {
+    var s = "c052-c052-c052-c052-c052-c052-c052-c052-"
+    if x > 52 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f53(x: int): string {
+    var s = "c053-c053-c053-c053-c053-c053-c053-c053-"
+    if x > 53 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f54(x: int): string {
+    var s = "c054-c054-c054-c054-c054-c054-c054-c054-"
+    if x > 54 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f55(x: int): string {
+    var s = "c055-c055-c055-c055-c055-c055-c055-c055-"
+    if x > 55 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f56(x: int): string {
+    var s = "c056-c056-c056-c056-c056-c056-c056-c056-"
+    if x > 56 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f57(x: int): string {
+    var s = "c057-c057-c057-c057-c057-c057-c057-c057-"
+    if x > 57 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f58(x: int): string {
+    var s = "c058-c058-c058-c058-c058-c058-c058-c058-"
+    if x > 58 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f59(x: int): string {
+    var s = "c059-c059-c059-c059-c059-c059-c059-c059-"
+    if x > 59 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f60(x: int): string {
+    var s = "c060-c060-c060-c060-c060-c060-c060-c060-"
+    if x > 60 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f61(x: int): string {
+    var s = "c061-c061-c061-c061-c061-c061-c061-c061-"
+    if x > 61 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f62(x: int): string {
+    var s = "c062-c062-c062-c062-c062-c062-c062-c062-"
+    if x > 62 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f63(x: int): string {
+    var s = "c063-c063-c063-c063-c063-c063-c063-c063-"
+    if x > 63 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f64(x: int): string {
+    var s = "c064-c064-c064-c064-c064-c064-c064-c064-"
+    if x > 64 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f65(x: int): string {
+    var s = "c065-c065-c065-c065-c065-c065-c065-c065-"
+    if x > 65 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f66(x: int): string {
+    var s = "c066-c066-c066-c066-c066-c066-c066-c066-"
+    if x > 66 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f67(x: int): string {
+    var s = "c067-c067-c067-c067-c067-c067-c067-c067-"
+    if x > 67 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f68(x: int): string {
+    var s = "c068-c068-c068-c068-c068-c068-c068-c068-"
+    if x > 68 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f69(x: int): string {
+    var s = "c069-c069-c069-c069-c069-c069-c069-c069-"
+    if x > 69 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f70(x: int): string {
+    var s = "c070-c070-c070-c070-c070-c070-c070-c070-"
+    if x > 70 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f71(x: int): string {
+    var s = "c071-c071-c071-c071-c071-c071-c071-c071-"
+    if x > 71 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f72(x: int): string {
+    var s = "c072-c072-c072-c072-c072-c072-c072-c072-"
+    if x > 72 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f73(x: int): string {
+    var s = "c073-c073-c073-c073-c073-c073-c073-c073-"
+    if x > 73 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f74(x: int): string {
+    var s = "c074-c074-c074-c074-c074-c074-c074-c074-"
+    if x > 74 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f75(x: int): string {
+    var s = "c075-c075-c075-c075-c075-c075-c075-c075-"
+    if x > 75 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f76(x: int): string {
+    var s = "c076-c076-c076-c076-c076-c076-c076-c076-"
+    if x > 76 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f77(x: int): string {
+    var s = "c077-c077-c077-c077-c077-c077-c077-c077-"
+    if x > 77 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f78(x: int): string {
+    var s = "c078-c078-c078-c078-c078-c078-c078-c078-"
+    if x > 78 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f79(x: int): string {
+    var s = "c079-c079-c079-c079-c079-c079-c079-c079-"
+    if x > 79 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f80(x: int): string {
+    var s = "c080-c080-c080-c080-c080-c080-c080-c080-"
+    if x > 80 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f81(x: int): string {
+    var s = "c081-c081-c081-c081-c081-c081-c081-c081-"
+    if x > 81 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f82(x: int): string {
+    var s = "c082-c082-c082-c082-c082-c082-c082-c082-"
+    if x > 82 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f83(x: int): string {
+    var s = "c083-c083-c083-c083-c083-c083-c083-c083-"
+    if x > 83 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f84(x: int): string {
+    var s = "c084-c084-c084-c084-c084-c084-c084-c084-"
+    if x > 84 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f85(x: int): string {
+    var s = "c085-c085-c085-c085-c085-c085-c085-c085-"
+    if x > 85 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f86(x: int): string {
+    var s = "c086-c086-c086-c086-c086-c086-c086-c086-"
+    if x > 86 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f87(x: int): string {
+    var s = "c087-c087-c087-c087-c087-c087-c087-c087-"
+    if x > 87 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f88(x: int): string {
+    var s = "c088-c088-c088-c088-c088-c088-c088-c088-"
+    if x > 88 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f89(x: int): string {
+    var s = "c089-c089-c089-c089-c089-c089-c089-c089-"
+    if x > 89 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f90(x: int): string {
+    var s = "c090-c090-c090-c090-c090-c090-c090-c090-"
+    if x > 90 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f91(x: int): string {
+    var s = "c091-c091-c091-c091-c091-c091-c091-c091-"
+    if x > 91 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f92(x: int): string {
+    var s = "c092-c092-c092-c092-c092-c092-c092-c092-"
+    if x > 92 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f93(x: int): string {
+    var s = "c093-c093-c093-c093-c093-c093-c093-c093-"
+    if x > 93 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f94(x: int): string {
+    var s = "c094-c094-c094-c094-c094-c094-c094-c094-"
+    if x > 94 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f95(x: int): string {
+    var s = "c095-c095-c095-c095-c095-c095-c095-c095-"
+    if x > 95 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f96(x: int): string {
+    var s = "c096-c096-c096-c096-c096-c096-c096-c096-"
+    if x > 96 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f97(x: int): string {
+    var s = "c097-c097-c097-c097-c097-c097-c097-c097-"
+    if x > 97 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f98(x: int): string {
+    var s = "c098-c098-c098-c098-c098-c098-c098-c098-"
+    if x > 98 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f99(x: int): string {
+    var s = "c099-c099-c099-c099-c099-c099-c099-c099-"
+    if x > 99 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f100(x: int): string {
+    var s = "c100-c100-c100-c100-c100-c100-c100-c100-"
+    if x > 100 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f101(x: int): string {
+    var s = "c101-c101-c101-c101-c101-c101-c101-c101-"
+    if x > 101 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f102(x: int): string {
+    var s = "c102-c102-c102-c102-c102-c102-c102-c102-"
+    if x > 102 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f103(x: int): string {
+    var s = "c103-c103-c103-c103-c103-c103-c103-c103-"
+    if x > 103 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f104(x: int): string {
+    var s = "c104-c104-c104-c104-c104-c104-c104-c104-"
+    if x > 104 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f105(x: int): string {
+    var s = "c105-c105-c105-c105-c105-c105-c105-c105-"
+    if x > 105 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f106(x: int): string {
+    var s = "c106-c106-c106-c106-c106-c106-c106-c106-"
+    if x > 106 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f107(x: int): string {
+    var s = "c107-c107-c107-c107-c107-c107-c107-c107-"
+    if x > 107 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f108(x: int): string {
+    var s = "c108-c108-c108-c108-c108-c108-c108-c108-"
+    if x > 108 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f109(x: int): string {
+    var s = "c109-c109-c109-c109-c109-c109-c109-c109-"
+    if x > 109 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f110(x: int): string {
+    var s = "c110-c110-c110-c110-c110-c110-c110-c110-"
+    if x > 110 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f111(x: int): string {
+    var s = "c111-c111-c111-c111-c111-c111-c111-c111-"
+    if x > 111 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f112(x: int): string {
+    var s = "c112-c112-c112-c112-c112-c112-c112-c112-"
+    if x > 112 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f113(x: int): string {
+    var s = "c113-c113-c113-c113-c113-c113-c113-c113-"
+    if x > 113 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f114(x: int): string {
+    var s = "c114-c114-c114-c114-c114-c114-c114-c114-"
+    if x > 114 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f115(x: int): string {
+    var s = "c115-c115-c115-c115-c115-c115-c115-c115-"
+    if x > 115 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f116(x: int): string {
+    var s = "c116-c116-c116-c116-c116-c116-c116-c116-"
+    if x > 116 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f117(x: int): string {
+    var s = "c117-c117-c117-c117-c117-c117-c117-c117-"
+    if x > 117 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f118(x: int): string {
+    var s = "c118-c118-c118-c118-c118-c118-c118-c118-"
+    if x > 118 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f119(x: int): string {
+    var s = "c119-c119-c119-c119-c119-c119-c119-c119-"
+    if x > 119 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f120(x: int): string {
+    var s = "c120-c120-c120-c120-c120-c120-c120-c120-"
+    if x > 120 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f121(x: int): string {
+    var s = "c121-c121-c121-c121-c121-c121-c121-c121-"
+    if x > 121 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f122(x: int): string {
+    var s = "c122-c122-c122-c122-c122-c122-c122-c122-"
+    if x > 122 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f123(x: int): string {
+    var s = "c123-c123-c123-c123-c123-c123-c123-c123-"
+    if x > 123 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f124(x: int): string {
+    var s = "c124-c124-c124-c124-c124-c124-c124-c124-"
+    if x > 124 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f125(x: int): string {
+    var s = "c125-c125-c125-c125-c125-c125-c125-c125-"
+    if x > 125 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f126(x: int): string {
+    var s = "c126-c126-c126-c126-c126-c126-c126-c126-"
+    if x > 126 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f127(x: int): string {
+    var s = "c127-c127-c127-c127-c127-c127-c127-c127-"
+    if x > 127 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f128(x: int): string {
+    var s = "c128-c128-c128-c128-c128-c128-c128-c128-"
+    if x > 128 { return s + str(x) }
+    return s.slice(0, 3)
+}
+fn f129(x: int): string {
+    var s = "c129-c129-c129-c129-c129-c129-c129-c129-"
+    if x > 129 { return s + str(x) }
+    return s.slice(0, 3)
+}
+var total = 0
+var parts = []
+total += f0(0).len()
+total += f1(1).len()
+total += f2(2).len()
+total += f3(3).len()
+total += f4(4).len()
+total += f5(5).len()
+total += f6(6).len()
+total += f7(7).len()
+total += f8(8).len()
+total += f9(9).len()
+total += f10(10).len()
+total += f11(11).len()
+total += f12(12).len()
+total += f13(13).len()
+total += f14(14).len()
+total += f15(15).len()
+total += f16(16).len()
+total += f17(17).len()
+total += f18(18).len()
+total += f19(19).len()
+total += f20(20).len()
+total += f21(21).len()
+total += f22(22).len()
+total += f23(23).len()
+total += f24(24).len()
+total += f25(25).len()
+total += f26(26).len()
+total += f27(27).len()
+total += f28(28).len()
+total += f29(29).len()
+total += f30(30).len()
+total += f31(31).len()
+total += f32(32).len()
+total += f33(33).len()
+total += f34(34).len()
+total += f35(35).len()
+total += f36(36).len()
+total += f37(37).len()
+total += f38(38).len()
+total += f39(39).len()
+total += f40(40).len()
+total += f41(41).len()
+total += f42(42).len()
+total += f43(43).len()
+total += f44(44).len()
+total += f45(45).len()
+total += f46(46).len()
+total += f47(47).len()
+total += f48(48).len()
+total += f49(49).len()
+total += f50(50).len()
+total += f51(51).len()
+total += f52(52).len()
+total += f53(53).len()
+total += f54(54).len()
+total += f55(55).len()
+total += f56(56).len()
+total += f57(57).len()
+total += f58(58).len()
+total += f59(59).len()
+total += f60(60).len()
+total += f61(61).len()
+total += f62(62).len()
+total += f63(63).len()
+total += f64(64).len()
+total += f65(65).len()
+total += f66(66).len()
+total += f67(67).len()
+total += f68(68).len()
+total += f69(69).len()
+total += f70(70).len()
+total += f71(71).len()
+total += f72(72).len()
+total += f73(73).len()
+total += f74(74).len()
+total += f75(75).len()
+total += f76(76).len()
+total += f77(77).len()
+total += f78(78).len()
+total += f79(79).len()
+total += f80(80).len()
+total += f81(81).len()
+total += f82(82).len()
+total += f83(83).len()
+total += f84(84).len()
+total += f85(85).len()
+total += f86(86).len()
+total += f87(87).len()
+total += f88(88).len()
+total += f89(89).len()
+total += f90(90).len()
+total += f91(91).len()
+total += f92(92).len()
+total += f93(93).len()
+total += f94(94).len()
+total += f95(95).len()
+total += f96(96).len()
+total += f97(97).len()
+total += f98(98).len()
+total += f99(99).len()
+total += f100(100).len()
+total += f101(101).len()
+total += f102(102).len()
+total += f103(103).len()
+total += f104(104).len()
+total += f105(105).len()
+total += f106(106).len()
+total += f107(107).len()
+total += f108(108).len()
+total += f109(109).len()
+total += f110(110).len()
+total += f111(111).len()
+total += f112(112).len()
+total += f113(113).len()
+total += f114(114).len()
+total += f115(115).len()
+total += f116(116).len()
+total += f117(117).len()
+total += f118(118).len()
+total += f119(119).len()
+total += f120(120).len()
+total += f121(121).len()
+total += f122(122).len()
+total += f123(123).len()
+total += f124(124).len()
+total += f125(125).len()
+total += f126(126).len()
+total += f127(127).len()
+total += f128(128).len()
+total += f129(129).len()
+parts.push(f0(500))
+parts.push(f10(500))
+parts.push(f20(500))
+parts.push(f30(500))
+parts.push(f40(500))
+parts.push(f50(500))
+parts.push(f60(500))
+parts.push(f70(500))
+parts.push(f80(500))
+parts.push(f90(500))
+parts.push(f100(500))
+parts.push(f110(500))
+parts.push(f120(500))
+println(total)
+println(parts[3])
+println(str.join(parts, "").len())
+var big = []
+var i = 0
+while i < 2000 { big.push(f7(i)); i++ }
+println(big[1999])

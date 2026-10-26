@@ -1,0 +1,26 @@
+// tlost.b16 - the lost script (shell): disk 1 is disconnected while running
+// (the bench script tests/lost.scn), the volume becomes lost.
+include "tlib.b16"
+
+var vi: VolInfo
+var si: SysInfo
+var b: [16]byte
+
+fn main(): int {
+    var e, h, n: uint
+    e, h = sys_open("B:/f", O_READ | O_WRITE | O_CREATE, 0)
+    e, n = sys_write(h, "abc", 3)
+    check(e == OK && n == 3, "lost: file on disk 1 written")
+    puts("DETACH\n")
+    e = sys_sleep(20)
+    e, n = sys_read(h, &b[0], 3)
+    check(e == E_NODEV, "lost: READ through an open handle -> NODEV")
+    check(sys_volinfo(1, &vi) == E_NODEV, "lost: VOLINFO -> NODEV")
+    check(sys_close(h) == OK, "lost: CLOSE works")
+    check(sys_sysinfo(&si) == OK && si.mounted & 2 == 0, "lost: SYSINFO shows the volume as not mounted")
+    check(sys_unmount(1) == OK, "lost: UNMOUNT of the lost volume")
+    var m: uint
+    e, m = sys_mount(1, 0)
+    check(e == E_NODEV, "lost: MOUNT of the absent disk -> NODEV")
+    return finish()
+}

@@ -1,0 +1,14 @@
+// asmmod: an assembly module in the image (include asm): the module's code and initialized data
+// lie before __image_end, so they work under the monitor as well.
+include "console.b16"
+include asm "mod.asm"
+
+extern fn asm_add(a, b: uint): uint
+extern fn asm_table(i: uint): uint
+extern fn asm_count(): uint
+
+fn main() {
+    putu(asm_add(40, 2)); putc(' ')
+    putu(asm_table(0)); putc(' '); putu(asm_table(2)); putc(' ')
+    putu(asm_count()); putnl()
+}

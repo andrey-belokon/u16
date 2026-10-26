@@ -1,0 +1,33 @@
+// run: bs /ex/tree.bs /ex/data
+// tree.bs - a directory tree: recursion, fs.list, path.join, sorting names.
+//
+//   tree [directory]
+
+var ndirs = 0
+var nfiles = 0
+
+fn show(dir: string, indent: string) {
+    var dirs = []
+    var files = []
+    for e in fs.list(dir) {
+        if e["hidden"] { continue }
+        if e["dir"] { dirs.push(e["name"]) } else { files.push(e["name"]) }
+    }
+    dirs.sort()
+    files.sort()
+    for d in dirs {
+        println($"{|indent|}{|d|}/")
+        ndirs++
+        show(path.join(dir, d), indent + "    ")
+    }
+    for f in files {
+        println(indent + f)
+        nfiles++
+    }
+}
+
+var root = "."
+if args.len() > 0 { root = args[0] }
+println(root)
+show(root, "    ")
+println($"{|ndirs|} directories, {|nfiles|} files")

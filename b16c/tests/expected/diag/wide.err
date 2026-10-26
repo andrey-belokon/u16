@@ -1,0 +1,19 @@
+tests/diag/wide.b16:4: error: initialization: constant 70000 does not fit in int
+tests/diag/wide.b16:5: error: initialization: constant 300 does not fit in byte
+tests/diag/wide.b16:9: error: assignment: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, uint expected)
+tests/diag/wide.b16:10: error: assignment: constant -40000 does not fit in uint
+tests/diag/wide.b16:11: error: assignment: a pointer cannot be assigned to an integer: use an explicit cast uint(...) (ptr byte given, long expected)
+tests/diag/wide.b16:12: error: assignment: an integer cannot be assigned to a pointer: use an explicit cast ptr T(...) (long given, ptr byte expected)
+tests/diag/wide.b16:13: error: a long or ulong value cannot be cast to a pointer: use uint(x) first
+tests/diag/wide.b16:14: error: a pointer can be cast only to uint, int or a pointer type: use uint(p) first
+tests/diag/wide.b16:15: error: index of a 32-bit type: use uint(...) or int(...)
+tests/diag/wide.b16:16: error: cast: constant 70000 does not fit in uint
+tests/diag/wide.b16:17: error: shift count out of range in constant expression
+tests/diag/wide.b16:20: error: initialization: constant 65536 does not fit in uint
+tests/diag/wide.b16:4: warning: variable i is not used
+tests/diag/wide.b16:5: warning: variable b is not used
+tests/diag/wide.b16:17: warning: variable big is not used
+tests/diag/wide.b16:18: warning: variable ok is not used
+tests/diag/wide.b16:19: warning: variable neg is not used
+tests/diag/wide.b16:20: warning: variable h is not used
+rc 1

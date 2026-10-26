@@ -1,0 +1,71 @@
+// Statements (sect. 7)
+var a = [3, -7, 32767]
+var b = [2, 2, 1]
+var i = 0
+while i < a.len() {
+    var x = a[i]
+    var y = b[i]
+    println($"{|x + y|} {|x - y|} {|x * y|} {|x / y|} {|x % y|} {|x << y|} {|x >> y|} {|x >>> y|} {|-x|} {|~x|}")
+    i++
+}
+loop {
+    i--
+    if i == 1 { continue }
+    if i < 0 { break }
+    println($"loop {|i|}")
+}
+for c in "AB" { print(c); print(" ") }
+println()
+for k, v in ["x", "y"] { println($"{|k|}={|v|}") }
+for v in [] { println("never") }
+fn kind(x: value): string {
+    switch type(x) {
+    case "int":
+        if x < 0 { return "negative" }
+        return "int"
+    case "string", "array":
+        return "seq"
+    default:
+        return "other"
+    }
+}
+println(kind(5))
+println(kind(-5))
+println(kind("s"))
+println(kind([]))
+println(kind(true))
+var total = 0
+for w in ["add", "skip", "add", "clear", "add", "end", "add"] {
+    switch w {
+    default:
+        println("unknown")
+    case "add":
+        total += 10
+    case "skip":
+        continue
+    case "clear":
+        total = 0
+    case "end":
+        break
+    }
+    println($"after {|w|}: {|total|}")
+}
+println(total)
+if total > 5 {
+    println("big")
+} else if total > 0 {
+    println("small")
+}
+else {
+    println("zero")
+}
+var n = 0
+var m = 100
+while n < 3 && m > 0 { n++; m -= 10 }
+println($"{|n|} {|m|}")
+var f = false
+if !f || 1 / 0 == 0 { println("short circuit") }
+var z = null
+println(z ?? "default")
+switch 3 { case 1, 2: println("12") 
+case 3: println("three") }

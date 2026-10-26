@@ -1,0 +1,23 @@
+A:/bin/ls.cx
+child.bs
+/t/child.bs
+null
+child 3: a b,,c
+code 3
+capture 1 [child 1: x
+]
+3
+25
+line one
+line two
+third
+child 1: y
+child 1: err
+to stderr
+nosuch: no such file or directory
+ls: bad arguments
+/t/none.txt: no such file or directory
+lib2.bs
+lib.bs
+dep.bs
+exit code 3

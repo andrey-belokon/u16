@@ -1,0 +1,575 @@
+// ov_sys.b16 - the sys overlay (the specification, sect. 12.9): proc and time (10.7, 10.8); rare methods
+// of strings and collections; runtime error messages and e.where().
+include "ov_common.b16"
+
+// ---- proc (sect. 10.7) ---------------------------------------------------------------------------
+var found: [300]byte
+
+var cmdl: [300]byte
+
+fn try_prog(p: ptr byte): uint {
+    var st: Stat
+    if sys_stat(p, &st) != OK { return 0 }
+    return uint(uint(st.size >> 16) & A_DIR == 0)
+}
+
+// looking for a program by the shell's rules: 1 - found (found)
+fn find_prog(name: ptr byte): uint {
+    var n = strlen(name)
+    if n > 250 { return 0 }
+    var direct: uint = 0
+    var i: uint = 0
+    while i < n { if name[i] == '/' || name[i] == ':' { direct = 1 }; i++ }
+    var place: uint = 0
+    while place < 2 {
+        if direct != 0 && place == 1 { break }
+        var b: uint = 0
+        if place == 1 { strcpy(&found[0], "A:/bin/"); b = 7 }
+        strcpy(&found[b], name)
+        if try_prog(&found[0]) != 0 { return 1 }
+        strcpy(&found[b + n], ".cx")
+        if try_prog(&found[0]) != 0 { return 1 }
+        strcpy(&found[b + n], ".bs")
+        if try_prog(&found[0]) != 0 { return 1 }
+        place++
+    }
+    return 0
+}
+
+fn is_bs(p: ptr byte): uint {
+    var n = strlen(p)
+    return uint(n >= 3 && p[n - 3] == '.' && chfold(p[n - 2]) == 'b' && chfold(p[n - 1]) == 's')
+}
+
+var cl_n, cl_words: uint
+
+fn cl_add(s: ptr byte, n: uint): uint {
+    var q: uint = uint(n == 0)
+    var i: uint = 0
+    while i < n {
+        if s[i] == ' ' || s[i] == 9 { q = 1 }
+        if s[i] == '"' || s[i] == 0 { return 1 }
+        i++
+    }
+    cl_words++
+    if cl_words > 32 || cl_n + n + 3 > 255 { return 1 }
+    if cl_n != 0 { cmdl[cl_n] = ' '; cl_n++ }
+    if q != 0 { cmdl[cl_n] = '"'; cl_n++ }
+    memcpy(&cmdl[cl_n], s, n)
+    cl_n += n
+    if q != 0 { cmdl[cl_n] = '"'; cl_n++ }
+    cmdl[cl_n] = 0
+    return 0
+}
+
+fn b_which(): uint {
+    bn = 1
+    var name = arg_cbuf(0, &pb[0])
+    if find_prog(name) == 0 { return res_null() }
+    return res_str(str_c(&found[0]))
+}
+
+// The command line of the program args[0] with the arguments of array arg(1): 0 - success, otherwise an error code.
+fn build_cmd(): uint {
+    var name = arg_cbuf(0, &pb[0])
+    var a = arg_arr(1)
+    if find_prog(name) == 0 { return E_NOENT }
+    cl_n = 0
+    cl_words = 0
+    if is_bs(&found[0]) != 0 { ign = cl_add("A:/bin/bs.cx", 12) }
+    if cl_add(&found[0], strlen(&found[0])) != 0 { return E_ARGS }
+    var i: uint = 0
+    while i < alen(a) {
+        var v: Val
+        v.t, v.v = aget(a, i)
+        if v.t != TAG_STR { type_err("proc: argument must be a string, got ", &v) }
+        if slen(v.v) > 255 { return E_ARGS }
+        if cl_add(cstr(v.v, &pb2[0], 256), slen(v.v)) != 0 { return E_ARGS }
+        i++
+    }
+    return 0
+}
+
+var rfd: [3]uint                // redirection descriptors, $FFFF - its own
+
+var rerr_obj: uint
+
+fn close_redir() {
+    var i: uint = 0
+    while i < 3 {
+        if rfd[i] != SAME {
+            var k: uint = 0
+            var dup: uint = 0
+            while k < i { if rfd[k] == rfd[i] { dup = 1 }; k++ }
+            if dup == 0 { ign = sys_close(rfd[i]) }
+            rfd[i] = SAME
+        }
+        i++
+    }
+}
+
+// Open the redirections of dictionary arg(2): 0 - success, otherwise a code (the object is rerr_obj).
+fn open_redir(capture: uint): uint {
+    rfd[0] = SAME; rfd[1] = SAME; rfd[2] = SAME
+    if bnargs < 3 { return 0 }
+    var r = arg(2)
+    if r.t == TAG_NULL { return 0 }
+    if r.t != TAG_MAP { type_err("proc: redirect must be a map, got ", r) }
+    var m = r.v
+    var app: uint = 0
+    var paths: [3]uint
+    paths[0] = 0; paths[1] = 0; paths[2] = 0
+    var i: uint = 0
+    while i < mused(m) {
+        var key = mkey(m, i)
+        var e: Val
+        e.t, e.v = mval(m, i)
+        if key != 0 {
+            var k = cstr(key, &pb2[0], 12)
+            var slot: uint = 9
+            if streq(k, "stdin") != 0 { slot = 0 } else if streq(k, "stdout") != 0 { slot = 1 }
+            else if streq(k, "stderr") != 0 { slot = 2 }
+            else if streq(k, "append") != 0 {
+                if e.t != TAG_BOOL { rt_err("proc: append must be bool") }
+                app = e.v
+            } else { rt_err2("proc: unknown redirect key ", k) }
+            if slot == 1 && capture != 0 { rt_err("proc.capture: stdout cannot be redirected") }
+            if slot < 3 {
+                if e.t != TAG_STR { rt_err("proc: redirect path must be a string") }
+                paths[slot] = e.v
+            }
+        }
+        i++
+    }
+    i = 0
+    while i < 3 {
+        if paths[i] != 0 {
+            if i == 2 && paths[1] != 0 && str_eq(paths[1], paths[2]) != 0 { rfd[2] = rfd[1] } else {
+                var mode: uint = O_READ
+                if i > 0 { mode = O_WRITE | O_CREATE | O_TRUNC; if app != 0 { mode = O_WRITE | O_CREATE | O_APPEND } }
+                var e, h: uint
+                if slen(paths[i]) > 255 { rerr_obj = paths[i]; close_redir(); return E_BADPATH }
+                e, h = open_gc(cstr(paths[i], &pb2[0], 256), mode)
+                if e != OK { rerr_obj = paths[i]; close_redir(); return e }
+                rfd[i] = h
+            }
+        }
+        i++
+    }
+    return 0
+}
+
+var cap_path: [24]byte
+
+fn spawn_prog(capture: uint): uint {
+    var e = build_cmd()
+    if e != 0 { return fail_code(e, arg_str(0)) }
+    e = open_redir(capture)
+    if e != 0 { return fail_code(e, rerr_obj) }
+    if capture != 0 {
+        var si: SysInfo
+        ign = sys_sysinfo(&si)
+        ign = sys_mkdir("A:/tmp")
+        strcpy(&cap_path[0], "A:/tmp/bs-0000.out")
+        var d = si.depth
+        var k: uint = 13
+        while k >= 10 { cap_path[k] = byte('0' + d % 10); d /= 10; k-- }
+        var h: uint
+        e, h = open_gc(&cap_path[0], O_WRITE | O_CREATE | O_TRUNC)
+        if e != OK { close_redir(); return fail_code(e, str_c(&cap_path[0])) }
+        rfd[1] = h
+    }
+    flush_all()
+    var code: uint
+    e, code = sys_spawn(&cmdl[0], rfd[0], rfd[1], rfd[2])
+    close_redir()
+    if e != OK {
+        if capture != 0 { ign = sys_delete(&cap_path[0]) }
+        return fail_code(e, arg_str(0))
+    }
+    if code == EXIT_BREAK {
+        if capture != 0 { ign = sys_delete(&cap_path[0]) }
+        do_exit(EXIT_BREAK)
+    }
+    res(0, TAG_INT, code)
+    if capture != 0 {
+        var st = read_file(&cap_path[0], 0)
+        ign = sys_delete(&cap_path[0])
+        if st != 0 { res(0, TAG_NULL, 0); return 1 }
+        res(0, TAG_INT, code)
+        res(1, TAG_STR, rl_h)
+    }
+    return 0
+}
+
+fn b_run(): uint { bn = 1; return spawn_prog(0) }
+
+fn b_capture(): uint { bn = 2; return spawn_prog(1) }
+
+fn b_exit(): uint {
+    bn = 0
+    var c = arg_int(0)
+    if int(c) < 0 { rt_err("proc.exit: bad exit code") }
+    do_exit(c)
+    return 0
+}
+
+fn b_script(): uint { bn = 1; return res_str(str_from(script_path, script_len)) }
+
+fn b_name(): uint { bn = 1; return res_str(str_c(&prog_name[0])) }
+
+fn b_sleep(): uint {
+    bn = 0
+    var t = arg_int(0)
+    if int(t) < 0 { rt_err("time.sleep: negative time") }
+    flush_all()
+    if sys_sleep(t) == E_INTR { do_exit(EXIT_BREAK) }
+    return 0
+}
+
+
+// ---- rare methods of strings and collections ---------------------------------------------------------
+
+
+fn b_hex(): uint {
+    bn = 1
+    var x = arg_int(0)
+    var w: uint = 0
+    if bnargs == 2 { w = arg_int(1); if w > 16 { rt_err("str.hex: bad width") } }
+    var buf: [20]byte
+    var n: uint = 0
+    var i: uint = 0
+    while i < 4 {
+        var d = (x >> (12 - 4 * i)) & 15
+        if d != 0 || n != 0 || i == 3 {
+            if d < 10 { buf[n] = byte('0' + d) } else { buf[n] = byte('A' + d - 10) }
+            n++
+        }
+        i++
+    }
+    var h = new_str(max_u(n, w))
+    i = 0
+    if w > n { i = w - n; hfill(h, 0, '0', i) }
+    hput(h, i, &buf[0], n)
+    return res_str(h)
+}
+
+fn max_u(a: uint, b: uint): uint { if a > b { return a }; return b }
+
+
+fn ms_equal_fold(): uint {
+    bn = 1
+    var t = arg_str(1)
+    var n = slen(t)
+    if n != slen(sh()) { return res_bool(0) }
+    var i: uint = 0
+    while i < n {
+        if chfold(hgb(sh(), i)) != chfold(hgb(t, i)) { return res_bool(0) }
+        i++
+    }
+    return res_bool(1)
+}
+
+fn ms_repeat(): uint {
+    bn = 1
+    var k = arg_int(1)
+    if int(k) < 0 { rt_err("repeat: negative count") }
+    var l = slen(sh())
+    if l != 0 && k > 32767 / l { rt_err("too large") }
+    var h = new_str(l * k)
+    var d: uint = 0
+    while k != 0 { hmove(h, d, sh(), 0, l); d += l; k-- }
+    return res_str(h)
+}
+
+fn ma_reverse(): uint {
+    bn = 0
+    var h = sh()
+    var i: uint = 0
+    var j = alen(h)
+    while i + 1 < j {
+        j--
+        var t1, v1, t2, v2: uint
+        t1, v1 = aget(h, i)
+        t2, v2 = aget(h, j)
+        aput(h, i, t2, v2)
+        aput(h, j, t1, v1)
+        i++
+    }
+    return 0
+}
+
+// ---- sorting ---------------------------------------------------------------------------------
+var sort_h: uint                // the array being sorted
+
+var sort_str: uint              // 1 - strings
+
+// a[i] < a[j]
+fn sless(i: uint, j: uint): uint {
+    var ti, vi, tj, vj: uint
+    ti, vi = aget(sort_h, i)
+    tj, vj = aget(sort_h, j)
+    if sort_str == 0 { return uint(int(vi) < int(vj)) }
+    return uint(str_order(vi, vj) < 0)
+}
+
+// element i < the value (pv_v)
+var piv: uint
+
+fn sless_v(i: uint, v: uint, rev: uint): uint {
+    var ti, vi: uint
+    ti, vi = aget(sort_h, i)
+    if rev != 0 { var t = vi; vi = v; v = t }
+    if sort_str == 0 { return uint(int(vi) < int(v)) }
+    return uint(str_order(vi, v) < 0)
+}
+
+fn sswap(i: uint, j: uint) {
+    var t1, v1, t2, v2: uint
+    t1, v1 = aget(sort_h, i)
+    t2, v2 = aget(sort_h, j)
+    aput(sort_h, i, t2, v2)
+    aput(sort_h, j, t1, v1)
+}
+
+fn ma_sort(): uint {
+    bn = 0
+    var h = sh()
+    var n = alen(h)
+    if n < 2 { return 0 }
+    var t, v: uint
+    t, v = aget(h, 0)
+    if t != TAG_INT && t != TAG_STR { rt_err("sort: elements must be all int or all strings") }
+    var i: uint = 1
+    while i < n {
+        var t2, v2: uint
+        t2, v2 = aget(h, i)
+        if t2 != t { rt_err("sort: elements must be all int or all strings") }
+        i++
+    }
+    sort_h = h
+    sort_str = uint(t == TAG_STR)
+    qsort(0, n)
+    return 0
+}
+
+// Quicksort of the elements [p, p + n): median of three, insertion sort for short parts,
+// recursion into the smaller part, a loop over the larger - depth at most log2(n). Allocates no memory.
+fn qsort(p: uint, n: uint) {
+    while n > 12 {
+        var m = p + (n >> 1)
+        var l = p + n - 1
+        if sless(m, p) != 0 { sswap(m, p) }
+        if sless(l, m) != 0 {
+            sswap(l, m)
+            if sless(m, p) != 0 { sswap(m, p) }
+        }
+        var pt: uint
+        pt, piv = aget(sort_h, m)
+        var i = p
+        var j = l
+        loop {
+            while sless_v(i, piv, 0) != 0 { i++ }
+            while sless_v(j, piv, 1) != 0 { j-- }
+            if i >= j { break }
+            sswap(i, j)
+            i++; j--
+        }
+        var left = j - p + 1
+        var right = n - left
+        if left < right {
+            qsort(p, left)
+            p = j + 1
+            n = right
+        } else {
+            qsort(j + 1, right)
+            n = left
+        }
+    }
+    // insertion
+    var k: uint = 1
+    while k < n {
+        var q = p + k
+        while q > p && sless(q, q - 1) != 0 {
+            sswap(q, q - 1)
+            q--
+        }
+        k++
+    }
+}
+
+fn map_list(vals: uint): uint {
+    var a = new_arr(mcount(sh()))
+    var n = mused(sh())
+    var k: uint = 0
+    var i: uint = 0
+    while i < n {
+        var key = mkey(sh(), i)
+        if key != 0 {
+            if vals != 0 {
+                var t, v: uint
+                t, v = mval(sh(), i)
+                aput(a, k, t, v)
+            } else { aput(a, k, TAG_STR, key) }
+            k++
+        }
+        i++
+    }
+    aset_len(a, k)
+    res(0, TAG_ARR, a)
+    return 0
+}
+
+fn mm_keys(): uint { bn = 1; return map_list(0) }
+
+fn mm_values(): uint { bn = 1; return map_list(1) }
+
+fn mm_clone(): uint {
+    bn = 1
+    var h = new_map(mcount(sh()))
+    tpush(h)
+    var i: uint = 0
+    while i < mused(sh()) {
+        var key = mkey(sh(), i)
+        if key != 0 {
+            var t, v: uint
+            t, v = mval(sh(), i)
+            map_set(h, key, t, v)
+        }
+        i++
+    }
+    res(0, TAG_MAP, h)
+    return 0
+}
+
+fn ms_replace(): uint {
+    bn = 1
+    var o = arg_str(1)
+    var nw = arg_str(2)
+    var lo = slen(o)
+    if lo == 0 { rt_err("replace: empty string") }
+    var cnt: uint = 0
+    var pos: uint = 0
+    loop {
+        var k = hfind(sh(), o, pos)
+        if k == $FFFF { break }
+        cnt++
+        pos = k + lo
+    }
+    var total: ulong = ulong(slen(sh())) + ulong(cnt) * ulong(slen(nw)) - ulong(cnt) * ulong(lo)
+    if total > 32767 { rt_err("too large") }
+    var h = new_str(uint(total))
+    o = arg_str(1)
+    nw = arg_str(2)
+    var d: uint = 0
+    pos = 0
+    loop {
+        var k = hfind(sh(), o, pos)
+        var end = k
+        if k == $FFFF { end = slen(sh()) }
+        hmove(h, d, sh(), pos, end - pos)
+        d += end - pos
+        if k == $FFFF { break }
+        hmove(h, d, nw, 0, slen(nw))
+        d += slen(nw)
+        pos = k + lo
+    }
+    return res_str(h)
+}
+
+
+// ---- errors: a runtime error message, the place in the source (the line table is read from the
+// .bsc file), the e.where() method ---------------------------------------------------------------------
+
+var lk_file, lk_line: uint
+
+fn lookup_line(pc: uint): uint {
+    lk_file = $FFFF
+    lk_line = 0
+    var e, h: uint
+    e, h = sys_open(&bsc_path[0], O_READ, 0)
+    if e != OK { return 0 }
+    var p: ulong
+    e, p = sys_seek(h, long(lt_offset), SEEK_SET)
+    var buf: [64]byte
+    var n: uint = 0
+    var i: uint = 0
+    var left = lt_size
+    var off: uint = 0
+    var line: uint = 0
+    var file: uint = 0
+    var any: uint = 0
+    loop {
+        if n - i < 7 && left != 0 {
+            memcpy(&buf[0], &buf[i], n - i)
+            n -= i; i = 0
+            var want = 64 - n
+            if want > left { want = left }
+            var r: uint
+            e, r = sys_read(h, &buf[n], want)
+            if e != OK || r == 0 { break }
+            n += r; left -= r
+        }
+        if i >= n { break }
+        var noff: uint
+        var nline: uint
+        var nfile = file
+        if buf[i] == 0 {
+            nfile = uint(buf[i + 1])
+            noff = uint(buf[i + 2]) | uint(buf[i + 3]) << 8
+            nline = uint(buf[i + 4]) | uint(buf[i + 5]) << 8
+            i += 6
+        } else {
+            noff = off + uint(buf[i])
+            nline = uint(int(line) + int(char(buf[i + 1])))
+            i += 2
+        }
+        if any != 0 && noff > pc { break }
+        off = noff; line = nline; file = nfile; any = 1
+    }
+    ign = sys_close(h)
+    if any == 0 { return 0 }
+    lk_file = file
+    lk_line = line
+    return 1
+}
+
+// "file:line" into a buffer
+fn where_text(pc: uint, out: ptr byte): uint {
+    if pc == $FFFF || lookup_line(pc) == 0 || lk_file >= nsrc { return 0 }
+    var p = src_entry(lk_file)
+    var n = uint(p[4])
+    memcpy(out, p + 5, n)
+    out[n] = ':'
+    strcpy(out + n + 1, fmt_int(lk_line))
+    return 1
+}
+
+// bsvm: file:line: in function name: text (sect. 6.5)
+fn ov_rt_err(): uint {
+    var w: [PATHMAX + 8]byte
+    eputs("bsvm: ")
+    if where_text(rt_pc, &w[0]) != 0 { eputs(&w[0]); eputs(": ") }
+    if rt_fname != 0 {
+        eputs("in function ")
+        out_str(SL_ERR, rt_fname)
+        eputs(": ")
+    }
+    eputs(&rt_msg[0])
+    eputs("\n")
+    do_exit(125)
+    return 0
+}
+
+fn me_where(): uint {
+    bn = 1
+    var w: [PATHMAX + 8]byte
+    if where_text(hgw(bbase.v, E_WPC), &w[0]) == 0 { return res_null() }
+    return res_str(str_c(&w[0]))
+}
+
+
+var ov_table: [NOV_SYS]ptr fn(): uint = {
+    ov_rt_err, me_where, b_which, b_run, b_capture, b_exit, b_script, b_name, b_sleep,
+    b_hex, ms_equal_fold, ms_repeat, ms_replace, ma_reverse, ma_sort,
+    mm_keys, mm_values, mm_clone }

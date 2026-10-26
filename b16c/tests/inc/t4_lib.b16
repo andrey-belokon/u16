@@ -1,0 +1,14 @@
+// inc/t4_lib.b16 - a library for t4: the static names coincide with the names in t4.b16.
+static var hidden: uint = 77
+static fn twice(x: int): int { return x * 2 }
+fn lib_twice(x: int): int { return twice(x) }
+
+// the asm block accesses the static variable by its B16 name: the compiler substitutes t4_lib.hidden.
+fn read_hidden(): uint {
+    var r: uint = 0
+    asm {
+        LD    R0, [hidden]
+        RET
+    }
+    return r
+}

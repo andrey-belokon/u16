@@ -1,0 +1,194 @@
+// map.b16 - dictionaries (the specification, sect. 9.4): a hash table with insertion order.
+//
+// Permanent fields (types.b16): count (live), used (occupied entries, including deleted), cap
+// (entries), nb (buckets, a power of two). The data (heap.b16, delem): entries [cap] of 8 bytes
+// (key is a reference to a string, hash, value), then the buckets [nb]uint (entry number + 1, 0 -
+// empty); in a dictionary with chunks the buckets start at a chunk boundary. A deleted entry: key 0;
+// the bucket stays pointing at it and is skipped during lookup.
+
+const MAP_MAXCAP = 16384
+
+fn mcount(h: uint): uint { return hgw(h, M_COUNT) }
+fn mused(h: uint): uint { return hgw(h, M_USED) }
+
+// entry i: [0] key, [1] hash, [2] value, [3] tag; the address is valid until the next call
+fn mep(h: uint, i: uint): ptr uint { return ptr uint(delem(h, M_ENTS, 0, 0, i, 3)) }
+
+// bucket j: in a dictionary without chunks - after the entries, with chunks - from the chunk after the entry chunks
+fn mbp(h: uint, j: uint): ptr uint {
+    var cap = hgw(h, M_CAP)
+    return ptr uint(delem(h, M_ENTS, cap * 8, (cap + 511) >> 9, j, 1))
+}
+fn mbget(h: uint, j: uint): uint { return *mbp(h, j) }
+fn mbset(h: uint, j: uint, w: uint) { *mbp(h, j) = w }
+
+fn mkey(h: uint, i: uint): uint { return mep(h, i)[0] }
+
+// the value of entry i: (tag, value)
+fn mval(h: uint, i: uint): (uint, uint) {
+    var p = mep(h, i)
+    return p[3], p[2]
+}
+
+fn new_map(cap: uint): uint { return new_map_like(0, cap) }
+
+// a new dictionary; like != 0 - in the same place as dictionary like (far for a far one)
+fn new_map_like(like: uint, cap: uint): uint {
+    if cap < 4 { cap = 4 }
+    if cap > MAP_MAXCAP { rt_err("too large") }
+    var nb: uint = 8
+    while nb < cap * 2 { nb <<= 1 }
+    var h: uint
+    if cap <= 256 && cap * 8 + nb * 2 <= CHUNK {
+        var data = cap * 8 + nb * 2
+        if like != 0 { h = alloc_near(like, TY_MAP, M_ENTS + data) } else { h = alloc(TY_MAP, M_ENTS + data) }
+        hsw(h, M_COUNT, 0)
+        hsw(h, M_USED, 0)
+        hsw(h, M_CAP, cap)
+        hsw(h, M_NB, nb)
+        hfill(h, M_ENTS + cap * 8, 0, nb * 2)
+        return h
+    }
+    ga_a = like
+    ga_b = cap
+    ga_c = nb
+    return g_map_chunked()          // a dictionary with chunks - the gc overlay
+}
+
+// the entry number of key k (a string) + 1 or 0
+fn map_find(h: uint, k: uint): uint {
+    var x = hhash(k)
+    if fastpath != 0 {
+        // ordinary mode, a dictionary without chunks: addresses do not change (str_eq allocates no memory)
+        var p = hp(h)
+        if *ptr uint(p - OBJ_HDR) & F_CHUNK == 0 {
+            var ents = p + M_ENTS
+            var bk: ptr uint = ptr uint(ents + *ptr uint(p + M_CAP) * 8)
+            var fmask = *ptr uint(p + M_NB) - 1
+            var fi = x & fmask
+            loop {
+                var fj = bk[fi]
+                if fj == 0 { return 0 }
+                var e: ptr uint = ptr uint(ents + (fj - 1) * 8)
+                if e[0] != 0 && e[1] == x && str_eq(e[0], k) != 0 { return fj }
+                fi = (fi + 1) & fmask
+            }
+        }
+    }
+    var mask = hgw(h, M_NB) - 1
+    var i = x & mask
+    loop {
+        var j = mbget(h, i)
+        if j == 0 { return 0 }
+        var p = mep(h, j - 1)
+        var ek = p[0]
+        if ek != 0 && p[1] == x && str_eq(ek, k) != 0 { return j }
+        i = (i + 1) & mask
+    }
+    return 0
+}
+
+// the value of key k: (tag, value); tag 0 - no such key
+fn map_get(h: uint, k: uint): (uint, uint) {
+    var j = map_find(h, k)
+    if j == 0 { return 0, 0 }
+    var t, v: uint
+    t, v = mval(h, j - 1)
+    return t, v
+}
+
+// append an entry to the end of dictionary h (there is room): key, hash, value
+fn map_insert(h: uint, key: uint, x: uint, t: uint, v: uint) {
+    if fastpath != 0 {
+        var p = hp(h)
+        if *ptr uint(p - OBJ_HDR) & F_CHUNK == 0 {
+            var q: ptr uint = ptr uint(p)
+            var fu = q[1]
+            var ents = p + M_ENTS
+            var fe: ptr uint = ptr uint(ents + fu * 8)
+            fe[0] = key; fe[1] = x; fe[2] = v; fe[3] = t
+            q[1] = fu + 1
+            q[0] = q[0] + 1
+            var bk: ptr uint = ptr uint(ents + q[2] * 8)
+            var fmask = q[3] - 1
+            var fi = x & fmask
+            loop {
+                var fj = bk[fi]
+                if fj == 0 || *ptr uint(ents + (fj - 1) * 8) == 0 { break }
+                fi = (fi + 1) & fmask
+            }
+            bk[fi] = fu + 1
+            return
+        }
+    }
+    var u = mused(h)
+    var p = mep(h, u)
+    p[0] = key; p[1] = x; p[2] = v; p[3] = t
+    if far_on != 0 {
+        var c = dobj(h, M_ENTS, 0, u, 3)
+        wbar(c, TAG_STR, key)
+        wbar(c, t, v)
+    }
+    hsw(h, M_USED, u + 1)
+    hsw(h, M_COUNT, mcount(h) + 1)
+    var mask = hgw(h, M_NB) - 1
+    var i = x & mask
+    loop {
+        var j = mbget(h, i)
+        if j == 0 || mkey(h, j - 1) == 0 { break }
+        i = (i + 1) & mask
+    }
+    mbset(h, i, u + 1)
+}
+
+// rebuild dictionary h with room for cap entries (live entries - in order)
+fn map_rebuild(h: uint, cap: uint) {
+    tpush(h)
+    var h2 = new_map_like(h, cap)
+    tpush(h2)
+    var n = mused(h)
+    var i: uint = 0
+    while i < n {
+        var p = mep(h, i)
+        var k = p[0]
+        var x = p[1]
+        var v = p[2]
+        var t = p[3]
+        if k != 0 { map_insert(h2, k, x, t, v) }
+        i++
+    }
+    ntr -= 2
+    hswap(h, h2)
+    if far_on != 0 && windowed(h) != 0 { rem_add(h) }
+}
+
+// m[k] = (t, v); k is a string. The key and the value must be reachable from the roots.
+fn map_set(h: uint, k: uint, t: uint, v: uint) {
+    var j = map_find(h, k)
+    if j != 0 {
+        var p = mep(h, j - 1)
+        p[2] = v
+        p[3] = t
+        if far_on != 0 { wbar(dobj(h, M_ENTS, 0, j - 1, 3), t, v) }
+        return
+    }
+    if mused(h) >= hgw(h, M_CAP) {
+        var cnt = mcount(h)
+        if cnt >= MAP_MAXCAP { rt_err("too large") }
+        var c = cnt * 2
+        if c < 4 { c = 4 }
+        if c > MAP_MAXCAP { c = MAP_MAXCAP }
+        map_rebuild(h, c)
+    }
+    map_insert(h, k, hhash(k), t, v)
+}
+
+fn map_delete(h: uint, k: uint): uint {
+    var j = map_find(h, k)
+    if j == 0 { return 0 }
+    var p = mep(h, j - 1)
+    p[0] = 0
+    p[3] = TAG_NULL
+    hsw(h, M_COUNT, mcount(h) - 1)
+    return 1
+}

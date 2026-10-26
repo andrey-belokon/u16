@@ -1,0 +1,119 @@
+// path.b16 - path parsing: the prefix "N:" (disk 0..7), splitting by "/", "." and ".."
+// along the chain from the root (sect. 7 of FS16), rejecting a name with ":".
+
+// MAXDEPTH, EAddr, Chain are in ktypes.b16; the current directory is procs[...].cwd.
+var pch: Chain                      // the chain of the last path parse
+
+// The directory descriptor - the top of the chain.
+static fn chain_node(ch: ptr Chain, n: ptr Node): uint {
+    if ch.depth == 0 { return node_load(n, ch.drv, 0, 0) }
+    var a = &ch.ent[ch.depth - 1]
+    return node_load(n, ch.drv, a.clu, a.idx)
+}
+
+// An entry name: 1..32 bytes, each not less than $20, without ':', not "." and not "..".
+fn name_check(s: ptr byte, len: uint): uint {
+    if len == 0 || len > 32 { return E_BADNAME }
+    if s[0] == '.' && (len == 1 || len == 2 && s[1] == '.') { return E_BADNAME }
+    while len != 0 {
+        var c = *s++
+        if c < $20 || c == ':' { return E_BADNAME }
+        len--
+    }
+    return E_OK
+}
+
+// The volume prefix "X:" ("System Calls", sect. 4.1): a letter A-H in either case or, for
+// compatibility with old paths, a digit 0-7. The result is the volume number or NONE.
+fn drv_prefix(p: ptr byte): uint {
+    if p[1] != ':' { return NONE }
+    var c: uint = p[0]
+    if c >= 'a' && c <= 'h' { return c - 'a' }
+    if c >= 'A' && c <= 'H' { return c - 'A' }
+    if c >= '0' && c <= '7' { return c - '0' }
+    return NONE
+}
+
+// Parsing a path into descriptor n. last = 0: n is the entry the path names.
+// last != 0: the last name is not looked up; n is its directory, the result is the name and its length.
+fn path_walk(path: ptr byte, n: ptr Node, last: uint): uint, ptr byte, uint {
+    var p = path
+    var e: uint
+    var v: ptr Vol
+    var dp: uint = drv_prefix(p)
+    if dp != NONE {
+        pch.drv = byte(dp)
+        pch.depth = 0
+        p += 2
+    } else if p[0] == '/' {
+        pch.drv = curp().cwd.drv
+        pch.depth = 0
+    } else {
+        kmemcpy(ptr byte(&pch), ptr byte(&curp().cwd), sizeof(Chain))
+    }
+    v, e = vol_get(pch.drv)
+    if e != E_OK { return e, 0, 0 }
+    e = chain_node(&pch, n)
+    if e != E_OK { return e, 0, 0 }
+    loop {
+        while *p == '/' { p++ }
+        if *p == 0 { break }
+        var s = p
+        while *p != 0 && *p != '/' { p++ }
+        var len = uint(p - s)
+        if last != 0 {
+            var q = p
+            while *q == '/' { q++ }
+            if *q == 0 {            // the last name
+                if n.flags & F_DIR == 0 { return E_NOTDIR, 0, 0 }
+                return name_check(s, len), s, len
+            }
+        }
+        if s[0] == '.' && len <= 2 {
+            if len == 1 { continue }
+            if s[1] == '.' {
+                if pch.depth == 0 { return E_BADPATH, 0, 0 }
+                pch.depth--
+                e = chain_node(&pch, n)
+                if e != E_OK { return e, 0, 0 }
+                continue
+            }
+        }
+        e = name_check(s, len)
+        if e != E_OK { return e, 0, 0 }
+        if n.flags & F_DIR == 0 { return E_NOTDIR, 0, 0 }
+        if pch.depth == MAXDEPTH { return E_BADPATH, 0, 0 }
+        var clu, idx: uint
+        clu, idx, e = dir_find(n, s, len)
+        if e != E_OK { return e, 0, 0 }
+        var a = &pch.ent[pch.depth]
+        a.clu = clu
+        a.idx = idx
+        pch.depth++
+        e = node_load(n, pch.drv, clu, idx)
+        if e != E_OK { return e, 0, 0 }
+    }
+    if last != 0 { return E_BADNAME, 0, 0 }
+    return E_OK, 0, 0
+}
+
+// Change the current directory.
+fn fs_chdir(path: ptr byte): uint {
+    var n: Node
+    var e: uint
+    e, _ = path_walk(path, &n, 0)
+    if e != E_OK { return e }
+    if n.flags & F_DIR == 0 { return E_NOTDIR }
+    kmemcpy(ptr byte(&curp().cwd), ptr byte(&pch), sizeof(Chain))
+    return E_OK
+}
+
+// Whether the entry (clu, idx) is in the chain of the last parse.
+fn chain_has(clu: uint, idx: uint): uint {
+    var i: uint = 0
+    while i < pch.depth {
+        if pch.ent[i].clu == clu && pch.ent[i].idx == idx { return 1 }
+        i++
+    }
+    return 0
+}

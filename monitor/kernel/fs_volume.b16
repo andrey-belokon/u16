@@ -1,0 +1,267 @@
+// volume.b16 - an FS16 volume: the superblock (sect. 3), mounting and unmounting
+// (sect. 10), the bitmap (sect. 4), the timestamp (sect. 5.1).
+
+// A directory entry (sect. 5).
+struct DirEnt {
+    name: [32]byte
+    size: ulong                     // bits 0-26 size, 27-31 flags
+    mtime: ulong                    // the low word is the time, the high word the date
+    addr: [12]uint                  // DIRECT[0..9], IND, DIND
+}
+assert sizeof(DirEnt) == 64, "directory entry"
+assert offsetof(DirEnt, size) == 32, "directory entry: SIZE field"
+assert offsetof(DirEnt, mtime) == 36, "directory entry: MTIME field"
+assert offsetof(DirEnt, addr) == 40, "directory entry: addresses"
+
+const A_IND  = 10
+const A_DIND = 11
+const F_DIR    = $8000              // flags in word +34
+const F_RDONLY = $4000
+const F_HIDDEN = $2000
+const F_SYSTEM = $1000
+const F_MASK   = $F800
+const SZ_MASK  = $07FFFFFF           // the size in SIZE (bits 0-26)
+
+struct Super {
+    magic: [4]byte
+    version, clusters, maplen, free, hint, flags: uint
+    serial: ulong
+    label: [16]byte
+    root: DirEnt
+    zero: [410]byte
+    checksum: uint
+}
+assert sizeof(Super) == 512, "superblock"
+assert offsetof(Super, serial) == 16, "superblock: SERIAL"
+assert offsetof(Super, root) == 36, "superblock: ROOT"
+assert offsetof(Super, checksum) == 510, "superblock: CHECKSUM"
+const SB_DIRTY = 1
+
+// A mounted volume.
+struct Vol {
+    fl: byte                        // V_MOUNT, V_RW, V_LOST
+    drv: byte
+    mnt: uint                       // MNT_RDONLY, MNT_DIRTY, MNT_PROTECT ("System Calls", 10.2)
+    n: uint                         // the number of clusters N
+    b: uint                         // the number of map clusters B
+    free: uint                      // the FREE and HINT hints in memory
+    hint: uint
+}
+const V_MOUNT = 1
+const V_RW    = 2
+const V_LOST  = 4                   // the disk is disconnected: the volume is lost until UNMOUNT
+const NVOL = 8
+var vols: [NVOL]Vol
+var dinfo: DiskInfo
+
+// A mounted volume. Before each access it is checked that the disk is connected
+// ("CPU16 Monitor: Kernel Internals", sect. 6.1): a disconnected volume is marked lost.
+fn vol_get(drv: uint): ptr Vol, uint {
+    if drv >= NVOL { return 0, E_NOTMNT }
+    var v = &vols[drv]
+    if v.fl & V_MOUNT == 0 { return 0, E_NOTMNT }
+    if v.fl & V_LOST != 0 { return 0, E_NODEV }
+    if disk_present(drv) == 0 {
+        v.fl |= V_LOST
+        cache_drop(drv)
+        return 0, E_NODEV
+    }
+    return v, E_OK
+}
+
+// The sum of the words of a sector.
+static fn sb_sum(sb: ptr Super): uint {
+    var p: ptr uint = ptr uint(sb)
+    var n: uint = 256
+    var s: uint = 0
+    while n != 0 { s += *p++; n-- }
+    return s
+}
+
+// Recompute CHECKSUM.
+fn sb_fix(sb: ptr Super) {
+    sb.checksum = 0
+    sb.checksum = -sb_sum(sb)
+}
+
+static fn sb_check(sb: ptr Super, sectors: ulong): uint {
+    if sb.magic[0] != 'F' || sb.magic[1] != 'S' || sb.magic[2] != '1' || sb.magic[3] != '6' { return E_NOTFS }
+    if sb.version != 1 || sb_sum(sb) != 0 { return E_NOTFS }
+    var n = sb.clusters
+    if n < 3 { return E_NOTFS }
+    var need: ulong = ulong(n) << 2          // 4N sectors
+    if need > sectors { return E_NOTFS }
+    var b = n >> 14
+    if n & $3FFF != 0 { b++ }
+    if sb.maplen != b { return E_NOTFS }
+    if uint(sb.root.size >> 16) & F_DIR == 0 { return E_NOTFS }
+    return E_OK
+}
+
+// Mounting ("CPU16 Monitor: Kernel Internals", sect. 6.3). ro != 0 - read-only on request.
+// A protected disk and a volume with DIRTY = 1 are mounted read-only only. Result: the error code,
+// the MNT_... flags.
+fn vol_mount(drv: uint, ro: uint): uint, uint {
+    if drv >= NVOL || disk_present(drv) == 0 { return E_NODISK, 0 }
+    var v = &vols[drv]
+    if v.fl & V_MOUNT != 0 { return E_BUSY, 0 }
+    var e = disk_info(drv, &dinfo)
+    if e != E_OK { return e, 0 }
+    cache_drop(drv)
+    var b: ptr byte
+    b, e = cache_get(drv, 0)
+    if e != E_OK { return e, 0 }
+    var sb = ptr Super(b)
+    e = sb_check(sb, dinfo.sectors)
+    if e != E_OK { cache_drop(drv); return e, 0 }
+    var mnt: uint = 0
+    if ro != 0 { mnt = MNT_RDONLY }
+    if dinfo.flags & DI_RO != 0 { mnt = MNT_RDONLY | MNT_PROTECT }
+    if sb.flags & SB_DIRTY != 0 { mnt |= MNT_RDONLY | MNT_DIRTY }
+    if mnt == 0 {
+        sb.flags |= SB_DIRTY
+        sb_fix(sb)
+        e = cache_write(b)
+        if e == E_OK { e = disk_flush(drv) }
+        if e != E_OK { return e, 0 }
+    }
+    v.drv = drv
+    v.n = sb.clusters
+    v.b = sb.maplen
+    v.free = sb.free
+    v.hint = sb.hint
+    v.mnt = mnt
+    v.fl = V_MOUNT
+    if mnt == 0 { v.fl = V_MOUNT | V_RW }
+    return E_OK, mnt
+}
+
+// Write out what was deferred: buffers, FREE and HINT into the superblock (DIRTY stays), FLUSH.
+fn vol_sync(drv: uint): uint {
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(drv)
+    if e != E_OK { return e }
+    if v.fl & V_RW == 0 { return E_OK }
+    e = cache_flush(drv)
+    if e != E_OK { return e }
+    var b: ptr byte
+    b, e = cache_get(drv, 0)
+    if e != E_OK { return e }
+    var sb = ptr Super(b)
+    sb.free = v.free
+    sb.hint = v.hint
+    sb_fix(sb)
+    e = cache_write(b)
+    if e == E_OK { e = disk_flush(drv) }
+    return e
+}
+
+// Unmounting: the cache, FLUSH, the superblock with FREE, HINT and DIRTY = 0, FLUSH.
+fn vol_umount(drv: uint): uint {
+    if drv >= NVOL || vols[drv].fl & V_MOUNT == 0 { return E_NOTMNT }
+    if vols[drv].fl & V_LOST != 0 {
+        cache_drop(drv)
+        vols[drv].fl = 0
+        return E_OK
+    }
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(drv)
+    if e != E_OK { vols[drv].fl = 0; return e }
+    if v.fl & V_RW != 0 {
+        e = cache_flush(drv)
+        if e == E_OK { e = disk_flush(drv) }
+        if e != E_OK { return e }
+        var b: ptr byte
+        b, e = cache_get(drv, 0)
+        if e != E_OK { return e }
+        var sb = ptr Super(b)
+        sb.free = v.free
+        sb.hint = v.hint
+        sb.flags &= ~SB_DIRTY
+        sb_fix(sb)
+        e = cache_write(b)
+        if e == E_OK { e = disk_flush(drv) }
+        if e != E_OK { return e }
+    }
+    cache_drop(drv)
+    v.fl = 0
+    return E_OK
+}
+
+// Search for a free cluster in [from, to). Result 0 - not found.
+static fn bm_find(v: ptr Vol, from: uint, to: uint): uint, uint {
+    var c = from
+    while c < to {
+        var b: ptr byte
+        var e: uint
+        b, e = cache_get(v.drv, 4 + (c >> 12))
+        if e != E_OK { return 0, e }
+        var p: ptr uint = ptr uint(b) + ((c >> 4) & 255)
+        var x = *p | ((1 << (c & 15)) - 1)          // bits below c count as occupied
+        loop {
+            if x != $FFFF {
+                c &= ~15
+                while x & 1 != 0 { x >>= 1; c++ }
+                if c < to { return c, E_OK }
+                return 0, E_OK
+            }
+            if c | 15 >= to - 1 { return 0, E_OK }  // the word is the last one in the range
+            c = (c | 15) + 1
+            if c & $0FFF == 0 { break }             // the end of a map sector
+            p++
+            x = *p
+        }
+    }
+    return 0, E_OK
+}
+
+// Change the bit of cluster c. set != 0 - occupy (the map sector is written at once),
+// otherwise free (the sector is marked modified: freeing can be deferred).
+static fn bm_set(v: ptr Vol, c: uint, set: uint): uint {
+    var b: ptr byte
+    var e: uint
+    b, e = cache_get(v.drv, 4 + (c >> 12))
+    if e != E_OK { return e }
+    var p: ptr uint = ptr uint(b) + ((c >> 4) & 255)
+    var m: uint = 1 << (c & 15)
+    if set != 0 {
+        *p |= m
+        v.free--
+        v.hint = c + 1
+        return cache_write(b)
+    }
+    *p &= ~m
+    v.free++
+    cache_dirty(b)
+    return E_OK
+}
+
+// Allocate a cluster: a search from HINT forward with a wrap to B+1.
+fn bm_alloc(v: ptr Vol): uint, uint {
+    var first = v.b + 1
+    var h = v.hint
+    if h < first || h >= v.n { h = first }
+    var c, e: uint
+    c, e = bm_find(v, h, v.n)
+    if e == E_OK && c == 0 && h > first { c, e = bm_find(v, first, h) }
+    if e != E_OK { return 0, e }
+    if c == 0 { return 0, E_FULL }
+    e = bm_set(v, c, 1)
+    if e != E_OK { return 0, e }
+    return c, E_OK
+}
+
+fn bm_free(v: ptr Vol, c: uint): uint { return bm_set(v, c, 0) }
+
+// The machine clock (sect. 8): the current FS16 timestamp.
+
+fn now(): ulong {
+    var t: ulong
+    atomic {
+        RTC_CMD = 1
+        t = ulong(RTC_DATE) << 16 | RTC_TIME
+    }
+    return t
+}

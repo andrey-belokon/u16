@@ -1,0 +1,582 @@
+// stmt.b16 - statements (the specification, sect. 5, 7), functions and the program.
+
+// ---- loops ---------------------------------------------------------------------------------------
+const LOOPMAX = 32
+var lp_break: [LOOPMAX]uint     // break chain: offset position + 1
+var lp_cont: [LOOPMAX]uint
+var lp_brk: [LOOPMAX]uint       // 1 - there is a break
+var nloop: uint
+var cur_nres: uint              // the number of results of the current function
+var is_main: uint
+
+fn loop_push(cont: uint) {
+    if nloop >= LOOPMAX { err("loops nested too deep") }
+    lp_break[nloop] = 0
+    lp_cont[nloop] = cont
+    lp_brk[nloop] = 0
+    nloop++
+}
+
+fn loop_pop(): uint {
+    nloop--
+    var p = lp_break[nloop]
+    while p != 0 {
+        var nx = getw(p - 1)
+        patch_here(p - 1)
+        p = nx
+    }
+    return lp_brk[nloop]
+}
+
+// ---- annotations -----------------------------------------------------------------------------------
+fn type_name(): uint {
+    if tok != T_IDENT { err("type name expected") }
+    var t: uint = 0
+    var s = &tbuf[0]
+    if tlen == 3 && memeq(s, "int", 3) != 0 { t = TY_INT }
+    else if tlen == 4 && memeq(s, "bool", 4) != 0 { t = TY_BOOL }
+    else if tlen == 6 && memeq(s, "string", 6) != 0 { t = TY_STR }
+    else if tlen == 5 && memeq(s, "array", 5) != 0 { t = TY_ARR }
+    else if tlen == 3 && memeq(s, "map", 3) != 0 { t = TY_MAP }
+    else if tlen == 4 && memeq(s, "file", 4) != 0 { t = TY_FILE }
+    else if tlen == 5 && memeq(s, "error", 5) != 0 { t = TY_ERR }
+    else if tlen == 5 && memeq(s, "value", 5) != 0 { t = TY_VALUE }
+    else { err2("unknown type: ", s) }
+    next()
+    return t
+}
+
+// ---- assignment --------------------------------------------------------------------------------
+fn chkt(ty: uint) {
+    if ty != 0 && ty != TY_VALUE { op1(OP_CHKT, ty) }
+}
+
+fn store(k: uint, a: uint, b: uint) {
+    if k == K_LOC { chkt(b); op1(OP_STL, a); return }
+    if k == K_GLB { chkt(b); op2w(OP_STG, a); return }
+    if k == K_IDX { op(OP_SETIDX); return }
+    if k == K_DISC { op(OP_POP); return }
+    err("cannot assign to this expression")
+}
+
+fn is_target(k: uint): uint { return uint(k == K_LOC || k == K_GLB || k == K_IDX || k == K_DISC) }
+
+// The right-hand side of a single assignment: a call with one target intercepts the error of a function without
+// results (sect. 6.4).
+fn rhs1() {
+    var k, a, b, c: uint
+    expr(); k = dk; a = da; b = db; c = dc
+    if k == K_CALL {
+        if b != 255 && b > 1 { err("function returns several results") }
+        cset(a, 1)
+        return
+    }
+    val(k, a, b, c)
+}
+
+// A call to the right of n targets: checking the number of results, the mode.
+fn rhs_call(n: uint) {
+    var k, a, b, c: uint
+    expr(); k = dk; a = da; b = db; c = dc
+    if k != K_CALL { err("function call expected on the right of several targets") }
+    if b != 255 && n != b && n != b + 1 { serr("wrong number of targets for the function results") }
+    cset(a, n)
+}
+
+const TMAX = 9
+fn store_targets(tk: ptr uint, ta: ptr uint, tb: ptr uint, n: uint) {
+    var nidx: uint = 0
+    var i = n
+    while i > 0 {
+        i--
+        if tk[i] == K_IDX {
+            op1(OP_SETIDXD, i + 2 * nidx)
+            nidx++
+        } else {
+            store(tk[i], ta[i], tb[i])
+        }
+    }
+    if nidx != 0 { op1(OP_POPN, 2 * nidx) }
+}
+
+fn compound_op(t: uint): uint {
+    if t == T_ADDA { return OP_ADD }
+    if t == T_SUBA { return OP_SUB }
+    if t == T_MULA { return OP_MUL }
+    if t == T_DIVA { return OP_DIV }
+    if t == T_MODA { return OP_MOD }
+    if t == T_ANDA { return OP_AND }
+    if t == T_ORA { return OP_OR }
+    if t == T_XORA { return OP_XOR }
+    if t == T_SHLA { return OP_SHL }
+    if t == T_SHRA { return OP_SHR }
+    if t == T_USHRA { return OP_USHR }
+    return 0
+}
+
+var st_line, st_col, st_file: uint
+fn serr(msg: ptr byte) { err_at(st_file, st_line, st_col, msg, 0) }
+
+fn simple_stmt() {
+    st_line = tline; st_col = tcol; st_file = tfile
+    var k, a, b, c: uint
+    expr(); k = dk; a = da; b = db; c = dc
+    if tok == T_COMMA {
+        var tk: [TMAX]uint
+        var ta: [TMAX]uint
+        var tb: [TMAX]uint
+        var n: uint = 0
+        loop {
+            if is_target(k) == 0 { serr("cannot assign to this expression") }
+            if n >= TMAX { err("too many targets") }
+            tk[n] = k; ta[n] = a; tb[n] = b
+            n++
+            if tok != T_COMMA { break }
+            next()
+            expr(); k = dk; a = da; b = db; c = dc
+        }
+        expect(T_ASSIGN, "=")
+        rhs_call(n)
+        store_targets(&tk[0], &ta[0], &tb[0], n)
+        return
+    }
+    if tok == T_ASSIGN {
+        if is_target(k) == 0 || k == K_DISC { serr("cannot assign to this expression") }
+        next()
+        rhs1()
+        store(k, a, b)
+        return
+    }
+    var o = compound_op(tok)
+    if o != 0 || tok == T_INC || tok == T_DEC {
+        if k == K_LOC || k == K_GLB { val(k, a, b, c) }
+        else if k == K_IDX { op(OP_DUP2); op(OP_GETIDX) }
+        else { serr("cannot assign to this expression") }
+        if o != 0 {
+            next()
+            expr_val()
+        } else {
+            o = OP_ADD
+            if tok == T_DEC { o = OP_SUB }
+            next()
+            op1(OP_INT8, 1)
+        }
+        op(o)
+        store(k, a, b)
+        return
+    }
+    if k == K_CALL { cset(a, MODE_DISCARD); return }
+    serr("expression is not a statement")
+}
+
+// ---- declarations ----------------------------------------------------------------------------------
+fn var_decl() {
+    st_line = tline; st_col = tcol; st_file = tfile
+    var global = uint(in_fn == 0 && sdepth == 0)
+    next()
+    var nm: [TMAX * 32]byte
+    var nl: [TMAX]uint
+    var n: uint = 0
+    loop {
+        if tok != T_IDENT { err("name expected") }
+        if n >= TMAX { err("too many names") }
+        if tlen > 31 { err("name too long") }
+        memcpy(&nm[n * 32], &tbuf[0], tlen + 1)
+        nl[n] = tlen
+        n++
+        next()
+        if tok != T_COMMA { break }
+        next()
+    }
+    var ty: uint = 0
+    if tok == T_COLON { next(); ty = type_name() }
+    var tk: [TMAX]uint
+    var ta: [TMAX]uint
+    var tb: [TMAX]uint
+    var init: uint = 0
+    if tok == T_ASSIGN {
+        next()
+        init = 1
+        if n == 1 { rhs1() } else { rhs_call(n) }
+    } else if n > 1 { err("several names need a function call on the right") }
+    // declare the names after the initializer
+    var i: uint = 0
+    while i < n {
+        var s = &nm[i * 32]
+        if nl[i] == 1 && s[0] == '_' {
+            if n == 1 { err("_ cannot be declared") }
+            tk[i] = K_DISC
+        } else if global != 0 {
+            var g = &gsym[gfind(s, nl[i]) - 1]
+            g.decl = 1
+            tk[i] = K_GLB; ta[i] = g.a; tb[i] = ty
+        } else {
+            var p = ladd(s, nl[i], L_VAR)
+            p.a = new_slot()
+            p.ty = byte(ty)
+            tk[i] = K_LOC; ta[i] = p.a; tb[i] = ty
+        }
+        i++
+    }
+    if init == 0 { op(OP_NULL) }
+    store_targets(&tk[0], &ta[0], &tb[0], n)
+}
+
+// const NAME = expression: the result is a constant descriptor (k, a, b).
+fn const_value(): (uint, uint, uint) {
+    var k, a, b, c: uint
+    expr(); k = dk; a = da; b = db; c = dc
+    if is_const(k) == 0 { err("constant expression expected") }
+    if k == K_STRC { a = kintern(ptr byte(a), b) }      // a string constant keeps its pool number
+    return k, a, b
+}
+
+fn const_decl() {
+    var global = uint(in_fn == 0 && sdepth == 0)
+    next()
+    if tok != T_IDENT { err("name expected") }
+    var nm: [64]byte
+    var n = tlen
+    memcpy(&nm[0], &tbuf[0], n + 1)
+    next()
+    expect(T_ASSIGN, "=")
+    var k, a, b: uint
+    k, a, b = const_value()
+    if global != 0 {
+        gsym[gfind(&nm[0], n) - 1].decl = 1
+        return
+    }
+    var p = ladd(&nm[0], n, L_CONST)
+    p.ty = byte(k); p.a = a; p.b = b
+}
+
+fn end_stmt() {
+    if tok == T_EOS { next(); return }
+    if tok == T_RBRACE || tok == T_EOF { return }
+    err("end of statement expected")
+}
+
+// ---- blocks and control statements ------------------------------------------------------------------
+fn block(): uint {
+    stack_check()
+    if tok != T_LBRACE { err("expected {") }
+    next()
+    scope_enter()
+    var term: uint = 0
+    while tok != T_RBRACE {
+        if tok == T_EOF { err("expected }") }
+        if tok == T_EOS { next(); continue }
+        term = stmt()
+    }
+    next()
+    scope_leave()
+    return term
+}
+
+fn cond() {
+    nobrace = 1
+    expr_val()
+    nobrace = 0
+}
+
+fn if_stmt(): uint {
+    next()
+    cond()
+    var p = jump(OP_JF)
+    var t1 = block()
+    if tok == T_ELSE {
+        next()
+        var q = jump(OP_JMP)
+        patch_here(p)
+        var t2: uint
+        if tok == T_IF { t2 = if_stmt() } else { t2 = block() }
+        patch_here(q)
+        return t1 & t2
+    }
+    patch_here(p)
+    return 0
+}
+
+fn while_stmt(): uint {
+    next()
+    var start = cpos
+    cond()
+    var p = jump(OP_JF)
+    loop_push(start)
+    ign = block()
+    jump_back(OP_JMP, start)
+    patch_here(p)
+    ign = loop_pop()
+    return 0
+}
+
+fn loop_stmt(): uint {
+    next()
+    var start = cpos
+    loop_push(start)
+    ign = block()
+    jump_back(OP_JMP, start)
+    return uint(loop_pop() == 0)
+}
+
+fn for_stmt(): uint {
+    next()
+    var n1: [32]byte
+    var n2: [32]byte
+    var l1: uint
+    var l2: uint = 0
+    if tok != T_IDENT || tlen > 31 { err("loop variable expected") }
+    memcpy(&n1[0], &tbuf[0], tlen + 1); l1 = tlen
+    next()
+    if tok == T_COMMA {
+        next()
+        if tok != T_IDENT || tlen > 31 { err("loop variable expected") }
+        memcpy(&n2[0], &tbuf[0], tlen + 1); l2 = tlen
+        next()
+    }
+    expect(T_IN, "in")
+    cond()
+    scope_enter()
+    var s = new_slot()
+    ign = new_slot()
+    ign = new_slot()
+    op1(OP_FORINIT, s)
+    var start = cpos
+    if l2 != 0 { op1(OP_FORNEXT2, s) } else { op1(OP_FORNEXT1, s) }
+    emitw(0)
+    var ex = cpos - 2
+    var p = ladd(&n1[0], l1, L_VAR)
+    p.a = new_slot()
+    if l2 != 0 {
+        var q = ladd(&n2[0], l2, L_VAR)
+        q.a = new_slot()
+        op1(OP_STL, q.a)
+    }
+    op1(OP_STL, p.a)
+    loop_push(start)
+    ign = block()
+    jump_back(OP_JMP, start)
+    patch_here(ex)
+    ign = loop_pop()
+    scope_leave()
+    return 0
+}
+
+// a chain of forward jumps: the offset position holds the previous element (+1)
+fn chain_add(head: uint, p: uint): uint {
+    patchw(p, head)
+    return p + 1
+}
+
+fn chain_patch(head: uint) {
+    while head != 0 {
+        var nx = getw(head - 1)
+        patch_here(head - 1)
+        head = nx
+    }
+}
+
+const SWMAX = 64
+fn switch_stmt(): uint {
+    next()
+    cond()
+    scope_enter()
+    var s = new_slot()
+    op1(OP_STL, s)
+    expect(T_LBRACE, "{")
+    while tok == T_EOS { next() }
+    var lk: [SWMAX]uint
+    var lv: [SWMAX]uint
+    var nl: uint = 0
+    var ends: uint = 0
+    var tests: uint = 0
+    var dflt: uint = $FFFF
+    var allterm: uint = 1
+    while tok == T_CASE || tok == T_DEFAULT {
+        if tok == T_CASE {
+            chain_patch(tests)
+            tests = 0
+            next()
+            var hits: uint = 0
+            loop {
+                op1(OP_LDL, s)
+                var k, a, b, c: uint
+                expr(); k = dk; a = da; b = db; c = dc
+                if is_const(k) != 0 {
+                    var v = a
+                    if k == K_STRC { v = kintern(ptr byte(a), b) }
+                    var i: uint = 0
+                    while i < nl {
+                        if lk[i] == k && lv[i] == v { err("duplicate case label") }
+                        i++
+                    }
+                    if nl < SWMAX { lk[nl] = k; lv[nl] = v; nl++ }
+                }
+                val(k, a, b, c)
+                op(OP_EQ)
+                if tok != T_COMMA { break }
+                next()
+                hits = chain_add(hits, jump(OP_JT))
+            }
+            tests = chain_add(0, jump(OP_JF))
+            expect(T_COLON, ":")
+            chain_patch(hits)
+        } else {
+            if dflt != $FFFF { err("several default clauses") }
+            next()
+            expect(T_COLON, ":")
+            tests = chain_add(tests, jump(OP_JMP))
+            dflt = cpos
+        }
+        scope_enter()
+        var term: uint = 0
+        while tok != T_CASE && tok != T_DEFAULT && tok != T_RBRACE {
+            if tok == T_EOF { err("expected }") }
+            if tok == T_EOS { next(); continue }
+            term = stmt()
+        }
+        scope_leave()
+        allterm &= term
+        ends = chain_add(ends, jump(OP_JMP))
+    }
+    if tok != T_RBRACE { err("case or default expected") }
+    chain_patch(tests)
+    if dflt != $FFFF { jump_back(OP_JMP, dflt) }
+    chain_patch(ends)
+    next()
+    scope_leave()
+    return uint(dflt != $FFFF && allterm != 0)
+}
+
+fn return_stmt(): uint {
+    next()
+    var n: uint = 0
+    if tok != T_EOS && tok != T_RBRACE && tok != T_EOF {
+        var k, a, b, c: uint
+        expr(); k = dk; a = da; b = db; c = dc
+        if in_fn != 0 && k == K_CALL && tok != T_COMMA && cur_nres > 1 {
+            if b != 255 && b != cur_nres { err("wrong number of return values") }
+            cset(a, MODE_EXACT | cur_nres)
+            op1(OP_RET, cur_nres)
+            end_stmt()
+            return 1
+        }
+        val(k, a, b, c)
+        n = 1
+        while tok == T_COMMA {
+            next()
+            expr_val()
+            n++
+        }
+    }
+    if in_fn != 0 {
+        if n != cur_nres { err("wrong number of return values") }
+    } else if n > 1 { err("return at top level takes one exit code") }
+    op1(OP_RET, n)
+    end_stmt()
+    return 1
+}
+
+fn fail_stmt(): uint {
+    next()
+    expr_val()
+    var n: uint = 1
+    while tok == T_COMMA && n < 3 {
+        next()
+        expr_val()
+        n++
+    }
+    op1(OP_FAIL, n)
+    end_stmt()
+    return 1
+}
+
+// A statement; the result is 1 if it ends execution (sect. 5.1).
+fn stmt(): uint {
+    sused = 0
+    var t = tok
+    if t == T_VAR { var_decl(); end_stmt(); return 0 }
+    if t == T_CONST { const_decl(); end_stmt(); return 0 }
+    if t == T_IF { return if_stmt() }
+    if t == T_WHILE { return while_stmt() }
+    if t == T_LOOP { return loop_stmt() }
+    if t == T_FOR { return for_stmt() }
+    if t == T_SWITCH { return switch_stmt() }
+    if t == T_RETURN { return return_stmt() }
+    if t == T_FAIL { return fail_stmt() }
+    if t == T_BREAK || t == T_CONTINUE {
+        if nloop == 0 { err("break or continue outside a loop") }
+        next()
+        if t == T_BREAK {
+            lp_break[nloop - 1] = chain_add(lp_break[nloop - 1], jump(OP_JMP))
+            lp_brk[nloop - 1] = 1
+        } else {
+            jump_back(OP_JMP, lp_cont[nloop - 1])
+        }
+        end_stmt()
+        return 0
+    }
+    if t == T_FN { err("functions can be declared only at top level") }
+    if t == T_INCLUDE { err("include must come before declarations and statements") }
+    if t == T_ELSE { err("else without if") }
+    simple_stmt()
+    end_stmt()
+    return 0
+}
+
+// ---- functions -------------------------------------------------------------------------------------
+fn fn_decl() {
+    next()
+    var g = &gsym[gfind(&tbuf[0], tlen) - 1]
+    var f = g.a
+    var line0 = tline
+    var col0 = tcol
+    var g_file = tfile
+    next()
+    var j = jump(OP_JMP)
+    var sv_nslot = nslot
+    var sv_max = maxslot
+    var sv_nloc = nloc
+    in_fn = 1
+    nslot = 0
+    maxslot = 0
+    cur_nres = uint(fn_nr[f])
+    fn_code[f] = cpos
+    scope_enter()
+    expect(T_LPAREN, "(")
+    var k: uint = 0
+    while tok == T_IDENT {
+        var p = ladd(&tbuf[0], tlen, L_VAR)
+        p.a = new_slot()
+        p.ty = tpool[fn_ty[f] + k]
+        k++
+        next()
+        if tok == T_COLON { next(); ign = type_name() }
+        if tok != T_COMMA { break }
+        next()
+    }
+    expect(T_RPAREN, ")")
+    if tok == T_COLON {
+        next()
+        loop {
+            ign = type_name()
+            if tok != T_COMMA { break }
+            next()
+        }
+    }
+    var term = block()
+    if cur_nres != 0 && term == 0 {
+        var nm: [64]byte
+        memcpy(&nm[0], &npool[g.name], uint(g.nlen))
+        nm[g.nlen] = 0
+        err_at(g_file, line0, col0, "missing return in function ", &nm[0])
+    }
+    if term == 0 { op1(OP_RET, 0) }
+    scope_leave()
+    fn_nl[f] = byte(maxslot)
+    in_fn = 0
+    nslot = sv_nslot
+    maxslot = sv_max
+    nloc = sv_nloc
+    patch_here(j)
+}

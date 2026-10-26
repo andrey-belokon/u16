@@ -1,0 +1,24 @@
+// The example of sect. 6.4: errors, interception by code
+fn load_config(name: string): map {
+    var cfg = {}
+    for line in fs.read_text(name).lines() {
+        var i = line.find("=")
+        if i < 0 {
+            fail $`bad line "{|line|}"`, name
+        }
+        cfg[line.slice(0, i).trim()] = line.slice(i + 1).trim()
+    }
+    return cfg
+}
+fn show(n: string) {
+    var cfg, err = load_config(n)
+    if err == errors.NOENT {
+        cfg = {}
+    } else if err != null {
+        fail err
+    }
+    println($"{|n|}: {|cfg.len()|} {|cfg.get("name", "-")|}")
+}
+show("/t/data/app.cfg")
+show("/t/data/missing.cfg")
+show("/t/data/a.log")

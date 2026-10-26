@@ -1,0 +1,82 @@
+// res.b16 - the kernel memory layout, device registers, page 7 data
+// ("CPU16 Monitor: Kernel Internals", sect. 2). The resident part (resident.asm)
+// accesses RES and KF through .equ lines that the compiler emits.
+
+// ---- devices ("The Machine", sect. 2, 3, 6, 7, 8) --------------------------------------
+var CON_DATA  at $FF20: byte
+var CON_CTRL  at $FF22: byte
+var CON_ATTR  at $FF23: byte
+var CON_COL   at $FF24: byte
+var CON_ROW   at $FF25: byte
+var CON_CMD   at $FF26: byte
+var CON_SCRD  at $FF50: uint        // a screen cell at the position: character | attribute << 8 ("The Machine", sect. 2.2)
+var CON_MODS  at $FF3C: byte        // modifiers of the taken event ("The Machine", sect. 2.6)
+var TIMER     at $FF29: byte
+var RTC_TIME  at $FF2A: uint
+var RTC_DATE  at $FF2C: uint
+var RTC_CMD   at $FF2E: byte
+var DK_CMD    at $FF30: byte
+var DK_ERR    at $FF31: byte
+var DK_DISK   at $FF32: byte
+var DK_COUNT  at $FF33: byte
+var DK_ADDR   at $FF34: uint
+var DK_LBA_LO at $FF36: uint
+var DK_LBA_HI at $FF38: uint
+var DK_CTRL   at $FF3A: byte
+var DK_DRIVES at $FF3B: byte
+var PAGE      at $FF40: [8]byte
+var MMU_CTRL  at $FF48: byte
+
+// ---- frames and windows (sect. 2.1, 2.2) ---------------------------------------------------------
+const FRAME_C = 7           // the common frame: page 7
+const FRAME_K0 = 8          // kernel frames 8..12
+const GARBAGE = 13          // the junk frame
+const FIRST_PFRAME = 14     // pool: 14..255
+const NPOOL = 242
+const WIN0 = $A000          // window W0 (page 5); W1 is $C000 (page 6)
+const SBUF = $EE00          // sector buffers: 8 of 512 bytes
+const SECSIZE = 512
+
+// ---- the entry frame KF (sect. 3.1) ---------------------------------------------------------------
+const F_LR = 12
+const F_SP = 13
+const F_IP = 14
+const F_FL = 15
+const EXIT_PROC = $E000     // the exit routine (CX16 format, sect. 8.1)
+const PREEMPT_PROC = $E004  // a stub for the session switch from a tick: TRAP #9 / SYS_PREEMPT (sect. 3.8)
+
+// ---- page 7 data (sect. 2.4) -------------------------------------------------------------
+const KB_SIZE = 256         // the keyboard ring, of events
+const KB_MASK = $1FE        // offsets in bytes: 0..510
+
+struct ResData {
+    psp: uint               // the process SP on entry to TRAP
+    sv0, sv1: uint          // saving R0, R1 in the handlers
+    ticks: ulong            // written only by irq0 with IF = 0, the kernel reads with IF = 0: atomic is not needed
+    hook: uint              // the current process's TICKHOOK or 0
+    abort: uint             // 1 - Ctrl+C is not yet handled
+    nobreak: uint           // 1 - the current process has NOBREAK
+    brk_echo: uint          // 1 - the process was ended by Ctrl+C: EXIT prints ^C
+    kf_set: uint            // 1 - the handler filled KF itself (sect. 3.3)
+    kf_raw: uint            // 1 - frame KF is exact: resume does not recompute ZF (sect. 3.8)
+    sw_req: uint            // switching sessions from the keyboard: +1 on Ctrl+], -1 on Ctrl+[ (sect. 3.8)
+    sw_ip: uint             // the IP of a process interrupted by a tick for the sake of a session switch
+    fault_ip: uint          // the address of the instruction at which the process was ended by the monitor
+    brk_hook: uint          // the current process's Ctrl+C handler (ONEVENT) or 0
+    bad_hook: uint          // the current process's illegal-instruction handler or 0
+    ln_drop: uint           // 1 - irq0 discarded input (Ctrl+C with a handler): reset the console line
+    dk_done: uint           // 1 - the disk command is complete (IRQ1)
+    kb_head, kb_tail: uint  // the ring: offsets in bytes
+    // The current process's map is the main copy (sect. 2.3): XMAP, XFREE, SETTOP change it, and
+    // the current process's Proc.map is not maintained. The XMAP fast path (resident.asm) writes only here.
+    cmap: [8]byte           // the current process's map; cmap[7] = FRAME_C
+    omap: [8]byte           // the current process's own map: its own frame below top, the junk one above
+    xbits: [32]byte         // the current process's extended-memory frames: bit f & 7 of byte f >> 3
+    kb: [KB_SIZE]uint       // events: character | scancode << 8
+    kbm: [KB_SIZE]byte      // event modifiers (MODS): kbm[i] is for kb[i]
+}
+
+const RES_ADDR = $E400
+var RES at RES_ADDR: ResData
+var KF  at $EDE0: [16]uint
+assert sizeof(ResData) <= $E800 - RES_ADDR, "RES does not fit"

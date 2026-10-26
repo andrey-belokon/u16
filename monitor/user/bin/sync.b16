@@ -1,0 +1,10 @@
+// sync - write out the deferred changes of all volumes.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+fn main(): int {
+    prog = "sync"
+    var e: uint = sys_sync()
+    if e != OK { fail(0, e); return 1 }
+    return 0
+}

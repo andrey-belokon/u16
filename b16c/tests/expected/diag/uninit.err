@@ -1,0 +1,3 @@
+tests/diag/uninit.b16:5: warning: variable a is used before it is assigned
+tests/diag/uninit.b16:32: warning: variable k is used before it is assigned
+rc 0

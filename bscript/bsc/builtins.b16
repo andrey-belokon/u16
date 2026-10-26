@@ -1,0 +1,138 @@
+// builtins.b16 - built-in functions, namespaces and their constants (the specification, sect. 9-10).
+
+struct BI {
+    name: ptr byte
+    ns: byte
+    id: byte
+    amin: byte
+    amax: byte
+    nres: byte
+}
+
+const NBI = NBUILTIN
+var bi_tab: [NBI]BI = {
+    { "type", NS_NONE, B_TYPE, 1, 1, 1 },
+    { "str", NS_NONE, B_STR, 1, 1, 1 },
+    { "error", NS_NONE, B_ERROR, 1, 3, 1 },
+    { "assert", NS_NONE, B_ASSERT, 1, 2, 0 },
+    { "min", NS_NONE, B_MIN, 2, 2, 1 },
+    { "max", NS_NONE, B_MAX, 2, 2, 1 },
+    { "abs", NS_NONE, B_ABS, 1, 1, 1 },
+    { "print", NS_IO, B_PRINT, 1, 1, 0 },
+    { "println", NS_IO, B_PRINTLN, 0, 1, 0 },
+    { "eprint", NS_IO, B_EPRINT, 1, 1, 0 },
+    { "eprintln", NS_IO, B_EPRINTLN, 0, 1, 0 },
+    { "read_line", NS_IO, B_READ_LINE, 0, 0, 1 },
+    { "read_all", NS_IO, B_READ_ALL, 0, 0, 1 },
+    { "flush", NS_IO, B_FLUSH, 0, 0, 0 },
+    { "join", NS_STR, B_JOIN, 2, 2, 1 },
+    { "from_byte", NS_STR, B_FROM_BYTE, 1, 1, 1 },
+    { "hex", NS_STR, B_HEX, 1, 2, 1 },
+    { "read_text", NS_FS, B_READ_TEXT, 1, 1, 1 },
+    { "write_text", NS_FS, B_WRITE_TEXT, 2, 2, 0 },
+    { "append_text", NS_FS, B_APPEND_TEXT, 2, 2, 0 },
+    { "open", NS_FS, B_OPEN, 2, 2, 1 },
+    { "exists", NS_FS, B_EXISTS, 1, 1, 1 },
+    { "is_dir", NS_FS, B_IS_DIR, 1, 1, 1 },
+    { "is_file", NS_FS, B_IS_FILE, 1, 1, 1 },
+    { "list", NS_FS, B_LIST, 1, 1, 1 },
+    { "mkdir", NS_FS, B_MKDIR, 1, 1, 0 },
+    { "remove", NS_FS, B_REMOVE, 1, 1, 0 },
+    { "rename", NS_FS, B_RENAME, 2, 2, 0 },
+    { "copy", NS_FS, B_COPY, 2, 2, 0 },
+    { "cwd", NS_FS, B_CWD, 0, 0, 1 },
+    { "chdir", NS_FS, B_CHDIR, 1, 1, 0 },
+    { "join", NS_PATH, B_PJOIN, 2, 2, 1 },
+    { "basename", NS_PATH, B_BASENAME, 1, 1, 1 },
+    { "dirname", NS_PATH, B_DIRNAME, 1, 1, 1 },
+    { "extension", NS_PATH, B_EXTENSION, 1, 1, 1 },
+    { "normalize", NS_PATH, B_NORMALIZE, 1, 1, 1 },
+    { "is_absolute", NS_PATH, B_IS_ABS, 1, 1, 1 },
+    { "equal", NS_PATH, B_PEQUAL, 2, 2, 1 },
+    { "match", NS_PATH, B_MATCH, 2, 2, 1 },
+    { "run", NS_PROC, B_RUN, 2, 3, 1 },
+    { "capture", NS_PROC, B_CAPTURE, 2, 3, 2 },
+    { "which", NS_PROC, B_WHICH, 1, 1, 1 },
+    { "exit", NS_PROC, B_EXIT, 1, 1, 0 },
+    { "script", NS_PROC, B_SCRIPT, 0, 0, 1 },
+    { "name", NS_PROC, B_NAME, 0, 0, 1 },
+    { "sleep", NS_TIME, B_SLEEP, 1, 1, 0 } }
+
+// namespaces (sect. 2.2): number = NS_IO ...
+const NNS = 7
+var ns_names: [NNS]ptr byte = { "io", "str", "fs", "path", "proc", "time", "errors" }
+
+// errors.* constants (sect. 6.6)
+const NERRC = 26
+struct EC {
+    name: ptr byte
+    code: uint
+}
+var err_consts: [NERRC]EC = {
+    { "INVAL", 2 }, { "NOENT", 4 }, { "EXIST", 5 }, { "NOTDIR", 6 }, { "ISDIR", 7 },
+    { "NOTEMPTY", 8 }, { "RDONLY", 9 }, { "NOSPC", 10 }, { "BADNAME", 11 }, { "BADPATH", 12 },
+    { "MFILE", 14 }, { "NODEV", 15 }, { "IO", 16 }, { "NOEXEC", 17 }, { "BADVER", 18 },
+    { "ARGS", 19 }, { "NOMEM", 20 }, { "NOPROC", 21 }, { "BUSY", 23 }, { "XDEV", 25 },
+    { "NOTFS", 26 }, { "FAIL", 100 }, { "TOOBIG", 101 }, { "NUMBER", 102 }, { "SAMEFILE", 103 },
+    { "CLOSED", 104 } }
+
+// name in tbuf: a namespace number (1..7) or 0
+fn ns_lookup(s: ptr byte, n: uint): uint {
+    var k: uint = 0
+    while k < NNS {
+        var q = ns_names[k]
+        if q[0] == s[0] && strlen(q) == n && memeq(q, s, n) != 0 { return k + 1 }
+        k++
+    }
+    return 0
+}
+
+// the table of built-in functions by name hash (bi_init): the number in bi_tab + 1, open addressing
+const BIH = 128
+var bih: [BIH]byte
+
+fn bi_init() {
+    var k: uint = 0
+    while k < NBI {
+        var s = bi_tab[k].name
+        var i = name_hash(s, strlen(s)) & (BIH - 1)
+        while bih[i] != 0 { i = (i + 1) & (BIH - 1) }
+        bih[i] = byte(k + 1)
+        k++
+    }
+}
+
+// a built-in function of namespace ns with name s: the number in bi_tab + 1 or 0
+fn bi_lookup(ns: uint, s: ptr byte, n: uint): uint {
+    var i = name_hash(s, n) & (BIH - 1)
+    loop {
+        var k = uint(bih[i])
+        if k == 0 { return 0 }
+        var b = &bi_tab[k - 1]
+        if uint(b.ns) == ns && b.name[0] == s[0] && strlen(b.name) == n && memeq(b.name, s, n) != 0 { return k }
+        i = (i + 1) & (BIH - 1)
+    }
+    return 0
+}
+
+// global built-ins: type str error assert min max abs print println eprint eprintln
+fn global_builtin(s: ptr byte, n: uint): uint {
+    var k = bi_lookup(NS_NONE, s, n)
+    if k != 0 { return k }
+    k = bi_lookup(NS_IO, s, n)
+    if k != 0 && k <= B_EPRINTLN + 1 { return k }
+    return 0
+}
+
+fn method_lookup(s: ptr byte, n: uint): uint {
+    var k: uint = 0
+    while k < NMETHOD {
+        var q = method_names[k]
+        if q[0] == s[0] && strlen(q) == n && memeq(q, s, n) != 0 { return k + 1 }
+        k++
+    }
+    return 0
+}
+
+// the number of method arguments (the same for all types): min * 16 + max
+var method_args: [NMETHOD]byte = { 0, 18, 18, 17, 17, 17, 17, 0, 34, 0, 0, 0, 17, 17, 18, 18, 0, 17, 0, 34, 17, 0, 0, 17, 0, 0, 17, 18, 34, 17, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0 }

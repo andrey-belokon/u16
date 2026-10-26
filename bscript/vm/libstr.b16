@@ -1,0 +1,434 @@
+// libstr.b16 - resident methods of strings, arrays, dictionaries, files and errors, str.join
+// (the specification, sect. 9.2-9.4, 10.5, 6.2): the ones frequent in loops. Rare and long ones are in the overlay
+// ov_sys.b16 (sect. 12.9).
+
+fn sh(): uint { return bbase.v }
+
+// the interval [start, end) of arguments k, k+1 within 0..n
+var r_lo, r_hi: uint
+fn range(k: uint, n: uint) {
+    r_lo = arg_int(k)
+    r_hi = n
+    if bnargs > k { r_hi = arg_int(k + 1) }
+    if r_lo > n || r_hi > n || r_lo > r_hi { rt_err("index out of range") }
+}
+
+// ---- strings ---------------------------------------------------------------------------------------
+fn ms_len(): uint { bn = 1; return res_int(slen(sh())) }
+
+fn ms_slice(): uint {
+    bn = 1
+    range(1, slen(sh()))
+    return res_str(sub_str(sh(), r_lo, r_hi))
+}
+
+fn ms_find(): uint {
+    bn = 1
+    var t = arg_str(1)
+    var from: uint = 0
+    if bnargs == 2 { from = arg_int(2); if from > slen(sh()) { rt_err("index out of range") } }
+    return res_int(hfind(sh(), t, from))
+}
+
+fn ms_contains(): uint { bn = 1; return res_bool(uint(hfind(sh(), arg_str(1), 0) != $FFFF)) }
+
+fn ms_starts(): uint {
+    bn = 1
+    var t = arg_str(1)
+    var n = slen(t)
+    return res_bool(uint(n <= slen(sh()) && hcmp(sh(), 0, t, 0, n) == 0))
+}
+
+fn ms_ends(): uint {
+    bn = 1
+    var t = arg_str(1)
+    var n = slen(t)
+    var l = slen(sh())
+    return res_bool(uint(n <= l && hcmp(sh(), l - n, t, 0, n) == 0))
+}
+
+// ---- arrays --------------------------------------------------------------------------------------
+fn ma_len(): uint { bn = 1; return res_int(alen(sh())) }
+
+fn ma_push(): uint {
+    bn = 0
+    var v = arg(1)
+    arr_push(sh(), v.t, v.v)
+    return 0
+}
+
+fn ma_pop(): uint {
+    bn = 1
+    var n = alen(sh())
+    if n == 0 { rt_err("pop from empty array") }
+    var t, v: uint
+    t, v = aget(sh(), n - 1)
+    aset_len(sh(), n - 1)
+    res(0, t, v)
+    return 0
+}
+
+fn ma_slice(): uint {
+    bn = 1
+    range(1, alen(sh()))
+    res(0, TAG_ARR, arr_slice(sh(), r_lo, r_hi))
+    return 0
+}
+
+fn ma_clear(): uint { bn = 0; aset_len(sh(), 0); return 0 }
+fn ma_clone(): uint { bn = 1; res(0, TAG_ARR, arr_slice(sh(), 0, alen(sh()))); return 0 }
+fn ma_contains(): uint { bn = 1; return res_bool(uint(arr_index(sh(), arg(1)) != $FFFF)) }
+fn ma_index_of(): uint { bn = 1; return res_int(arr_index(sh(), arg(1))) }
+
+// ---- dictionaries ---------------------------------------------------------------------------------
+fn key_arg(k: uint): uint {
+    var v = arg(k)
+    if v.t != TAG_STR { type_err("map key must be a string, got ", v) }
+    return v.v
+}
+
+fn mm_len(): uint { bn = 1; return res_int(mcount(sh())) }
+fn mm_has(): uint { bn = 1; return res_bool(uint(map_find(sh(), key_arg(1)) != 0)) }
+
+fn mm_get(): uint {
+    bn = 1
+    var t, v: uint
+    t, v = map_get(sh(), key_arg(1))
+    if t != 0 { res(0, t, v); return 0 }
+    if bnargs == 2 { var d = arg(2); res(0, d.t, d.v); return 0 }
+    return res_null()
+}
+
+fn mm_set(): uint {
+    bn = 0
+    var v = arg(2)
+    map_set(sh(), key_arg(1), v.t, v.v)
+    return 0
+}
+
+fn mm_delete(): uint { bn = 1; return res_bool(map_delete(sh(), key_arg(1))) }
+
+// ---- files ----------------------------------------------------------------------------------------
+fn fpath(): uint { return hgw(sh(), FO_PATH) }
+
+// the receiver's file entry with a mode check; 0 - the file is closed
+fn fslot(mode: uint): uint {
+    var k = hgw(sh(), FO_SLOT)
+    if k == 0 { return 0 }
+    if slots[k].mode != mode {
+        if mode == SM_READ { rt_err("file is not open for reading") }
+        rt_err("file is not open for writing")
+    }
+    return k
+}
+
+fn closed_err(): uint { return fail_code(E_CLOSED, fpath()) }
+
+fn mf_read_line(): uint {
+    bn = 1
+    var k = fslot(SM_READ)
+    if k == 0 { return closed_err() }
+    var e = read_line(k)
+    if e != 0 { return fail_code(e, fpath()) }
+    if rl_h == 0 { return res_null() }
+    return res_str(rl_h)
+}
+
+fn mf_read_all(): uint {
+    bn = 1
+    var k = fslot(SM_READ)
+    if k == 0 { return closed_err() }
+    var e = read_all(k)
+    if e != 0 { return fail_code(e, fpath()) }
+    return res_str(rl_h)
+}
+
+fn werr_take(k: uint): uint {
+    var e = slots[k].werr
+    slots[k].werr = 0
+    return e
+}
+
+fn mf_write(): uint {
+    bn = 0
+    var s = arg_str(1)
+    var k = fslot(SM_WRITE)
+    if k == 0 { return closed_err() }
+    out_str(k, s)
+    var e = werr_take(k)
+    if e != 0 { return fail_code(e, fpath()) }
+    return 0
+}
+
+fn mf_flush(): uint {
+    bn = 0
+    var k = fslot(SM_WRITE)
+    if k == 0 { return closed_err() }
+    ign = slot_flush(k)
+    var e = werr_take(k)
+    if e != 0 { return fail_code(e, fpath()) }
+    return 0
+}
+
+fn mf_close(): uint {
+    bn = 0
+    var k = hgw(sh(), FO_SLOT)
+    if k == 0 { return 0 }
+    ign = slot_flush(k)
+    var e = werr_take(k)
+    var e2 = sys_close(slots[k].fd)
+    slots[k].mode = SM_FREE
+    hsw(sh(), FO_SLOT, 0)
+    if e == 0 { e = e2 }
+    if e != 0 { return fail_code(e, fpath()) }
+    return 0
+}
+
+fn mf_path(): uint { bn = 1; return res_str(fpath()) }
+
+// ---- errors ---------------------------------------------------------------------------------------
+fn me_code(): uint { bn = 1; return res_int(hgw(sh(), E_CODE)) }
+fn me_text(): uint { bn = 1; return res_str(hgw(sh(), E_TEXT)) }
+fn me_object(): uint {
+    bn = 1
+    var o = hgw(sh(), E_OBJ)
+    if o == 0 { return res_null() }
+    return res_str(o)
+}
+
+// ---- frequent string and array methods, str.join ------------------------------------------------
+
+// ---- str ----------------------------------------------------------------------------------------
+fn b_join(): uint {
+    bn = 1
+    var a = arg_arr(0)
+    var sep = arg_str(1)
+    var n = alen(a)
+    var total: uint = 0
+    var i: uint = 0
+    while i < n {
+        var v: Val
+        v.t, v.v = aget(a, i)
+        if v.t != TAG_STR { type_err("str.join: string expected, got ", &v) }
+        total += slen(v.v)
+        if i > 0 { total += slen(sep) }
+        if total > 32767 { rt_err("too large") }
+        i++
+    }
+    var h = new_str(total)
+    var d: uint = 0
+    a = arg_arr(0)
+    sep = arg_str(1)
+    i = 0
+    while i < n {
+        if i > 0 { hmove(h, d, sep, 0, slen(sep)); d += slen(sep) }
+        var t, e: uint
+        t, e = aget(a, i)
+        hmove(h, d, e, 0, slen(e))
+        d += slen(e)
+        i++
+    }
+    return res_str(h)
+}
+
+fn ms_split(): uint {
+    bn = 1
+    var sep = arg_str(1)
+    if slen(sep) == 0 { rt_err("split: empty separator") }
+    var a = new_arr(4)
+    tpush(a)
+    var pos: uint = 0
+    loop {
+        var k = hfind(sh(), sep, pos)
+        var end = k
+        if k == $FFFF { end = slen(sh()) }
+        arr_push(a, TAG_STR, sub_str(sh(), pos, end))
+        if k == $FFFF { break }
+        pos = k + slen(sep)
+    }
+    res(0, TAG_ARR, a)
+    return 0
+}
+
+// the position of byte c in string h from from, or the string length
+fn hfind_byte(h: uint, c: uint, from: uint): uint {
+    var n = slen(h)
+    var p: ptr byte = ptr byte(hp(h))
+    var i = from
+    while i < n && p[i] != c { i++ }
+    return i
+}
+
+fn ms_lines(): uint {
+    bn = 1
+    var a = new_arr(4)
+    tpush(a)
+    var pos: uint = 0
+    var n = slen(sh())
+    while pos < n {
+        var e = hfind_byte(sh(), 10, pos)
+        var e2 = e
+        if e2 > pos && hgb(sh(), e2 - 1) == 13 { e2-- }
+        arr_push(a, TAG_STR, sub_str(sh(), pos, e2))
+        pos = e + 1
+    }
+    res(0, TAG_ARR, a)
+    return 0
+}
+
+fn is_ws(c: uint): uint { return uint(c == ' ' || c == 9 || c == 13 || c == 10) }
+
+fn ms_trim(): uint {
+    bn = 1
+    var lo: uint = 0
+    var hi = slen(sh())
+    while lo < hi && is_ws(hgb(sh(), lo)) != 0 { lo++ }
+    while hi > lo && is_ws(hgb(sh(), hi - 1)) != 0 { hi-- }
+    return res_str(sub_str(sh(), lo, hi))
+}
+
+fn chupper(c: uint): uint {
+    if c >= 'a' && c <= 'z' || c >= $E0 { return c - $20 }
+    if c == $A3 { return $B3 }
+    return c
+}
+
+fn ms_case(up: uint): uint {
+    bn = 1
+    var n = slen(sh())
+    var h = sub_str(sh(), 0, n)
+    var p: ptr byte = ptr byte(hp(h))
+    while n != 0 {
+        if up != 0 { *p = byte(chupper(*p)) } else { *p = byte(chfold(*p)) }
+        p++; n--
+    }
+    return res_str(h)
+}
+
+fn ms_upper(): uint { return ms_case(1) }
+
+fn ms_lower(): uint { return ms_case(0) }
+
+fn ms_pad(left: uint): uint {
+    bn = 1
+    var w = arg_int(1)
+    var ch: uint = ' '
+    if bnargs == 2 { ch = arg_int(2); if ch > 255 { rt_err("pad: bad byte") } }
+    var l = slen(sh())
+    if int(w) <= int(l) { return res_str(sh()) }
+    var h = new_str(w)
+    var fill = w - l
+    if left != 0 { hfill(h, 0, ch, fill); hmove(h, fill, sh(), 0, l) }
+    else { hmove(h, 0, sh(), 0, l); hfill(h, l, ch, fill) }
+    return res_str(h)
+}
+
+fn ms_pad_left(): uint { return ms_pad(1) }
+
+fn ms_pad_right(): uint { return ms_pad(0) }
+
+// number parsing (sect. 9.2): 1 - success, the value in pv
+var pv: uint
+
+fn parse_int(p: ptr byte, n: uint): uint {
+    while n != 0 && is_ws(*p) != 0 { p++; n-- }
+    while n != 0 && is_ws(p[n - 1]) != 0 { n-- }
+    if n == 0 { return 0 }
+    var base: uint = 10
+    var neg: uint = 0
+    if *p == '$' { base = 16; p++; n-- }
+    else if n >= 2 && *p == '0' && (p[1] == 'x' || p[1] == 'X') { base = 16; p += 2; n -= 2 }
+    else if n >= 2 && *p == '0' && (p[1] == 'b' || p[1] == 'B') { base = 2; p += 2; n -= 2 }
+    else if *p == '-' || *p == '+' { neg = uint(*p == '-'); p++; n-- }
+    if n == 0 { return 0 }
+    var v: ulong = 0
+    while n != 0 {
+        var c = uint(*p)
+        var d: uint = 99
+        if c >= '0' && c <= '9' { d = c - '0' }
+        else if c >= 'a' && c <= 'f' { d = c - 'a' + 10 }
+        else if c >= 'A' && c <= 'F' { d = c - 'A' + 10 }
+        if d >= base { return 0 }
+        v = v * ulong(base) + ulong(d)
+        if v > $FFFF { return 0 }
+        p++; n--
+    }
+    if base == 10 {
+        if neg != 0 { if v > 32768 { return 0 }; pv = 0 - uint(v); return 1 }
+        if v > 32767 { return 0 }
+    }
+    pv = uint(v)
+    return 1
+}
+
+fn ms_to_int(): uint {
+    bn = 1
+    var buf: [24]byte
+    var n = slen(sh())
+    var ok: uint = 0
+    // a number longer than 23 bytes is possible only with blanks at the edges: trim them in place
+    var lo: uint = 0
+    while lo < n && is_ws(hgb(sh(), lo)) != 0 { lo++ }
+    while n > lo && is_ws(hgb(sh(), n - 1)) != 0 { n-- }
+    if n - lo <= 24 {
+        hget(sh(), lo, &buf[0], n - lo)
+        ok = parse_int(&buf[0], n - lo)
+    }
+    if ok == 0 { return fail_code(E_NUMBER, sh()) }
+    return res_int(pv)
+}
+
+fn ma_insert(): uint {
+    bn = 0
+    var i = arg_int(1)
+    var n = alen(sh())
+    if i > n { rt_err("index out of range") }
+    var v = arg(2)
+    arr_push(sh(), v.t, v.v)
+    amove(sh(), i + 1, sh(), i, n - i)
+    v = arg(2)
+    aput(sh(), i, v.t, v.v)
+    return 0
+}
+
+fn ma_remove(): uint {
+    bn = 1
+    var n = alen(sh())
+    var i = arg_int(1)
+    if i >= n { rt_err("index out of range") }
+    var t, x: uint
+    t, x = aget(sh(), i)
+    amove(sh(), i, sh(), i + 1, n - i - 1)
+    aset_len(sh(), n - 1)
+    res(0, t, x)
+    return 0
+}
+
+fn b_from_byte(): uint {
+    bn = 1
+    var b = arg_int(0)
+    if b > 255 { rt_err("str.from_byte: byte out of range") }
+    var h = new_str(1)
+    hsb(h, 0, b)
+    return res_str(h)
+}
+
+// ---- method tables (numbers M_*) ----------------------------------------------------------------------
+var mt_str: [NMETHOD]ptr fn(): uint = {
+    ms_len, ms_slice, ms_find, ms_contains, ms_starts, ms_ends, ms_split, ms_lines,
+    ms_replace, ms_trim, ms_upper, ms_lower, ms_equal_fold, ms_repeat, ms_pad_left, ms_pad_right,
+    ms_to_int }
+var mt_arr: [NMETHOD]ptr fn(): uint = {
+    ma_len, ma_slice, 0, ma_contains, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, ma_push, ma_pop, ma_insert, ma_remove, ma_clear, ma_clone, ma_index_of, ma_reverse, ma_sort }
+var mt_map: [NMETHOD]ptr fn(): uint = {
+    mm_len, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, mm_clone, 0, 0, 0, mm_has, mm_get, mm_set, mm_delete, mm_keys, mm_values }
+var mt_file: [NMETHOD]ptr fn(): uint = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    mf_read_line, mf_read_all, mf_write, mf_flush, mf_close, mf_path }
+var mt_err: [NMETHOD]ptr fn(): uint = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, me_code, me_text, me_object, me_where }

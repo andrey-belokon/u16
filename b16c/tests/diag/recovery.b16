@@ -1,0 +1,11 @@
+// Several errors per run: recovery at statement and declaration boundaries.
+fn f(a: int): int {
+    var x = a +
+    var y = 2 $
+    y = q
+    if x > { y = 1 }
+    return y
+}
+var g: int = = 3
+fn h() { unknown(1); z = 2 }
+fn main() { f(1); h() }

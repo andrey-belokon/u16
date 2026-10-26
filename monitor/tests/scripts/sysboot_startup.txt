@@ -1,0 +1,12 @@
+mkdir B:/sys
+mkdir B:/bin
+cp /sys/monitor.sys B:/sys
+cp /sys/shell.cx B:/sys
+cp /bin/ls.cx B:/bin
+sysboot B
+cp /data/s3 B:/sys/startup
+sysboot b: /data/hello.txt
+sysboot 2
+sysboot 7
+sysboot 0
+exit

@@ -1,0 +1,78 @@
+// t4: arguments and exit code of main, static, export, assert, offsetof, initializers
+// of structs and local arrays, ulong in a struct and operations on it, division by a constant, several
+// results through a function pointer, untyped ptr, __image_end/__bss_end.
+// test: args alpha beta
+include "console.b16"
+include "inc/t4_lib.b16"
+
+struct Key { scan: byte; name: ptr byte }
+struct Rec { tag: byte; pos: ulong; vals: [3]int }
+
+assert sizeof(ulong) == 4
+assert offsetof(Rec, pos) == 2, "Rec layout"
+assert sizeof(Rec) == 12
+
+static fn twice(x: int): int { return x + 1000 }
+
+var keys: [3]Key = { { $48, "up" }, { .name = "down", .scan = $50 }, { .scan = 1, .name = "esc" } }
+var rec: Rec = { .vals = { 7, -8 }, .pos = $1FFFF }
+
+fn tick(): uint {
+    static var n: uint = 10
+    n++
+    return n
+}
+
+fn divmod(a: int, b: uint): int, uint { return a / 7, b % 10 }
+
+fn fill(p: ptr, n: uint, v: byte) {
+    var q: ptr byte = p
+    while n > 0 { *q = v; q++; n-- }
+}
+
+export fn never_called() { puts("export keeps me") }
+
+fn local_init(n: int) {
+    var a: [4]int = { n, n * 2 }
+    var big: [10]int = { 1, 2, n }
+    var k: Key = { .scan = 9, .name = "loc" }
+    var s: [8]byte = "abc"
+    puti(a[0]); putc(' '); puti(a[1]); putc(' '); puti(a[3]); putc(' ')
+    puti(big[0] + big[1] + big[2] + big[9]); putc(' ')
+    putu(k.scan); puts(k.name); putc(' '); puts(&s[0]); putnl()
+    a[3] = 5
+    big[9] = 100
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    puts("argc "); putu(argc)
+    var i: uint = 1
+    while i < argc { putc(' '); puts(argv[i]); i++ }
+    putnl()
+    puti(twice(5)); putc(' '); puti(lib_twice(5)); putc(' '); putu(read_hidden()); putnl()
+    putu(tick()); putc(' '); putu(tick()); putnl()
+    i = 0
+    while i < 3 { putu(keys[i].scan); putc('='); puts(keys[i].name); putc(' '); i++ }
+    putnl()
+    puti(rec.vals[0]); putc(' '); puti(rec.vals[1]); putc(' '); puti(rec.vals[2]); putc(' ')
+    rec.pos += 1
+    putu(uint(rec.pos)); putc(' '); putu(uint(rec.pos >> 16)); putc(' '); puti((rec.pos > 3) - (rec.pos < 3)); putc(' ')
+    putu(uint(rec.pos >> 1)); putnl()
+    local_init(3)
+    local_init(-4)
+    var f: ptr fn(int, uint): int, uint = divmod
+    var q: int
+    var r: uint
+    q, r = f(-100, 1234)
+    puti(q); putc(' '); putu(r); putc(' ')
+    var x = -1000
+    puti(x / 8); putc(' '); puti(x % 8); putc(' '); puti(x / 10); putc(' '); puti(x % 7); putc(' ')
+    puti(x / -3); putc(' '); putu(uint(x) / 16); putc(' '); puti(x * 4); putnl()
+    var buf: [6]byte
+    fill(&buf[0], 5, 'z')
+    buf[5] = 0
+    puts(&buf[0]); putc(' ')
+    if uint(__bss_end) >= uint(__image_end) { puts("bss ok") }
+    putnl()
+    return int(argc) + 4
+}

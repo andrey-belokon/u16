@@ -1,0 +1,190 @@
+// ov_init.b16 - the init overlay: loading a .bsc module (the specification, sect. 12.1, 12.5). It is built for
+// the page 5 address ($A000): at startup this page is still free, the loader is placed there in
+// a separate frame, runs once, and the frame is freed (ovl.b16, init_run). The loader does not touch the heap and
+// the constants: they may lie on page 5.
+
+fn bad_bsc(msg: ptr byte) {
+    eputs("bsvm: ")
+    eputs(&bsc_path[0])
+    eputs(": ")
+    eputs(msg)
+    eputs("\n")
+    do_exit(126)
+}
+
+fn hw(h: ptr uint, k: uint): uint { return h[k / 2] }
+
+var cwd: [PATHMAX]byte
+
+const NEAR_MIN = 6144           // less than the near heap - the constants go to frames
+
+// The module constants are in static segments of far memory: the frames are put into the page 6 window
+// (it is still free), each constant is an object with an entry in the segment table. The references are in konst.
+fn far_consts(h: uint, ksz: uint, kref: ptr uint) {
+    var left = ksz
+    var k: uint = 0
+    var sg: uint = 0
+    while left != 0 {
+        var hd: [3]uint
+        var e, r: uint
+        e, r = sys_read(h, ptr byte(&hd[0]), 6)
+        if e != OK || r != 6 { bad_bsc("file is damaged") }
+        var n = hd[1]
+        var need: uint = 6 + ((n + 1) & $FFFE)
+        if need > $2000 - FAR_TAB || need > left { bad_bsc("file is damaged") }
+        if sg == 0 || seg_top[sg] + need > $2000 || seg_nobj[sg] >= 256 {
+            sg = 2
+            while sg < SEG_MAX && seg_frame[sg] != 0 { sg++ }
+            if sg >= SEG_MAX { bad_bsc("program too large") }
+            var f: uint
+            e, f = sys_xalloc()
+            if e != OK { bad_bsc("not enough memory") }
+            seg_frame[sg] = f
+            seg_top[sg] = FAR_TAB
+            seg_nobj[sg] = 0
+            seg_static[sg] = 1
+            far_frames++
+            xmap6(f)
+        }
+        var i = seg_nobj[sg]
+        var off = seg_top[sg]
+        *ptr uint(OV_BASE + i * 2) = off
+        var o: ptr uint = ptr uint(OV_BASE + off)
+        o[0] = TY_STR | F_STATIC
+        o[1] = n
+        o[2] = i
+        e, r = sys_read(h, ptr byte(OV_BASE + off + 6), need - 6)
+        if e != OK || r != need - 6 { bad_bsc("file is damaged") }
+        seg_top[sg] = off + need
+        seg_nobj[sg] = i + 1
+        kref[k] = $8000 | sg << 8 | i
+        k++
+        left -= need
+    }
+}
+
+// Load the module: the source table and constants into near memory, the functions and code into frames.
+// The result is in ld_*: the start of free near memory, the address of the constants, the program's first argument.
+fn vm_load(): uint {
+    var argv = g_argv
+    var e: uint
+    var e0, n0: uint
+    e0, n0 = sys_getcwd(&cwd[0], PATHMAX)
+    if make_abs(&bsc_path[0], &cwd[0], argv[1]) == 0 { strcpy(&bsc_path[0], argv[1]) }
+    var h: uint
+    e, h = sys_open(&bsc_path[0], O_READ, 0)
+    if e != OK { bad_bsc(err_text(e)) }
+    var hdr: [HDR_SIZE / 2]uint
+    var r: uint
+    e, r = sys_read(h, ptr byte(&hdr[0]), HDR_SIZE)
+    if e != OK || r != HDR_SIZE || hdr[0] != ('B' | 'S' << 8) || hdr[1] != ('C' | '1' << 8) {
+        bad_bsc("not a BScript program")
+    }
+    if hw(&hdr[0], H_VERSION) != BSC_VERSION { bad_bsc("unsupported version") }
+    var srcsz = hw(&hdr[0], H_SRCSZ)
+    var ksz = hw(&hdr[0], H_CONSTSZ)
+    var fsz = hw(&hdr[0], H_FUNCSZ)
+    var csz = hw(&hdr[0], H_CODESZ)
+    var total = srcsz + ksz + fsz + csz
+    var mem = ((PIB_ARGS_END + 1) & $FFFE) + CSTACK
+    var top = PIB_TOP
+    nglob = hw(&hdr[0], H_NGLOB)
+    nkonst = hw(&hdr[0], H_NCONST)
+    nfunc = hw(&hdr[0], H_NFUNC)
+    nsrc = hw(&hdr[0], H_NFILES)
+    // The source table and constants are in near memory (the library uses them). A module
+    // up to 8 KB (functions, code, the frame table) is in the module frame in the window; a larger one has the functions and
+    // the frame table in near memory and the code in several frames (ovl.b16).
+    var near = srcsz + ksz
+    cf_multi = uint(fsz + csz + FRMAX * 8 > $2000)
+    if cf_multi != 0 { near += fsz + FRMAX * 8 }
+    // The constants are in extended-memory frames (sect. 12.10) if less than NEAR_MIN of heap
+    // would remain in near memory after them: then the program works in extended mode at once.
+    var need: uint = near + nglob * 4 + nkonst * 2 + VSMAX * 4 + NEAR_MIN
+    var farc: uint = 0
+    if (need > top - mem || need < near) && ksz >= 2048 { farc = 1; near -= ksz }
+    need = near + nglob * 4 + nkonst * 2 + VSMAX * 4 + 4096
+    if need > top - mem || csz > CF_MAX * $2000 { bad_bsc("program too large") }
+    // the near heap of extended mode is below the data window: at least 2 KB and the handles
+    if farc != 0 && mem + near + nglob * 4 + nkonst * 2 + VSMAX * 4 + 2560 > W5_BASE { bad_bsc("program too large") }
+    e, r = sys_read(h, ptr byte(mem), srcsz)
+    if e != OK || r != srcsz { bad_bsc("file is damaged") }
+    srctab = ptr byte(mem)
+    var kbase = mem + srcsz
+    var kin: uint = ksz                 // bytes of constants in near memory
+    if farc != 0 {
+        kin = 0
+        far_consts(h, ksz, ptr uint(mem + near + nglob * 4))
+    } else {
+        e, r = sys_read(h, ptr byte(kbase), ksz)
+        if e != OK || r != ksz { bad_bsc("file is damaged") }
+    }
+    ld_farconst = farc
+    if cf_multi == 0 {
+        e, mod_frame = sys_xalloc()
+        if e != OK { bad_bsc("not enough memory") }
+        xmap6(mod_frame)
+        e, r = sys_read(h, ptr byte(OV_BASE), fsz + csz)
+        if e != OK || r != fsz + csz { bad_bsc("file is damaged") }
+        funcs = ptr byte(OV_BASE)
+        code = ptr byte(OV_BASE + fsz)
+        frames = ptr Frame(OV_BASE + fsz + csz)
+    } else {
+        funcs = ptr byte(kbase + kin)
+        e, r = sys_read(h, funcs, fsz)
+        if e != OK || r != fsz { bad_bsc("file is damaged") }
+        frames = ptr Frame(kbase + kin + fsz)
+        var left = csz
+        var k: uint = 0
+        while left != 0 {
+            e, cf_frame[k] = sys_xalloc()
+            if e != OK { bad_bsc("not enough memory") }
+            xmap6(cf_frame[k])
+            var part = left
+            if part > $2000 { part = $2000 }
+            e, r = sys_read(h, ptr byte(OV_BASE), part)
+            if e != OK || r != part { bad_bsc("file is damaged") }
+            left -= part
+            k++
+        }
+        cf_cur = $FFFF
+    }
+    ftypes = funcs + nfunc * FN_ENTRY
+    ign = sys_close(h)
+    lt_offset = ulong(HDR_SIZE + total)
+    lt_size = hw(&hdr[0], H_LINESZ)
+
+    if mem + near > W5_BASE { bad_bsc("program too large") }
+    ld_p = mem + near
+    ld_kbase = kbase
+    var argc = g_argc
+    var i: uint = 0
+    // the script path and the program's first argument; the name for messages
+    var first: uint = 2
+    var src0 = src_entry(0)
+    if argc >= 3 && streq(argv[2], "--") == 0 {
+        script_path = argv[2]
+        script_len = strlen(argv[2])
+        first = 3
+    } else {
+        script_path = ptr byte(src0 + 5)
+        script_len = uint(src0[4])
+        if argc >= 3 { first = 3 }
+    }
+    // the name for messages: the last name without extension
+    var s = script_path
+    var b: uint = 0
+    i = 0
+    while i < script_len { if s[i] == '/' || s[i] == ':' { b = i + 1 }; i++ }
+    var l = script_len - b
+    var dot = l
+    i = 1
+    while i < l { if s[b + i] == '.' { dot = i }; i++ }
+    if dot > 39 { dot = 39 }
+    memcpy(&prog_name[0], s + b, dot)
+    prog_name[dot] = 0
+    ld_first = first
+    return 0
+}
+
+var ov_table: [NOV_INIT]ptr fn(): uint = { vm_load }

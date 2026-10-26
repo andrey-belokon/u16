@@ -1,0 +1,296 @@
+// interp.b16 - bytecode execution: the value stack, frames, commands, errors (sect. 6.4, 6.5, 12.7).
+
+var vs, vsp, vlim: ptr Val
+var glob: ptr Val
+var nglob: uint
+var fbase: ptr Val              // local variables of the current function
+var code: ptr byte
+var ip: ptr byte
+var funcs: ptr byte             // the module function table
+var ftypes: ptr byte            // annotations
+var nfunc: uint
+var konst: ptr uint             // constant number -> handle
+var nkonst: uint
+var srctab: ptr byte
+var nsrc: uint
+var lt_offset: ulong            // offset of the line table in the .bsc file
+var lt_size: uint
+var bsc_path: [PATHMAX]byte
+
+var frames: ptr Frame           // the frame table is in the module frame (window, bsvm.b16)
+var nfr: uint
+
+fn rd8(): uint { var b = uint(*ip); ip++; return b }
+fn rd16(): uint { var w = uint(ip[0]) | uint(ip[1]) << 8; ip += 2; return w }
+
+fn fent(f: uint): ptr byte { return funcs + f * FN_ENTRY }
+fn fw(p: ptr byte, k: uint): uint { return uint(p[k]) | uint(p[k + 1]) << 8 }
+
+fn cur_pc(): uint { return code_off(ip) - 1 }
+
+fn src_entry(k: uint): ptr byte {
+    var p = srctab
+    while k != 0 { p += 5 + uint(p[4]); k-- }
+    return p
+}
+
+// ---- termination -------------------------------------------------------------------------------
+fn do_exit(code: uint) {
+    flush_all()
+    sys_exit(code)
+}
+
+fn eputs(s: ptr byte) { out_write(SL_ERR, s, strlen(s)) }
+
+// A runtime error (sect. 6.5): the message is printed by the sys overlay (ov_sys.b16). The text
+// is copied into near memory: it may lie in the image of the overlay that is currently in the window.
+var rt_msg: [128]byte
+var rt_pc: uint
+var rt_fname: uint              // handle of the function name or 0
+
+fn rt_err2(msg: ptr byte, arg: ptr byte) {
+    var n: uint = 0
+    while *msg != 0 && n < 126 { rt_msg[n] = *msg; msg++; n++ }
+    if arg != 0 { while *arg != 0 && n < 126 { rt_msg[n] = *arg; arg++; n++ } }
+    rt_msg[n] = 0
+    rt_pc = cur_pc()
+    mod_map()
+    rt_fname = 0
+    if nfr > 0 && frames[nfr - 1].fnum != 0 { rt_fname = konst[fw(fent(frames[nfr - 1].fnum), 0)] }
+    ign = ov_call(OV_SYS, 0)
+    do_exit(125)
+}
+
+fn rt_err(msg: ptr byte) { rt_err2(msg, 0) }
+
+fn type_err(op: ptr byte, v: ptr Val) { rt_err2(op, tname(v)) }
+
+// ---- calls -----------------------------------------------------------------------------------
+fn chk_type(v: ptr Val, ty: uint) {
+    if ty == 0 || ty == TY_VALUE || v.t == TAG_NULL { return }
+    if tid(v.t) != ty {
+        var buf: [40]byte
+        strcpy(&buf[0], type_names[ty])
+        var n = strlen(&buf[0])
+        strcpy(&buf[n], " expected, got ")
+        strcpy(&buf[n + 15], tname(v))
+        rt_err2("type mismatch: ", &buf[0])
+    }
+}
+
+// The call results on the stack (n of them): apply the call mode.
+fn finish_call(mode: uint, n: uint) {
+    if mode == MODE_DISCARD { vsp -= n; return }
+    if mode & MODE_EXACT != 0 {
+        if n != mode & 15 {
+            if n == 0 { rt_err("function has no result") }
+            rt_err("wrong number of results")
+        }
+        return
+    }
+    if mode == n { return }
+    if mode == n + 1 { push(TAG_NULL, 0); return }
+    rt_err("wrong number of targets")
+}
+
+// The current function ends with error cur_err: pop the frames up to the call with interception.
+fn fail_current() {
+    loop {
+        if nfr <= 1 { top_error() }
+        nfr--
+        var fr = &frames[nfr]
+        ip = code_at(fr.ret)
+        vsp = fr.base
+        fbase = frames[nfr - 1].base
+        var nr = uint(fent(fr.fnum)[6])
+        if fr.mode & (MODE_DISCARD | MODE_EXACT) == 0 && fr.mode == nr + 1 {
+            catch_err(nr)
+            return
+        }
+    }
+}
+
+fn catch_err(nr: uint) {
+    while nr != 0 { push(TAG_NULL, 0); nr-- }
+    push(TAG_ERR, cur_err)
+    cur_err = 0
+}
+
+// An error of a built-in function with call mode mode and nr results.
+fn call_failed(mode: uint, nr: uint) {
+    if mode & (MODE_DISCARD | MODE_EXACT) == 0 && mode == nr + 1 { catch_err(nr); return }
+    fail_current()
+}
+
+// an error that reached the top level (sect. 6.4)
+fn top_error() {
+    var v: Val
+    v.t = TAG_ERR
+    v.v = cur_err
+    var s = to_str(&v)
+    out_write(SL_ERR, prog_name, strlen(prog_name))
+    eputs(": ")
+    out_str(SL_ERR, s)
+    eputs("\n")
+    do_exit(1)
+}
+
+fn call_fn(f: uint, mode: uint) {
+    if promote_pending != 0 { ign = g_promote() }        // safe point: the arguments are on the stack
+    var e = fent(f)
+    var np = uint(e[4])
+    var nl = uint(e[5])
+    var base = vsp - np
+    if nfr >= FRMAX || base + nl + 24 > vlim { rt_err("stack overflow") }
+    var fr = &frames[nfr]
+    fr.ret = code_off(ip)
+    fr.base = base
+    fr.fnum = f
+    fr.mode = mode
+    nfr++
+    if e[7] != 0 {
+        var t = ftypes + fw(e, 8)
+        var i: uint = 0
+        while i < np { chk_type(base + i, uint(t[i])); i++ }
+    }
+    var v = vsp
+    var k = np
+    while k < nl { v.t = TAG_NULL; v++; k++ }
+    vsp = v
+    fbase = base
+    ip = code_at(fw(e, 2))
+}
+
+fn op_call() {
+    var f = rd16()
+    var m = rd8()
+    call_fn(f, m)
+}
+
+fn op_ret() {
+    var n = rd8()
+    var fr = &frames[nfr - 1]
+    var e = fent(fr.fnum)
+    var src = vsp - n
+    if e[7] != 0 {
+        var t = ftypes + fw(e, 8) + uint(e[4])
+        var i: uint = 0
+        while i < n { chk_type(src + i, uint(t[i])); i++ }
+    }
+    if nfr == 1 {
+        // end of the program: the exit code
+        var code: uint = 0
+        if n != 0 && src.t != TAG_NULL {
+            if src.t != TAG_INT || int(src.v) < 0 { rt_err("bad exit code") }
+            code = src.v
+        }
+        do_exit(code)
+    }
+    var d = fr.base
+    var i: uint = 0
+    while i < n { d[i].t = src[i].t; d[i].v = src[i].v; i++ }
+    vsp = d + n
+    ip = code_at(fr.ret)
+    nfr--
+    fbase = frames[nfr - 1].base
+    finish_call(fr.mode, n)
+    if promote_pending != 0 { ign = g_promote() }
+}
+
+// ---- built-in functions and methods ---------------------------------------------------------------
+var bbase: ptr Val              // arguments of a built-in function (for a method [0] is the receiver)
+var bn: uint                    // number of results
+var bnargs: uint
+
+fn op_callb() {
+    var id = rd8()
+    var n = rd8()
+    var m = rd8()
+    bbase = vsp - n
+    bnargs = n
+    bn = 0
+    var st = bfuncs[id]()
+    ntr = 0
+    if st != 0 {
+        vsp = bbase
+        call_failed(m, bn)
+        return
+    }
+    vsp = bbase + bn
+    finish_call(m, bn)
+    if promote_pending != 0 { ign = g_promote() }        // safe point (heap.b16)
+}
+
+fn no_method(mid: uint) {
+    var buf: [40]byte
+    strcpy(&buf[0], method_names[mid])
+    var l = strlen(&buf[0])
+    strcpy(&buf[l], " for ")
+    strcpy(&buf[l + 5], tname(bbase))
+    rt_err2("no method ", &buf[0])
+}
+
+fn op_callm() {
+    var mid = rd8()
+    var n = rd8()
+    var m = rd8()
+    bbase = vsp - n - 1
+    bnargs = n
+    bn = 0
+    var t = bbase.t
+    var f: ptr fn(): uint = 0
+    if t == TAG_STR { f = mt_str[mid] }
+    else if t == TAG_ARR { f = mt_arr[mid] }
+    else if t == TAG_MAP { f = mt_map[mid] }
+    else if t == TAG_FILE { f = mt_file[mid] }
+    else if t == TAG_ERR { f = mt_err[mid] }
+    if f == 0 { no_method(mid) }
+    var st = f()
+    ntr = 0
+    if st != 0 {
+        vsp = bbase
+        call_failed(m, bn)
+        return
+    }
+    vsp = bbase + bn
+    finish_call(m, bn)
+    if promote_pending != 0 { ign = g_promote() }        // safe point (heap.b16)
+}
+
+// arguments of built-in functions
+fn arg(k: uint): ptr Val { return bbase + k }
+
+fn arg_int(k: uint): uint {
+    var v = bbase + k
+    if v.t != TAG_INT { type_err("int expected, got ", v) }
+    return v.v
+}
+
+fn arg_str(k: uint): uint {
+    var v = bbase + k
+    if v.t != TAG_STR { type_err("string expected, got ", v) }
+    return v.v
+}
+
+fn arg_arr(k: uint): uint {
+    var v = bbase + k
+    if v.t != TAG_ARR { type_err("array expected, got ", v) }
+    return v.v
+}
+
+fn arg_bool(k: uint): uint {
+    var v = bbase + k
+    if v.t != TAG_BOOL { type_err("bool expected, got ", v) }
+    return v.v
+}
+
+// result k: (t, v)
+fn res(k: uint, t: uint, v: uint) {
+    var d = bbase + k
+    d.t = t
+    d.v = v
+}
+fn res_str(h: uint): uint { res(0, TAG_STR, h); return 0 }
+fn res_int(x: uint): uint { res(0, TAG_INT, x); return 0 }
+fn res_bool(x: uint): uint { res(0, TAG_BOOL, x); return 0 }
+fn res_null(): uint { res(0, TAG_NULL, 0); return 0 }

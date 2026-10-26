@@ -1,0 +1,7 @@
+// option: a parameter that does not belong to the target, and a key on top of option (sect. 3.6, 13.2).
+// b16c-flags: --data $9000
+option target = kernel
+option data = $8000
+option min_free = 4096
+option max_top = $C000
+fn f() { }

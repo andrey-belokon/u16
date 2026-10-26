@@ -1,0 +1,126 @@
+// sysdefs.b16 - declarations of the monitor interface for B16 programs ("System Calls", sect. 10):
+// prototypes of the wrappers from sys.asm. The constants and structures are in abi.b16. A program includes sys.b16,
+// which adds the wrappers themselves; sysdefs.b16 alone is needed by code that calls the resident part's
+// wrappers (the bsvm overlays, ../../bscript/tools/mkovl.py).
+include "abi.b16"
+
+extern fn sys_exit(code: uint)
+extern fn sys_spawn(cmd: ptr byte, fin: uint, fout: uint, ferr: uint): (uint, uint)
+extern fn sys_exec(cmd: ptr byte): uint
+extern fn sys_onevent(ev: uint, h: ptr interrupt fn()): (uint, ptr interrupt fn())
+
+extern fn sys_open(path: ptr byte, mode: uint, attr: uint): (uint, uint)
+extern fn sys_close(h: uint): uint
+extern fn sys_read(h: uint, buf: ptr, n: uint): (uint, uint)
+extern fn sys_write(h: uint, buf: ptr, n: uint): (uint, uint)
+extern fn sys_seek(h: uint, off: long, whence: uint): (uint, ulong)
+extern fn sys_dup(h: uint, target: uint): (uint, uint)
+extern fn sys_hinfo(h: uint): (uint, uint, uint)
+extern fn sys_setsize(h: uint, size: ulong, flags: uint): uint
+extern fn sys_fstat(h: uint, st: ptr Stat): uint
+
+extern fn sys_stat(path: ptr byte, st: ptr Stat): uint
+extern fn sys_delete(path: ptr byte): uint
+extern fn sys_rename(old: ptr byte, new: ptr byte): uint
+extern fn sys_mkdir(path: ptr byte): uint
+extern fn sys_chdir(path: ptr byte): uint
+extern fn sys_getcwd(buf: ptr byte, n: uint): (uint, uint)
+extern fn sys_readdir(h: uint, st: ptr Stat): (uint, uint)
+extern fn sys_setattr(path: ptr byte, attr: uint): uint
+extern fn sys_volinfo(drv: uint, vi: ptr VolInfo): uint
+extern fn sys_mount(drv: uint, flags: uint): (uint, uint)
+extern fn sys_unmount(drv: uint): uint
+extern fn sys_sync(): uint
+extern fn sys_setmtime(path: ptr byte, t: ulong): uint
+
+extern fn sys_con_mode(mode: uint): (uint, uint)
+extern fn sys_con_getev(flags: uint): (uint, uint, uint)   // error, event, modifiers (MODS)
+extern fn sys_con_flush(): uint
+
+extern fn sys_meminfo(): (uint, uint, uint, uint)
+extern fn sys_settop(top: uint): uint
+extern fn sys_xalloc(): (uint, uint)
+extern fn sys_xfree(f: uint): uint
+extern fn sys_xmap(page: uint, f: uint): (uint, uint)
+
+extern fn sys_time_get(): (uint, ulong)
+extern fn sys_time_set(t: ulong): uint
+extern fn sys_ticks(): (uint, ulong)
+extern fn sys_sleep(n: uint): uint
+extern fn sys_tickhook(h: ptr interrupt fn()): (uint, ptr interrupt fn())
+
+extern fn sys_disk_info(drv: uint, info: ptr): (uint, uint)
+extern fn sys_disk_io(req: ptr DiskReq): uint
+extern fn sys_sysinfo(si: ptr SysInfo): uint
+extern fn sys_shutdown()
+
+// sessions ("System Calls", sect. 9.9)
+extern fn sys_sess_info(s: uint, k: uint, pi: ptr ProcInfo): (uint, uint, uint, uint)  // error, flags, processes, session
+extern fn sys_sess_new(cmd: ptr byte, flags: uint): (uint, uint)
+extern fn sys_sess_switch(s: uint): uint
+extern fn sys_sess_kill(s: uint, flags: uint): uint
+
+// ---- output ---------------------------------------------------------------------------
+fn strlen(s: ptr byte): uint {
+    var n: uint = 0
+    while s[n] != 0 { n++ }
+    return n
+}
+
+fn puts(s: ptr byte) {
+    var e, n: uint
+    e, n = sys_write(STDOUT, s, strlen(s))
+}
+
+fn putnl() { puts("\n") }
+
+fn puthex(v: uint) {
+    var buf: [5]byte
+    var i: uint = 0
+    while i < 4 {
+        var d: uint = (v >> (12 - 4 * i)) & 15
+        if d < 10 { buf[i] = byte('0' + d) } else { buf[i] = byte('A' + d - 10) }
+        i++
+    }
+    buf[4] = 0
+    puts(&buf[0])
+}
+
+fn putdec(v: uint) {
+    var buf: [6]byte
+    var i: uint = 5
+    buf[5] = 0
+    loop {
+        i--
+        buf[i] = byte('0' + v % 10)
+        v /= 10
+        if v == 0 { break }
+    }
+    puts(&buf[i])
+}
+
+fn streq(a: ptr byte, b: ptr byte): uint {
+    while *a == *b {
+        if *a == 0 { return 1 }
+        a++
+        b++
+    }
+    return 0
+}
+
+// A letter -> lower case, as in FS16 name comparison (sect. 7.1): A-Z, Cyrillic capitals, capital Yo.
+fn chfold(c: uint): uint {
+    if c >= 'A' && c <= 'Z' || c >= $C0 && c <= $DF { return c + $20 }
+    if c == $B3 { return $A3 }
+    return c
+}
+
+// Strings are equal ignoring letter case (this is how the monitor compares file names).
+fn strieq(a: ptr byte, b: ptr byte): uint {
+    while chfold(*a) == chfold(*b) {
+        if *a == 0 { return 1 }
+        a++
+        b++
+    }
+    return 0
+}

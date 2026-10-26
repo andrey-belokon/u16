@@ -1,0 +1,3 @@
+tests/diag/returns.b16:5: error: function noret can reach the end without return
+tests/diag/returns.b16:18: error: function whileend can reach the end without return
+rc 1

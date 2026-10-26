@@ -1,0 +1,67 @@
+// math.b16 - integer math on int, uint, long and ulong, a PRNG.
+
+fn abs(x: int): int { if x < 0 { return -x }; return x }
+fn min(a, b: int): int { if a < b { return a }; return b }
+fn max(a, b: int): int { if a > b { return a }; return b }
+fn umin(a, b: uint): uint { if a < b { return a }; return b }
+fn umax(a, b: uint): uint { if a > b { return a }; return b }
+
+fn gcd(a, b: uint): uint {
+    while b != 0 { var t = a % b; a = b; b = t }
+    return a
+}
+
+// Integer square root (bitwise method).
+fn isqrt(x: uint): uint {
+    var r: uint = 0
+    var bit: uint = $4000
+    while bit > x { bit >>= 2 }
+    while bit != 0 {
+        if x >= r + bit { x -= r + bit; r = (r >> 1) + bit } else { r >>= 1 }
+        bit >>= 2
+    }
+    return r
+}
+
+// ---- long and ulong ----
+
+// The full 32-bit product of two words: MUL and MULHU.
+fn mul16x16(a, b: uint): ulong { return ulong(a) * ulong(b) }
+
+// labs(-2147483648) gives -2147483648: the result does not fit in long (as with -x).
+fn labs(x: long): long { if x < 0 { return -x }; return x }
+fn lmin(a, b: long): long { if a < b { return a }; return b }
+fn lmax(a, b: long): long { if a > b { return a }; return b }
+fn ulmin(a, b: ulong): ulong { if a < b { return a }; return b }
+fn ulmax(a, b: ulong): ulong { if a > b { return a }; return b }
+
+fn lgcd(a, b: ulong): ulong {
+    while b != 0 { var t = a % b; a = b; b = t }
+    return a
+}
+
+// Integer square root of a 32-bit number (bitwise method).
+fn ulsqrt(x: ulong): uint {
+    var r: ulong = 0
+    var bit: ulong = $40000000
+    while bit > x { bit >>= 2 }
+    while bit != 0 {
+        if x >= r + bit { x -= r + bit; r = (r >> 1) + bit } else { r >>= 1 }
+        bit >>= 2
+    }
+    return uint(r)
+}
+
+// ---- xorshift16 PRNG ----
+var rand_state: uint = $ACE1
+
+fn srand(seed: uint) { if seed == 0 { seed = 1 }; rand_state = seed }
+
+fn rand(): uint {
+    var x = rand_state
+    x ^= x << 7
+    x ^= x >> 9
+    x ^= x << 8
+    rand_state = x
+    return x
+}

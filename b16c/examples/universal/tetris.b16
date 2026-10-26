@@ -1,0 +1,941 @@
+// test: bare-only (display, keyboard, timer and its own vector table)
+// test: steps 2000000
+// tetris.b16 - "Tetris" on the 80x25 display: a port of cpu16/examples/tetris.asm to B16.
+// ← → - move, ↑ - rotate, ↓ - drop faster, space - hard drop, P - pause, Esc - exit;
+// after the game ends, Enter - a new game.
+// Demo: on the title screen D - or automatically if nothing is pressed for 30 seconds. In the demo the program plays;
+// any key - back to the title screen.
+//
+// What the example shows:
+//   - pieces as 4x4-bit masks in a word: the "does it fit" check is a loop over 16 bits (fits);
+//   - the field in memory (the screen cannot be read back), removal of full rows (clear_lines);
+//   - a field cell is two character cells, so it looks square (a character cell is twice as tall as wide);
+//   - falling by ticks of the 50 Hz timer; the level rises every 10 lines, falling speeds up;
+//   - a "ghost" - where the piece will land after a hard drop (ghost_y);
+//   - a "bag" of 7 shuffled pieces (the random number generator is a linear congruential one);
+//   - a 32-bit score: ulong, += and putul;
+//   - a player program (demo): trying every rotation and position of the piece and evaluating the field -
+//     full lines, height, holes, bumpiness (ai_plan, evaluate).
+//
+// The image works in two ways; the way is determined at startup by the signature in the PIB (mon):
+//   - on a bare machine: its own vector table, a 50 Hz timer on IRQ0, the keyboard through port $FF20;
+//   - under the monitor: the vectors, the timer and the keyboard belong to the monitor, so time is taken
+//     by the TICKS call, a tick is awaited with SLEEP, keys come from CON_GETEV (console mode RAW | NOBREAK:
+//     Ctrl+C arrives as a key and ends the game, like Esc). The program drives the display itself.
+//
+// Bare machine:  cpu16 --screen tetris.bin  (in the web debugger: open the display with the "Display" button,
+// start the program and click the display so that the keys go to the program).
+//
+// Under the monitor (from the monitor/ directory):
+//   tools/b16build.sh ../b16c/examples/universal/tetris.b16          -> out/tetris.bin
+// put out/tetris.bin on the volume as /bin/tetris.cx (fs16tool.py or `cp` in the shell) and
+// run it from the shell with the command  tetris.  One memory page ($2000) is enough.
+include "../../lib/console.b16"
+include "../../../monitor/kernel/abi.b16"      // monitor constants: CM_*, EV_*, SYS_* (for sys.asm)
+option max_top = $2000              // under the monitor: one page
+
+const W = 10                        // field: 10 x 20 cells
+const H = 20
+const FIELD_COL = 30                // screen column of the field's left cell (a cell is 2 character cells)
+const FIELD_ROW = 2                 // screen row of the field's top cell
+const PREV_COL = 56                 // the "next piece" window
+const PREV_ROW = 4
+const STAT_COL = 55                 // score, lines, level
+
+const A_TEXT  = BLACK << 3 | WHITE
+const A_DIM   = BLACK << 3 | GRAY
+const A_FRAME = BLACK << 3 | CYAN
+const A_TITLE = BLACK << 3 | YELLOW
+const A_MSG   = RED << 3 | WHITE
+
+const DEMO_IDLE = 1500              // the demo starts by itself after 30 s (20 ms ticks) without key presses
+const AI_DELAY = 16                 // demo: one action every 16 ticks (320 ms), like a human
+const AI_MAX_MOVES = 16             // demo: this many actions, then drop in any case
+
+const SHOW_ERASE = 0                // draw_cur modes
+const SHOW_PIECE = 1
+const SHOW_GHOST = 2
+const GHOST = $FF                   // "contents" of a cell for the ghost
+
+const LEVELS = 10
+const HELP_COUNT = 7
+
+// Key scancodes (stdlib.asm).
+const SC_ESC = $01
+const SC_UP = $48
+const SC_LEFT = $4B
+const SC_RIGHT = $4D
+const SC_DOWN = $50
+
+// Ports and the vector table of the bare machine (they must not be touched under the monitor).
+var TIMER at $FF29: byte
+var VEC   at $FF00: [16]ptr interrupt fn()
+
+// How it was started: the second half of the signature at $0004: "PB" ("CXPB") - the monitor's PIB,
+// "16" ("CX16") - the image header on a bare machine.
+var SIG at $0006: uint
+const SIG_MONITOR = $4250           // 'P' | 'B' << 8
+
+// ============================================================================
+// Data
+// ============================================================================
+
+// Pieces: 4 rotations clockwise, a 4x4 mask - rows from top to bottom, 4 bits each,
+// the high bit is the top left corner. Order: I, O, T, S, Z, J, L.
+var shapes: [28]uint = {
+    $0F00, $2222, $00F0, $4444,         // I
+    $6600, $6600, $6600, $6600,         // O
+    $4E00, $4640, $0E40, $4C40,         // T
+    $6C00, $4620, $06C0, $8C40,         // S
+    $C600, $2640, $0C60, $4C80,         // Z
+    $8E00, $6440, $0E20, $44C0,         // J
+    $2E00, $4460, $0E80, $C440          // L
+}
+var colors: [7]byte = { CYAN, YELLOW, WHITE, GREEN, RED, BLUE, GRAY }
+var kicks: [5]char = { 0, -1, 1, -2, 2 }                    // shifts when rotating next to a wall
+var drop_ticks: [LEVELS]byte = { 40, 34, 28, 23, 19, 15, 12, 9, 7, 5 }   // ticks per fall step, levels 1..10
+var line_points: [5]uint = { 0, 100, 300, 500, 800 }        // points for 1..4 lines (multiplied by the level)
+
+var msg_title = "T E T R I S"
+var msg_next = " NEXT "
+var msg_score = "Score"
+var msg_lines = "Lines"
+var msg_level = "Level"
+var msg_best = "Best"
+var msg_pad = "      "
+var msg_press = "  Press any key...  "
+var msg_demo_key = "   D - watch demo   "
+var msg_demo_over = " DEMO: GAME OVER    "
+var msg_demo_on = " DEMO - press a key  "
+var msg_demo_off = "                     "
+var msg_paused = "  PAUSED: press P   "
+var msg_over = "     GAME OVER      "
+var msg_again = "Enter again,Esc quit"
+var msg_blank = "                    "
+var msg_bye = "Thanks for playing! Best score: "
+var msg_fault = "\nfault\n"
+var help_lines: [HELP_COUNT]ptr byte = {
+    "← →     move",
+    "↑       rotate",
+    "↓       soft drop",
+    "Space   hard drop",
+    "P       pause",
+    "Esc     quit",
+    "Lines: 100-800 x level"
+}
+
+// ============================================================================
+// Variables (RAM)
+// ============================================================================
+var board: [W * H]byte              // field: 0 - empty, otherwise the block color
+var bag: [8]byte                    // piece bag
+var mon: uint                       // 1 - running under the monitor
+var ticks: uint                     // bare machine: the tick counter, grows in on_tick
+var seed: uint
+var score: ulong                    // 32 bits
+var best: ulong
+var lines: uint
+var level: uint
+var drop_delay: uint
+var bag_pos: uint
+var next: uint
+var cur_type: uint
+var cur_rot: uint
+var cur_x: int                      // signed: at the left wall the I piece can be at -2
+var cur_y: int
+var demo: uint                      // 1 - the program is playing
+var ai_ready: uint                  // demo: the plan for the current piece has been made
+var ai_rot: uint                    // demo: the chosen rotation
+var ai_x: int                       // demo: the chosen column (signed)
+var ai_best: int                    // demo: the best score (signed)
+var ai_moves: uint                  // demo: actions with the current piece
+
+// ============================================================================
+// Interrupts
+// ============================================================================
+
+interrupt fn on_tick() { ticks++ }  // IRQ0: a counter of 20 ms ticks
+
+interrupt fn on_fault() {           // ERRCMD: a message and halt
+    setmode(CTRL_TTY)
+    puts(msg_fault)
+    TIMER = 0
+    di()
+    loop { wfi() }
+}
+
+// ============================================================================
+// Main program
+// ============================================================================
+
+fn main() {
+    mon = 0
+    if SIG == SIG_MONITOR { mon = 1 }
+    best = 0
+    if mon != 0 {
+        // under the monitor: the vectors and the timer are the monitor's; keys come as events, Ctrl+C is an ordinary key
+        mon_mode(CM_RAW | CM_NOBREAK, 0)
+        mon_flush(0)                // old key presses (typing a command in the shell) are not needed
+    } else {
+        VEC[8] = on_fault           // ERRCMD first of all
+        VEC[0] = on_tick            // IRQ0 - the timer
+        ticks = 0
+        TIMER = 1
+        ei()
+    }
+    setmode(0)                      // coordinate mode, cursor hidden
+    loop {
+        var mode = title()          // 0 - game, 1 - demo, 2 - exit
+        if mode == 2 { goto quit }
+        if mode == 1 {
+            if play(1) != 2 { demo_over() }     // 2 - a key was pressed: straight back to the title screen
+            continue
+        }
+        loop {
+            if play(0) != 0 {                   // 1 - exit by Esc during the game
+                update_best()                   // the score of an interrupted game also counts toward the record
+                goto quit
+            }
+            if game_over() != 0 { goto quit }   // 0 - Enter: a new game
+        }
+    }
+quit:
+    setattr(WHITE)                  // restore the ordinary console
+    setmode(CTRL_TTY | CTRL_CURSOR)
+    cls()
+    puts(msg_bye)
+    putul(best)
+    putnl()
+}
+
+// title - the title screen. Result: 0 - an ordinary game, 1 - the demo (the D key or 30 s without key presses),
+// 2 - exit (Esc). The generator seed is the moment of the key press.
+fn title(): uint {
+    draw_frame()
+    field_message(msg_press)
+    print_at(FIELD_COL, FIELD_ROW + 11, msg_demo_key)
+    var t0 = get_ticks()            // start of waiting
+    loop {
+        wait_tick()
+        if get_ticks() - t0 >= DEMO_IDLE { goto go_demo }   // 30 s without key presses
+        var k = read_key()
+        if k == 0 { continue }
+        seed = (seed + get_ticks()) ^ k     // seed: the moment of the key press and the key code
+        if is_esc(k) != 0 { return 2 }
+        k &= $FF
+        if k == 'd' || k == 'D' { goto go_demo }
+        return 0                    // an ordinary game
+    }
+go_demo:
+    seed += get_ticks()             // each demo gets its own game
+    return 1
+}
+
+// demo_over - the end of a demo game: a message for 2 seconds (or until a key is pressed).
+fn demo_over() {
+    field_message(msg_demo_over)
+    var t0 = get_ticks()
+    loop {
+        wait_tick()
+        if read_key() != 0 { break }
+        if get_ticks() - t0 >= 100 { break }
+    }
+}
+
+// draw_frame - the screen: the field frame, the next-piece window, labels, a hint.
+fn draw_frame() {
+    setattr(A_TEXT)
+    cls()
+    setattr(A_FRAME)
+    box(FIELD_COL - 1, FIELD_ROW - 1, 2 * W + 2, H + 2)     // field: inside - 20 columns and 20 rows
+    box(PREV_COL - 2, PREV_ROW - 2, 12, 7)
+    setattr(A_TITLE)
+    print_at(PREV_COL + 2, PREV_ROW - 2, msg_next)
+    print_at(6, 2, msg_title)
+    setattr(A_DIM)                  // labels on the right and a hint on the left
+    print_at(STAT_COL, 11, msg_score)
+    print_at(STAT_COL, 13, msg_lines)
+    print_at(STAT_COL, 15, msg_level)
+    print_at(STAT_COL, 17, msg_best)
+    var i: uint = 0
+    while i < HELP_COUNT {
+        print_at(3, i + 5, help_lines[i])
+        i++
+    }
+}
+
+// print_at - string s at position (col, row) with the current attribute.
+fn print_at(col, row: uint, s: ptr byte) {
+    CON_COL = col
+    CON_ROW = row
+    puts(s)
+}
+
+// box - a double frame in coordinate mode: (col, row) is the top left corner, w x h character cells
+// (both at least 2). Drawn with the current attribute.
+fn box(col, row, w, h: uint) {
+    CON_COL = col
+    CON_ROW = row
+    CON_DATA = '╔'
+    hrun(w - 2, '═')
+    CON_DATA = '╗'
+    var i: uint = 1
+    while i < h - 1 {               // the sides
+        CON_ROW = row + i
+        CON_COL = col
+        CON_DATA = '║'
+        CON_COL = col + w - 1
+        CON_DATA = '║'
+        i++
+    }
+    CON_ROW = row + h - 1
+    CON_COL = col
+    CON_DATA = '╚'
+    hrun(w - 2, '═')
+    CON_DATA = '╝'
+}
+
+fn hrun(n: uint, c: byte) {         // print character c n times
+    while n != 0 { CON_DATA = c; n-- }
+}
+
+// ============================================================================
+// play - one game. is_demo = 1 - demo (the program plays), 0 - a human plays.
+// Result: 0 - game over, 1 - exit by Esc, 2 - the demo was interrupted by a key press.
+// last_fall - the tick of the last fall step, last_ai - the tick of the last action in the demo.
+// ============================================================================
+fn play(is_demo: uint): uint {
+    var last_fall, last_ai, paused, k: uint
+    var d: int
+    demo = is_demo
+    demo_label()
+    clear_board()                   // an empty field
+    score = 0
+    lines = 0
+    bag_pos = 7                     // the bag is empty: it will be filled at the first piece
+    level = 1
+    drop_delay = drop_ticks[0]      // the fall delay of level 1
+    redraw_board()
+    next = bag_next()
+    spawn()
+    stats()
+    last_fall = get_ticks()
+    last_ai = last_fall
+    paused = 0
+    loop {
+        wait_tick()
+        loop {                      // all accumulated keys
+            k = read_key()
+            if k == 0 { break }
+            if demo != 0 { return 2 }           // in the demo any key goes back to the title screen
+            if is_esc(k) != 0 { return 1 }
+            if (k & $FF) == 'p' || (k & $FF) == 'P' {       // P - pause
+                paused ^= 1
+                show_pause(paused)
+                continue
+            }
+            if paused != 0 { continue }         // on pause the other keys do nothing
+            if (k & $FF) == ' ' { goto hard }   // space - hard drop
+            k >>= 8                             // scancode: arrows
+            if k == SC_LEFT {
+                try_move(-1, 0)
+            } else if k == SC_RIGHT {
+                try_move(1, 0)
+            } else if k == SC_UP {
+                rotate()
+            } else if k == SC_DOWN {            // down one row, +1 point
+                if try_move(0, 1) == 0 { goto land }
+                add_score(1)
+                last_fall = get_ticks()         // the fall countdown starts over
+            }
+        }
+        if demo != 0 && get_ticks() - last_ai >= AI_DELAY {     // demo: the program moves once every AI_DELAY ticks
+            last_ai = get_ticks()
+            if ai_step() != 0 { goto hard }     // 1 - time to drop
+        }
+        if paused != 0 { continue }
+        if get_ticks() - last_fall < drop_delay { continue }    // time to fall?
+        last_fall = get_ticks()
+        if try_move(0, 1) != 0 { continue }
+        goto land
+hard:                               // straight to the ghost's place: +2 points per row
+        d = ghost_y() - cur_y       // how many rows it will fly
+        if d != 0 {
+            try_move(0, d)          // the ghost is a valid place, the shift always succeeds
+            add_score(uint(d) * 2)
+        }
+land:                               // it does not fall further: lock it, remove rows, next piece
+        if lock_piece() != 0 { return 0 }
+        ai_ready = 0                // demo: a new plan for a new piece
+        if spawn() == 0 { return 0 }
+        last_fall = get_ticks()
+        stats()
+    }
+}
+
+// demo_label - the "DEMO" label on the left (in the demo) or blank.
+fn demo_label() {
+    var s: ptr byte
+    if demo != 0 {
+        setattr(A_TITLE | ATTR_INVERSE)
+        s = msg_demo_on
+    } else {
+        setattr(A_TEXT)
+        s = msg_demo_off
+    }
+    print_at(3, 15, s)
+    ai_ready = 0                    // the plan for the first piece has not been made yet
+}
+
+// show_pause - the pause message in the field (paused = 1) or the field back.
+fn show_pause(paused: uint) {
+    if paused != 0 {
+        field_message(msg_paused)
+    } else {
+        redraw_board()
+        show_cur(SHOW_GHOST)
+    }
+}
+
+// ============================================================================
+// The piece
+// ============================================================================
+
+// spawn - the next piece at the top of the field. Result: 1 - it fit, 0 - game over.
+fn spawn(): uint {
+    cur_type = next
+    next = bag_next()
+    cur_rot = 0
+    cur_y = 0
+    cur_x = 3
+    draw_next()
+    if fits(cur_type, cur_rot, cur_x, cur_y) == 0 { return 0 }  // it did not fit - game over
+    show_cur(SHOW_GHOST)
+    return 1
+}
+
+// try_move - shift the piece by dx horizontally and dy vertically. Result: 1 - it moved.
+fn try_move(dx, dy: int): uint {
+    var nx = cur_x + dx
+    var ny = cur_y + dy
+    if fits(cur_type, cur_rot, nx, ny) == 0 { return 0 }
+    show_cur(SHOW_ERASE)
+    cur_x = nx
+    cur_y = ny
+    show_cur(SHOW_GHOST)
+    return 1
+}
+
+// rotate - rotation clockwise; at a wall it tries to shift the piece by 1-2 cells.
+fn rotate() {
+    var nr = (cur_rot + 1) & 3      // the new rotation
+    var k: uint = 0                 // the shift attempt number
+    while k < 5 {
+        var dx: int = kicks[k]      // shift: 0, -1, +1, -2, +2
+        if fits(cur_type, nr, cur_x + dx, cur_y) != 0 {
+            show_cur(SHOW_ERASE)
+            cur_rot = nr
+            cur_x += dx
+            show_cur(SHOW_GHOST)
+            return
+        }
+        k++
+    }
+}                                   // it does not fit anywhere
+
+// fits - does piece t in rotation rot fit with the top left corner of the 4x4 frame at (x, y)?
+// Coordinates are signed; above the field (row < 0) is allowed. Result: 1 - yes, 0 - no.
+fn fits(t, rot: uint, x, y: int): uint {
+    var m = shapes[t * 4 + rot]     // mask: shapes[type * 4 + rotation]
+    var i: uint = 0                 // bit number 0..15: row = i / 4, column = i mod 4
+    while i < 16 {
+        if m & $8000 != 0 {
+            var c = int(i & 3) + x  // field column
+            if c < 0 || c >= W { return 0 }
+            var r = int(i >> 2) + y // field row
+            if r >= H { return 0 }
+            if r >= 0 && board[uint(r) * W + uint(c)] != 0 { return 0 }     // above the field it does not interfere
+        }
+        m <<= 1
+        i++
+    }
+    return 1
+}
+
+// show_cur - draw or erase the current piece and its ghost.
+// mode = SHOW_ERASE - erase the piece and the ghost; SHOW_GHOST - draw the ghost, then the piece.
+fn show_cur(mode: uint) {
+    var gy = ghost_y()              // ghost row
+    if mode == SHOW_ERASE {
+        draw_cur(SHOW_ERASE, gy)
+        draw_cur(SHOW_ERASE, cur_y)
+    } else {
+        draw_cur(SHOW_GHOST, gy)    // ghost
+        draw_cur(SHOW_PIECE, cur_y) // the piece over the ghost
+    }
+}
+
+// ghost_y - the row where the piece will stop on a hard drop.
+fn ghost_y(): int {
+    var y = cur_y
+    while fits(cur_type, cur_rot, cur_x, y + 1) != 0 { y++ }
+    return y
+}
+
+// draw_cur - the cells of the current piece in row row (column - cur_x).
+// mode: SHOW_ERASE (empty), SHOW_PIECE (the piece's color), SHOW_GHOST (ghost).
+fn draw_cur(mode: uint, row: int) {
+    var m = shapes[cur_type * 4 + cur_rot]      // mask
+    var color: uint = colors[cur_type]          // piece color
+    var v: uint = 0                             // empty
+    if mode == SHOW_GHOST { v = GHOST }         // ghost
+    else if mode == SHOW_PIECE { v = color }
+    var i: uint = 0
+    while i < 16 {
+        if m & $8000 != 0 {
+            var r = int(i >> 2) + row           // cell row
+            if r >= 0 {                         // we do not draw above the field
+                cell(uint(int(i & 3) + cur_x), uint(r), v)
+            }
+        }
+        m <<= 1
+        i++
+    }
+}
+
+// cell - a field cell: c - column 0..9, r - row 0..19, v - contents:
+// 0 - empty, GHOST - ghost, otherwise the block color.
+fn cell(c, r, v: uint) {
+    CON_COL = c * 2 + FIELD_COL                 // a cell is 2 character cells
+    CON_ROW = r + FIELD_ROW
+    var a: byte = A_DIM
+    var ch: byte = ' '
+    if v != 0 {
+        if v == GHOST {
+            ch = '░'
+        } else {
+            a = byte(v)                         // color on a black background
+            ch = '█'
+        }
+    }
+    CON_ATTR = a
+    CON_DATA = ch
+    CON_DATA = ch
+}
+
+// ============================================================================
+// Demo: the player program
+// ============================================================================
+
+// ai_step - one action of the program with the current piece: make a plan, rotate, shift.
+// Result: 1 - the piece is in place, time to drop; 0 - continue.
+fn ai_step(): uint {
+    if ai_ready == 0 {
+        ai_plan()                   // a new piece: choose the rotation and column
+        ai_ready = 1
+        ai_moves = 0
+        return 0
+    }
+    ai_moves++                      // just in case: no more than AI_MAX_MOVES actions
+    if ai_moves > AI_MAX_MOVES { return 1 }
+    if cur_rot != ai_rot {
+        rotate()
+        return 0
+    }
+    if cur_x == ai_x { return 1 }   // in place
+    var dx: int = 1                 // right
+    if cur_x > ai_x { dx = -1 }     // left (signed comparison: the column can be negative)
+    if try_move(dx, 0) == 0 { return 1 }        // the field interferes - drop as is
+    return 0
+}
+
+// ai_plan - for the current piece, try the rotations and columns: drop, evaluate the field (evaluate),
+// remember the best variant in ai_rot, ai_x.
+fn ai_plan() {
+    ai_best = -32768                // the best score so far is the worst possible
+    ai_rot = cur_rot
+    ai_x = cur_x
+    var rot: uint = 0
+    while rot < 4 {
+        var x: int = -2
+        while x < W {
+            if fits(cur_type, rot, x, cur_y) != 0 {     // does it fit at the current height?
+                var y = cur_y                           // drop: lower it while it fits
+                while fits(cur_type, rot, x, y + 1) != 0 { y++ }
+                ai_mark(8, rot, x, y)                   // temporarily put it on the field (8 - "occupied")
+                var sc = evaluate()                     // evaluate the field
+                ai_mark(0, rot, x, y)                   // and remove it
+                if sc > ai_best {                       // better? (signed)
+                    ai_best = sc
+                    ai_rot = rot
+                    ai_x = x
+                }
+            }
+            x++
+        }
+        rot++
+    }
+}
+
+// ai_mark - write v into the field cells under piece cur_type in rotation rot at column x
+// and row y (cells above the field are skipped).
+fn ai_mark(v, rot: uint, x, y: int) {
+    var m = shapes[cur_type * 4 + rot]
+    var i: uint = 0
+    while i < 16 {
+        if m & $8000 != 0 {
+            var r = int(i >> 2) + y
+            if r >= 0 { board[uint(r) * W + uint(int(i & 3) + x)] = byte(v) }
+        }
+        m <<= 1
+        i++
+    }
+}
+
+// evaluate - the field score for the demo (more is better):
+//   114 * full rows - 26 * sum of column heights - 36 * holes - 9 * bumpiness.
+// A hole is an empty cell under an occupied one; bumpiness is the sum of height differences of adjacent columns.
+// All quantities are small, the score fits in a signed 16 bits.
+fn evaluate(): int {
+    var sum_h: uint = 0             // sum of heights
+    var holes: uint = 0             // holes
+    var bumps: uint = 0             // bumpiness
+    var prev: uint = 0              // height of the column on the left
+    var h, n: uint
+    var c: uint = 0
+    while c < W {
+        h, n = column_info(c)
+        sum_h += h
+        holes += n
+        if c != 0 {                 // bumpiness: |height - height on the left|
+            var d = int(h) - int(prev)
+            if d < 0 { d = -d }
+            bumps += uint(d)
+        }
+        prev = h
+        c++
+    }
+    return int(full_rows()) * 114 - int(sum_h) * 26 - int(holes) * 36 - int(bumps) * 9
+}
+
+// column_info - the height of column c and the number of holes in it (empty cells under an occupied one).
+fn column_info(c: uint): uint, uint {
+    var h: uint = 0
+    var holes: uint = 0
+    var r: uint = 0
+    while r < H {
+        if board[r * W + c] != 0 {
+            if h == 0 { h = H - r }         // the first occupied from the top: height = H - row
+        } else if h != 0 {
+            holes++                         // empty under an occupied one - a hole
+        }
+        r++
+    }
+    return h, holes
+}
+
+// full_rows - how many field rows are completely filled.
+fn full_rows(): uint {
+    var full: uint = 0
+    var p: uint = 0                 // cell
+    var r: uint = H
+    while r != 0 {
+        var n: uint = W             // how many cells of the row are still unoccupied
+        var k: uint = W
+        while k != 0 {
+            if board[p] != 0 { n-- }
+            p++
+            k--
+        }
+        if n == 0 { full++ }
+        r--
+    }
+    return full
+}
+
+// ============================================================================
+// Field
+// ============================================================================
+
+// lock_piece - put the piece on the field, remove full rows, award points.
+// Result: 1 - the piece landed above the field (game over), 0 - continue.
+fn lock_piece(): uint {
+    var m = shapes[cur_type * 4 + cur_rot]      // mask
+    var color = colors[cur_type]
+    var above: uint = 0             // 1 - part of the piece is above the field
+    var i: uint = 0
+    while i < 16 {
+        if m & $8000 != 0 {
+            var r = int(i >> 2) + cur_y
+            if r < 0 {
+                above = 1
+            } else {
+                board[uint(r) * W + uint(int(i & 3) + cur_x)] = color
+            }
+        }
+        m <<= 1
+        i++
+    }
+    if above != 0 { return 1 }
+    var n = clear_lines()           // how many rows were removed
+    if n != 0 {
+        lines += n                  // lines and level: every 10 lines
+        var lv = lines / 10 + 1
+        if lv > LEVELS { lv = LEVELS }
+        level = lv
+        add_score(line_points[n] * level)   // points: line_points[n] * level (no more than 800 * 10)
+        redraw_board()
+    }
+    drop_delay = drop_ticks[level - 1]      // fall delay by level
+    return 0
+}
+
+// clear_lines - remove full rows, shifting the upper ones down. Result: how many were removed.
+fn clear_lines(): uint {
+    var removed: uint = 0
+    var row: int = H - 1            // row, from the bottom up
+    while row >= 0 {
+        var p = uint(row) * W       // the first cell of the row
+        var n: uint = 0
+        while n < W && board[p + n] != 0 { n++ }
+        if n < W {                  // not full - go higher
+            row--
+            continue
+        }
+        removed++                   // full: everything above goes one row down
+        var q = p + W - 1           // the last cell of the row
+        while q >= W {
+            board[q] = board[q - W]
+            q--
+        }
+        n = W                       // the top row is empty
+        while n != 0 {
+            n--
+            board[n] = 0
+        }
+                                    // the same row once more (the upper one shifted into it)
+    }
+    return removed
+}
+
+fn clear_board() {
+    var i: uint = 0
+    while i < W * H { board[i] = 0; i++ }
+}
+
+// redraw_board - redraw the whole field.
+fn redraw_board() {
+    var i: uint = 0                 // cell number 0..199
+    while i < W * H {
+        cell(i % W, i / W, board[i])
+        i++
+    }
+}
+
+// field_message - string s in the middle of the field (on the message frame).
+fn field_message(s: ptr byte) {
+    setattr(A_MSG)
+    print_at(FIELD_COL, FIELD_ROW + 8, msg_blank)
+    print_at(FIELD_COL, FIELD_ROW + 9, s)
+    print_at(FIELD_COL, FIELD_ROW + 10, msg_blank)
+}
+
+// ============================================================================
+// Score, the next piece, game over
+// ============================================================================
+
+// add_score - score += n (32 bits).
+fn add_score(n: uint) {
+    score += n
+    stats()
+}
+
+// stats - score, lines, level, record.
+fn stats() {
+    setattr(A_TEXT)
+    gotoxy(STAT_COL, 12)
+    putul(score)
+    puts(msg_pad)                   // erase the remainder of the previous, longer number
+    gotoxy(STAT_COL, 14)
+    putu(lines)
+    puts(msg_pad)
+    gotoxy(STAT_COL, 16)
+    putu(level)
+    puts(msg_pad)
+    gotoxy(STAT_COL, 18)
+    putul(best)
+}
+
+// draw_next - the next piece in the window on the right.
+fn draw_next() {
+    var m = shapes[next * 4]        // shapes[type * 4 + 0]
+    var color = colors[next]
+    var i: uint = 0
+    while i < 16 {
+        gotoxy(PREV_COL + (i & 3) * 2, PREV_ROW + (i >> 2))     // column: PREV_COL + 2 * (bit mod 4)
+        var a: byte = A_DIM
+        var ch: byte = ' '
+        if m & $8000 != 0 {
+            a = color
+            ch = '█'
+        }
+        CON_ATTR = a
+        CON_DATA = ch
+        CON_DATA = ch
+        m <<= 1
+        i++
+    }
+}
+
+// game_over - a message, the record; waiting: 0 - Enter (a new game), 1 - Esc.
+fn game_over(): uint {
+    update_best()
+    stats()
+    field_message(msg_over)
+    setattr(A_MSG)
+    print_at(FIELD_COL, FIELD_ROW + 11, msg_again)
+    loop {
+        var k = wait_key()
+        if is_esc(k) != 0 { return 1 }          // exit
+        if (k & $FF) == 10 { return 0 }         // Enter
+    }
+}
+
+// update_best - record = max(record, score); both are 32-bit.
+fn update_best() {
+    if score > best { best = score }
+}
+
+// ============================================================================
+// Random pieces: a "bag" of 7 pieces in random order
+// ============================================================================
+
+// bag_next - the next piece from the bag (0..6). An empty bag is filled and shuffled.
+fn bag_next(): uint {
+    if bag_pos >= 7 {
+        var i: uint = 0             // fill: 0, 1, ..., 6
+        while i < 7 {
+            bag[i] = byte(i)
+            i++
+        }
+        i = 6                       // shuffle (Fisher-Yates): i = 6..1
+        while i != 0 {
+            var j = rand() % (i + 1)        // j = random 0..i
+            var t = bag[i]                  // swap bag[i] and bag[j]
+            bag[i] = bag[j]
+            bag[j] = t
+            i--
+        }
+        bag_pos = 0
+    }
+    var v: uint = bag[bag_pos]
+    bag_pos++
+    return v
+}
+
+// rand - a pseudo-random number 0..2047 (a linear congruential generator, high bits).
+fn rand(): uint {
+    seed = seed * 25173 + 13849
+    return seed >> 5
+}
+
+// ============================================================================
+// Keys
+// ============================================================================
+
+// wait_key - wait for a key, waiting by ticks (wait_tick: every 20 ms).
+// Result - the key code: character and scancode << 8.
+fn wait_key(): uint {
+    loop {
+        wait_tick()
+        var k = read_key()
+        if k != 0 { return k }
+    }
+}
+
+// is_esc - 1 if key code k is Esc (by scancode or character) or Ctrl+C, otherwise 0.
+// Under the monitor in NOBREAK mode Ctrl+C does not terminate the program by itself but arrives as a key:
+// the game must exit, returning the console to its ordinary state.
+fn is_esc(k: uint): uint {
+    if k >> 8 == SC_ESC || k & $FF == 27 || k & $FF == 3 { return 1 }
+    return 0
+}
+
+// ============================================================================
+// Time, waiting and keys: a bare machine or the monitor
+// ============================================================================
+
+// get_ticks - the 20 ms tick counter (the low 16 bits; differences are computed modulo 2^16).
+fn get_ticks(): uint {
+    if mon != 0 {
+        var t: uint
+        _, t, _ = mon_ticks(0, 0, 0)    // TICKS: R1:R2 = ticks since the monitor started
+        return t
+    }
+    return ticks
+}
+
+// wait_tick - wait for the next tick. Under the monitor waiting for events is by calls, not WFI.
+fn wait_tick() {
+    if mon != 0 {
+        mon_sleep(1)                    // SLEEP: a tick or two, the monitor services the keyboard
+    } else {
+        wfi()                           // the timer wakes it every 20 ms
+    }
+}
+
+// read_key - the code of the pressed key (character | scancode << 8) or 0 if nothing was pressed. Does not wait.
+fn read_key(): uint {
+    if mon != 0 {
+        var e, ev: uint
+        e, ev = mon_getev(EV_NOWAIT, 0) // CON_GETEV without waiting: AGAIN - no events
+        if e != 0 { return 0 }
+        return ev
+    }
+    return CON_KEY
+}
+
+// ---- monitor system calls (TRAP #9, the call number is the word after the instruction) ----
+// The register layout is the same as for B16 functions (parameters in R0.., results in R0..): the wrapper
+// rearranges nothing. The parameters of extra slots are placeholders for the call's results.
+// The error code arrives in R0 (0 - success). The names mon_* avoid clashes with the monitor's sys.asm.
+
+fn mon_mode(m, old: uint): uint, uint {         // $30 CON_MODE: R1 = the previous mode
+    asm {
+        TRAP  #9
+        .word $30
+    }
+    return m, old
+}
+
+fn mon_getev(flags, ev: uint): uint, uint {     // $31 CON_GETEV: R1 = the event
+    asm {
+        TRAP  #9
+        .word $31
+    }
+    return flags, ev
+}
+
+fn mon_flush(e: uint): uint {                   // $32 CON_FLUSH: flush the key buffer
+    asm {
+        TRAP  #9
+        .word $32
+    }
+    return e
+}
+
+fn mon_ticks(e, lo, hi: uint): uint, uint, uint {   // $52 TICKS: R1:R2 = the number of ticks
+    asm {
+        TRAP  #9
+        .word $52
+    }
+    return e, lo, hi
+}
+
+fn mon_sleep(n: uint): uint {                   // $53 SLEEP: wait n ticks
+    asm {
+        TRAP  #9
+        .word $53
+    }
+    return n
+}

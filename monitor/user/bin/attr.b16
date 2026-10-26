@@ -1,0 +1,46 @@
+// attr [+r|-r|+h|-h|+s|-s ...] path ... - change or print the RDONLY, HIDDEN, SYSTEM flags.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var st: Stat
+
+fn bit(c: uint): uint {
+    if c == 'r' { return A_RDONLY }
+    if c == 'h' { return A_HIDDEN }
+    if c == 's' { return A_SYSTEM }
+    return 0
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "attr"
+    var set: uint = 0
+    var clr: uint = 0
+    var i: uint = 1
+    while i < argc && (argv[i][0] == '+' || argv[i][0] == '-') {
+        var b: uint = bit(argv[i][1])
+        if b == 0 || argv[i][2] != 0 { return usage("[+r|-r|+h|-h|+s|-s ...] path ...") }
+        if argv[i][0] == '+' { set |= b } else { clr |= b }
+        i++
+    }
+    if i == argc { return usage("[+r|-r|+h|-h|+s|-s ...] path ...") }
+    var bad: uint = 0
+    while i < argc {
+        var e: uint = sys_stat(argv[i], &st)
+        if e == OK {
+            var fl: uint = uint(st.size >> 16) & (A_RDONLY | A_HIDDEN | A_SYSTEM)
+            if set | clr == 0 {
+                if fl & A_RDONLY != 0 { puts("r") } else { puts("-") }
+                if fl & A_HIDDEN != 0 { puts("h") } else { puts("-") }
+                if fl & A_SYSTEM != 0 { puts("s") } else { puts("-") }
+                puts("  ")
+                puts(argv[i])
+                putnl()
+            } else {
+                e = sys_setattr(argv[i], (fl | set) & ~clr)
+            }
+        }
+        if e != OK { fail(argv[i], e); bad = 1 }
+        i++
+    }
+    return int(bad)
+}

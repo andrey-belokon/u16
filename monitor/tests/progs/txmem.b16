@@ -1,0 +1,123 @@
+// txmem.b16 - the xmem script (shell): SETTOP and extended memory (XALLOC, XFREE, XMAP).
+// Process memory ends at $A000: pages 5 and 6 above top are free for windows.
+include "tlib.b16"
+option max_top = $A000
+
+var fbuf: [512]byte
+var fs: [256]uint
+
+fn fill(p: ptr uint, v: uint) {
+    var i: uint = 0
+    while i < 4096 { p[i] = v + i; i++ }
+}
+
+fn same(p: ptr uint, v: uint): uint {
+    var i: uint = 0
+    while i < 4096 { if p[i] != v + i { return 0 }; i++ }
+    return 1
+}
+
+fn zero(p: ptr uint): uint {
+    var i: uint = 0
+    while i < 4096 { if p[i] != 0 { return 0 }; i++ }
+    return 1
+}
+
+fn main(): int {
+    var e, top, fr0, fr1, x, f1, f2, old, n, h, code: uint
+    var pib: ptr uint = ptr uint(4)
+    var w5: ptr uint = ptr uint($A000)
+    e, top, fr0, x = sys_meminfo()
+    check(e == OK && top == $A000 && x == 0, "mem: top $A000 (max_top), no extended memory")
+
+    // XALLOC and XMAP
+    e, f1 = sys_xalloc()
+    e, top, fr1, x = sys_meminfo()
+    check(f1 >= 14 && fr1 == fr0 - 1 && x == 1, "xalloc: one frame, MEMINFO counts it")
+    e, old = sys_xmap(5, f1)
+    check(e == OK && old == XM_OWN && zero(w5) != 0, "xmap: frame in page 5 above top, zero-filled")
+    fill(w5, $1000)
+    e, f2 = sys_xalloc()
+    e, old = sys_xmap(5, f2)
+    check(e == OK && old == f1 && zero(w5) != 0, "xmap: second frame in the same page")
+    fill(w5, $2000)
+    e, old = sys_xmap(5, f1)
+    check(e == OK && old == f2 && same(w5, $1000) != 0, "xmap: first frame back, data kept")
+    e, old = sys_xmap(6, f2)
+    check(e == OK && same(ptr uint($C000), $2000) != 0, "xmap: second frame in page 6")
+
+    // call buffers in extended-memory pages
+    e, h = sys_open("dev:nul", O_WRITE, 0)
+    e, n = sys_write(h, ptr byte($BF00), $200)
+    check(e == OK && n == $200, "call: buffer across pages 5-6 (both extended)")
+    e = sys_close(h)
+    e, h = sys_open("A:/bin/tchild.cx", O_READ, 0)
+    e, n = sys_read(h, ptr byte($A100), 512)
+    var r2: uint
+    var p2: ulong
+    e, p2 = sys_seek(h, 0, SEEK_SET)
+    e, r2 = sys_read(h, &fbuf[0], 512)
+    e = sys_close(h)
+    var bad: uint = 0
+    var i: uint = 0
+    var b5: ptr byte = ptr byte($A100)
+    while i < 512 { if b5[i] != fbuf[i] { bad++ }; i++ }
+    check(n == 512 && r2 == 512 && bad == 0, "call: READ from a file into an extended frame")
+    e, old = sys_xmap(6, XM_OWN)
+    check(e == OK && old == f2, "xmap: XM_OWN unmaps page 6")
+    e, h = sys_open("dev:nul", O_WRITE, 0)
+    e, n = sys_write(h, ptr byte($C000), 10)
+    check(e == E_FAULT, "call: page without a frame above top -> FAULT")
+    e = sys_close(h)
+
+    // XFREE
+    check(sys_xfree(f1) == OK, "xfree: frame mapped in page 5")
+    e, h = sys_open("dev:nul", O_WRITE, 0)
+    e, n = sys_write(h, ptr byte($A000), 10)
+    check(e == E_FAULT, "xfree: page 5 lost its frame")
+    e = sys_close(h)
+    check(sys_xfree(f1) == E_INVAL && sys_xfree(3) == E_INVAL && sys_xfree(300) == E_INVAL, "xfree: not owned -> INVAL")
+    check(sys_xfree(f2) == OK, "xfree: second frame")
+    e, old = sys_xmap(7, f2)
+    check(e == E_INVAL, "xmap: page 7 -> INVAL")
+    e, old = sys_xmap(5, f2)
+    check(e == E_INVAL, "xmap: freed frame -> INVAL")
+    e, top, fr1, x = sys_meminfo()
+    check(fr1 == fr0 && x == 0, "xfree: all frames returned")
+
+    // SETTOP
+    check(sys_settop($C000) == OK, "settop: grow to $C000")
+    e, top, fr1, x = sys_meminfo()
+    check(top == $C000 && pib[8] == $C000 && fr1 == fr0 - 1 && zero(w5) != 0, "settop: new page zeroed, PIB top updated")
+    fill(w5, $3000)
+    check(sys_settop($A000) == OK, "settop: shrink back")
+    e, top, fr1, x = sys_meminfo()
+    check(top == $A000 && pib[8] == $A000 && fr1 == fr0, "settop: frame returned")
+    check(sys_settop(0) == E_INVAL && sys_settop($A002) == E_INVAL && sys_settop($F000) == E_INVAL, "settop: bad values -> INVAL")
+
+    // memory exhaustion
+    n = 0
+    loop {
+        var f: uint
+        e, f = sys_xalloc()
+        if e != OK { break }
+        fs[n] = f
+        n++
+    }
+    check(e == E_NOMEM && n == fr0, "xalloc: all free frames, then NOMEM")
+    e, code = run("A:/bin/tchild.cx 4")
+    check(e == E_NOMEM, "spawn: no memory left -> NOMEM")
+    i = 0
+    while i < n { e = sys_xfree(fs[i]); i++ }
+    e, top, fr1, x = sys_meminfo()
+    check(fr1 == fr0, "xfree: memory back after exhaustion")
+
+    // a child's frames are freed on EXIT and EXEC
+    e, code = run("A:/bin/tchild.cx 32")
+    e, top, fr1, x = sys_meminfo()
+    check(code == 32 && fr1 == fr0, "exit: extended frames of the child freed")
+    e, code = run("A:/bin/tchild.cx 33")
+    e, top, fr1, x = sys_meminfo()
+    check(code == 40 && fr1 == fr0, "exec: extended frames freed by EXEC")
+    return finish()
+}

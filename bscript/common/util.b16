@@ -1,0 +1,114 @@
+// util.b16 - common bsc functions: output, strings, paths, error messages.
+
+var ign: uint
+
+fn fputs(h: uint, s: ptr byte) {
+    var e, n: uint
+    e, n = sys_write(h, s, strlen(s))
+}
+
+fn fputn(h: uint, s: ptr byte, n: uint) {
+    var e, w: uint
+    e, w = sys_write(h, s, n)
+}
+
+fn fputu(h: uint, v: uint) {
+    var buf: [7]byte
+    var i: uint = 6
+    buf[6] = 0
+    loop {
+        i--
+        buf[i] = byte('0' + v % 10)
+        v /= 10
+        if v == 0 { break }
+    }
+    fputs(h, &buf[i])
+}
+
+fn memcpy(d: ptr byte, s: ptr byte, n: uint) {
+    while n != 0 { *d = *s; d++; s++; n-- }
+}
+
+fn memeq(a: ptr byte, b: ptr byte, n: uint): uint {
+    while n != 0 {
+        if *a != *b { return 0 }
+        a++; b++; n--
+    }
+    return 1
+}
+
+fn strcpy(d: ptr byte, s: ptr byte) {
+    while *s != 0 { *d = *s; d++; s++ }
+    *d = 0
+}
+
+// ---- paths ------------------------------------------------------------------------------------
+const PATHMAX = 256
+
+// The volume prefix "X:": a letter A-H (either case) or a digit 0-7 ("System Calls", sect. 4.1).
+fn has_drive(p: ptr byte): uint {
+    if p[0] == 0 || p[1] != ':' { return 0 }
+    var c: uint = p[0]
+    if c >= 'a' && c <= 'h' || c >= 'A' && c <= 'H' || c >= '0' && c <= '7' { return 1 }
+    return 0
+}
+
+// The volume number from the prefix letter or digit.
+fn drive_num(c: uint): uint {
+    if c >= 'a' && c <= 'h' { return c - 'a' }
+    if c >= 'A' && c <= 'H' { return c - 'A' }
+    return c - '0'
+}
+
+// An absolute normalized path: base is the directory for relative paths (absolute),
+// p is the path. The result goes to out (PATHMAX bytes). 0 - the path is too long or .. goes above the root.
+fn make_abs(out: ptr byte, base: ptr byte, p: ptr byte): uint {
+    var tmp: [520]byte
+    var n: uint = 0
+    if has_drive(p) != 0 {
+        // the volume is given
+    } else if p[0] == '/' {
+        tmp[0] = base[0]; tmp[1] = ':'; n = 2
+    } else {
+        var b = base
+        while *b != 0 && n < 255 { tmp[n] = *b; n++; b++ }
+        tmp[n] = '/'; n++
+    }
+    while *p != 0 && n < 510 { tmp[n] = *p; n++; p++ }
+    tmp[n] = 0
+    if n >= 510 { return 0 }
+    // normalization: the volume by letter ("X:"), then the steps
+    var r: uint = 2
+    out[0] = byte('A' + drive_num(tmp[0])); out[1] = ':'
+    var i: uint = 2
+    loop {
+        while tmp[i] == '/' { i++ }
+        if tmp[i] == 0 { break }
+        var s: uint = i
+        while tmp[i] != 0 && tmp[i] != '/' { i++ }
+        var len: uint = i - s
+        if len == 1 && tmp[s] == '.' { continue }
+        if len == 2 && tmp[s] == '.' && tmp[s + 1] == '.' {
+            if r == 2 { return 0 }
+            while r > 2 && out[r - 1] != '/' { r-- }
+            r--
+            continue
+        }
+        if r + len + 1 >= PATHMAX { return 0 }
+        out[r] = '/'; r++
+        memcpy(&out[r], &tmp[s], len)
+        r += len
+    }
+    if r == 2 { out[2] = '/'; r = 3 }
+    out[r] = 0
+    return 1
+}
+
+// The directory of a path (absolute): "A:/a/b.bs" -> "A:/a", "A:/x" -> "A:/".
+fn dir_of(out: ptr byte, p: ptr byte) {
+    strcpy(out, p)
+    var n: uint = strlen(out)
+    while n > 3 && out[n - 1] != '/' { n-- }
+    if n > 3 { n-- }
+    out[n] = 0
+}

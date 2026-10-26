@@ -1,0 +1,169 @@
+// tsys.b16 - the sys script (shell): the calling convention, registers, ticks, the stack at the lower
+// boundary, descriptors and devices, memory, time, disk.
+include "tlib.b16"
+include asm "tsys.asm"
+
+extern fn t_null_flags(): (uint, uint)
+extern fn t_bad_flags(): (uint, uint)
+extern fn t_sp(): uint
+extern fn t_regs(mode: uint): uint
+extern fn t_spin(n: uint): uint
+extern fn t_lowsp(n: uint): uint
+extern fn t_hook_bad(): uint
+
+fn spin_ref(n: uint): uint {
+    var r1: uint = 1
+    var r2: uint = 3
+    var r3: uint = 5
+    while n != 0 {
+        r1 += $0401
+        r1 ^= $0502
+        r2 += r1
+        var bw: uint = 0
+        if r2 < $0603 { bw = 1 }
+        r2 -= $0603
+        r3 = r3 + r2 + bw
+        r3 = ror(r3, 1)
+        r1 += $0704
+        r2 ^= $0805
+        r3 += $0906
+        r1 ^= $0A07
+        r2 += $0B08
+        n--
+    }
+    return r1 + r2 + r3
+}
+
+var st: Stat
+var si: SysInfo
+var dreq: DiskReq
+var sbuf: [512]byte
+var info: [32]byte
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    var e, r, f, h, h2, n, k, m: uint
+
+    // --- the state at launch (CX16 format, sect. 8.1 and 4) ---
+    check(argc == 1 && streq(argv[0], "A:/sys/shell.cx") != 0, "start: argc = 1, argv[0] = A:/sys/shell.cx")
+    var pib: ptr uint = ptr uint(4)
+    check(pib[0] == $5843 && pib[1] == $4250 && pib[2] == 1 && pib[3] == 0 && pib[4] == 1, "start: PIB magic, version, flags 0, argc")
+    check(pib[6] == uint(argv) && pib[8] != 0 && pib[8] & $1FFF == 0 && pib[9] == 0 && pib[10] == 0 && pib[11] == 0, "start: PIB argv, top, reserved")
+    var sp: uint = t_sp()
+    check(sp < pib[8] && pib[8] - sp < 256, "start: SP just under top")
+
+    // --- the calling convention ---
+    r, f = t_null_flags()
+    check(r == 0 && f & 1 == 1, "call: R0 = 0, ZF = 1 on success")
+    r, f = t_bad_flags()
+    check(r == E_NOSYS && f & 1 == 0, "call: unknown number -> NOSYS, ZF = 0")
+    e = sys_delete("dev:nul")
+    check(e == E_INVAL, "call: DELETE of a device -> INVAL")
+    check(t_regs(0) == 0, "call: R4-R12, SP, IF preserved (IF = 1)")
+    check(t_regs(1) == 0, "call: R4-R12, SP, IF preserved (IF = 0)")
+
+    // --- ticks during computation ---
+    var arr: [96]uint
+    var i: uint = 0
+    while i < 96 { arr[i] = i * 7 + 3; i++ }
+    check(t_spin(3000) == spin_ref(3000), "ticks: checksum loop under ticks")
+    i = 0
+    var bad: uint = 0
+    while i < 96 { if arr[i] != i * 7 + 3 { bad++ }; i++ }
+    check(bad == 0, "ticks: stack memory intact")
+    check(t_lowsp(4000) == 0, "ticks: SP = 4 keeps registers, SP restored")
+
+    // --- descriptors and devices ---
+    e, k, m = sys_hinfo(STDOUT)
+    check(e == OK && k == H_CON && m == O_READ | O_WRITE, "fd: 0-2 are the console, read/write")
+    e, h = sys_open("dev:nul", O_READ | O_WRITE, 0)
+    check(e == OK && h == 3, "fd: OPEN dev:nul -> lowest free handle 3")
+    e, n = sys_write(h, "abc", 3)
+    check(e == OK && n == 3, "fd: WRITE to dev:nul accepts all")
+    e, n = sys_read(h, &sbuf[0], 10)
+    check(e == OK && n == 0, "fd: READ from dev:nul -> end of file")
+    e, k, m = sys_hinfo(h)
+    check(e == OK && k == H_NUL, "fd: HINFO dev:nul")
+    e, h2 = sys_dup(h, SAME)
+    check(e == OK && h2 == 4, "fd: DUP -> lowest free handle")
+    e, r = sys_dup(h, 9)
+    check(e == OK && r == 9, "fd: DUP to a given handle")
+    check(sys_close(9) == OK && sys_close(h2) == OK && sys_close(h) == OK, "fd: CLOSE")
+    check(sys_close(h) == E_BADF, "fd: CLOSE of a closed handle -> BADF")
+    e, n = sys_read(12, &sbuf[0], 1)
+    check(e == E_BADF, "fd: READ of a closed handle -> BADF")
+    e, h = sys_open("dev:nul", O_READ, 0)
+    e, n = sys_write(h, "x", 1)
+    check(e == E_BADF, "fd: WRITE to a read-only handle -> BADF")
+    e = sys_close(h)
+    e, h = sys_open("dev:xyz", O_READ, 0)
+    check(e == E_NOENT, "path: unknown device -> NOENT")
+    e, h = sys_open("dev:a:b", O_READ, 0)
+    check(e == E_BADNAME, "path: colon outside the prefix -> BADNAME")
+    e, h = sys_open("A:/x", O_READ, 0)
+    check(e == E_NOENT, "path: no such file on volume 0 -> NOENT")
+    e, h = sys_open("F:/x", O_READ, 0)
+    check(e == E_NODEV, "path: volume not mounted -> NODEV")
+    e, h = sys_open("x", O_READ, 0)
+    check(e == E_NOENT, "path: relative to the current directory A:/ -> NOENT")
+    e, h = sys_open("", O_READ, 0)
+    check(e == E_BADPATH, "path: empty -> BADPATH")
+    e, h = sys_open("dev:nul", 0, 0)
+    check(e == E_INVAL, "fd: OPEN without read and write -> INVAL")
+    e, h = sys_open("dev:nul", O_READ | O_TRUNC, 0)
+    check(e == E_INVAL, "fd: TRUNC without WRITE -> INVAL")
+    i = 0
+    bad = 0
+    while i < 13 { e, h = sys_open("dev:nul", O_READ, 0); if e != OK { bad++ }; i++ }
+    e, h = sys_open("dev:nul", O_READ, 0)
+    check(bad == 0 && e == E_MFILE, "fd: 16 handles, the 17th -> MFILE")
+    i = 3
+    while i < 16 { e = sys_close(i); i++ }
+    var pos: ulong
+    e, pos = sys_seek(STDOUT, 0, SEEK_SET)
+    check(e == E_INVAL, "fd: SEEK on the console -> INVAL")
+    check(sys_setsize(STDOUT, 0, 0) == E_INVAL, "fd: SETSIZE on the console -> INVAL")
+    check(sys_fstat(STDOUT, &st) == OK && streq(&st.name[0], "con") != 0 && st.size == 0, "fd: FSTAT console")
+    check(sys_stat("dev:nul", &st) == OK && streq(&st.name[0], "nul") != 0, "fd: STAT dev:nul")
+    e, n = sys_write(STDOUT, ptr byte($DFF0), 32)
+    check(e == E_FAULT, "fd: buffer beyond top -> FAULT")
+    e, h = sys_open(ptr byte($DFFF), O_READ, 0)
+    check(e == E_FAULT, "path: string beyond top -> FAULT")
+
+    // --- memory and system ---
+    var top, fr, x: uint
+    e, top, fr, x = sys_meminfo()
+    check(e == OK && top == pib[8] && fr > 0 && fr < 242 && x == 0, "mem: MEMINFO top and free frames")
+    check(sys_sysinfo(&si) == OK && si.depth == 1 && si.max_depth == 16 && si.frames == 242 && si.free_frames == fr && si.mounted & 1 != 0, "sys: SYSINFO")
+
+    // --- time ---
+    var t0, t1: ulong
+    e, t0 = sys_time_get()
+    check(e == OK && sys_time_set(t0) == OK, "time: TIME_SET of the current value")
+    check(sys_time_set(0) == E_INVAL, "time: TIME_SET 0 -> INVAL")
+    e, t0 = sys_ticks()
+    check(sys_sleep(5) == OK, "time: SLEEP 5")
+    e, t1 = sys_ticks()
+    check(t1 - t0 >= 5, "time: ticks grew by 5 or more")
+    check(t_hook_bad() == E_FAULT, "time: TICKHOOK outside memory -> FAULT")
+
+    // --- disk ---
+    e, r = sys_disk_info(0, &info[0])
+    check(e == OK && r == DI_MOUNTED, "disk: DISK_INFO 0, mounted for writing")
+    e, r = sys_disk_info(5, &info[0])
+    check(e == E_NODEV, "disk: DISK_INFO of an absent disk -> NODEV")
+    dreq.op = DIO_READ
+    dreq.drive = 0
+    dreq.count = 1
+    dreq.buf = &sbuf[0]
+    dreq.lba = 0
+    var w: ptr uint = ptr uint(&sbuf[0])
+    check(sys_disk_io(&dreq) == OK && w[0] == $5346, "disk: DISK_IO reads the superblock")
+    dreq.op = DIO_WRITE
+    check(sys_disk_io(&dreq) == E_BUSY, "disk: DISK_IO write to a mounted disk -> BUSY")
+    dreq.op = DIO_READ
+    dreq.count = 0
+    check(sys_disk_io(&dreq) == E_INVAL, "disk: count 0 -> INVAL")
+    dreq.count = 200
+    check(sys_disk_io(&dreq) == E_FAULT, "disk: buffer beyond top -> FAULT")
+    return finish()
+}

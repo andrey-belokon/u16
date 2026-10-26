@@ -1,0 +1,22 @@
+# manual check: the Up/Folder columns, the total at the bottom, F3 on a directory, Del, delete confirmation, Ctrl+Enter
+after "A:/> " steps 2000 type "cd /data\n"
+after "A:/data> " steps 2000 type "fm 1:\n"
+screen "10Quit" steps 2000 dump
+# F3 on sub (position 1)
+after "" steps 10 key 00 50
+screen "║sub                              --:--║║" steps 2000 key 00 3D
+screen "On the volume" steps 2000 dump
+after "" steps 10 type " "
+# Del does nothing; F8 -> Enter does not delete, n - cancel
+screen "10Quit" steps 2000 key 00 53
+after "" steps 2000 key 00 42
+screen "Delete the directory" steps 2000 type "\n"
+after "" steps 200000 dump
+after "" steps 10 type "n"
+# Ctrl+Enter: the name into the command line
+after "" steps 200000 key 0D 1C
+after "" steps 200000 dump
+after "" steps 10 type "\x1b"
+after "" steps 2000 key 00 44
+screen "quit fm" steps 2000 type "y"
+after "A:/data> " steps 2000 type "exit\n"

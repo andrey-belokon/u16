@@ -1,0 +1,2 @@
+// run: /t/child.bs 1
+println("unused")

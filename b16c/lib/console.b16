@@ -1,0 +1,126 @@
+// console.b16 - the CPU16 machine console: output, keyboard, screen.
+// The device is described in "CPU16 Machine: Memory and Devices", sect. 2.
+
+var CON_DATA at $FF20: byte     // write - output a character, read - the key's character or 0
+var CON_KEY  at $FF20: uint     // word read: character | scancode << 8
+var CON_SCAN at $FF21: byte     // scancode of the next event
+var CON_CTRL at $FF22: byte     // mode
+var CON_ATTR at $FF23: byte     // current attribute
+var CON_COL  at $FF24: byte     // cursor column
+var CON_ROW  at $FF25: byte     // cursor row
+var CON_CMD  at $FF26: byte     // command
+
+const CTRL_TTY = 1              // teletype (otherwise coordinate mode)
+const CTRL_CURSOR = 2           // cursor visible
+const CTRL_ATTRMODE = 4         // a write to DATA changes the cell's attribute
+
+const CMD_CLS = 1               // clear the screen, position (0, 0)
+const CMD_CLREOL = 2            // clear to the end of the line
+const CMD_CLREOS = 3            // clear to the end of the screen
+const CMD_SCROLLUP = 4
+const CMD_SCROLLDN = 5
+
+const BLACK = 0
+const BLUE = 1
+const GREEN = 2
+const CYAN = 3
+const RED = 4
+const YELLOW = 5
+const GRAY = 6
+const WHITE = 7
+const ATTR_UNDERLINE = $40
+const ATTR_INVERSE = $80
+
+fn attr(fg, bg: byte): byte { return bg << 3 | fg }
+
+fn putc(c: byte) { CON_DATA = c }
+
+fn puts(s: ptr byte) {
+    var c: byte
+    while (c = *s++) != 0 { CON_DATA = c }
+}
+
+fn putnl() { CON_DATA = '\n' }
+
+fn putu(v: uint) {
+    var buf: [5]byte
+    var n: uint = 0
+    loop {
+        buf[n] = byte(v % 10) + '0'
+        n++
+        v /= 10
+        if v == 0 { break }
+    }
+    while n != 0 { n--; CON_DATA = buf[n] }
+}
+
+fn puti(v: int) {
+    if v < 0 { CON_DATA = '-'; v = -v }     // -(-32768) = 32768 as uint: also correct
+    putu(uint(v))
+}
+
+fn puthex(v: uint, digits: uint) {
+    var sh = digits << 2
+    while sh != 0 {
+        sh -= 4
+        var d = (v >> sh) & 15
+        if d < 10 { CON_DATA = byte(d) + '0' } else { CON_DATA = byte(d) + ('A' - 10) }
+    }
+}
+
+// Decimal output of long and ulong.
+fn putul(v: ulong) {
+    var buf: [10]byte
+    var n: uint = 0
+    loop {
+        buf[n] = byte(v % 10) + '0'
+        n++
+        v /= 10
+        if v == 0 { break }
+    }
+    while n != 0 { n--; CON_DATA = buf[n] }
+}
+
+fn putl(v: long) {
+    if v < 0 { CON_DATA = '-'; v = -v }     // -(-2147483648) = 2147483648 as ulong: also correct
+    putul(ulong(v))
+}
+
+// Hexadecimal output of the low digits (1..8) digits.
+fn puthexl(v: ulong, digits: uint) {
+    if digits > 4 { puthex(uint(v >> 16), digits - 4); puthex(uint(v), 4) }
+    else { puthex(uint(v), digits) }
+}
+
+// The key's character or 0 if there are no events. Does not wait.
+fn getc(): byte { return CON_DATA }
+
+// The character and scancode of one event (0, 0 - no events).
+fn getkey(): byte, byte {
+    var k = CON_KEY
+    return byte(k), byte(k >> 8)
+}
+
+// Wait for a character (polling). In the emulator it waits forever after the end of stdin.
+fn waitc(): byte {
+    var c: byte
+    while (c = CON_DATA) == 0 {}
+    return c
+}
+
+// Read a line up to '\n' (not stored); the result is the length. The string is terminated with zero.
+fn readline(buf: ptr byte, max: uint): uint {
+    var n: uint = 0
+    loop {
+        var c = waitc()
+        if c == '\n' { break }
+        if n + 1 < max { buf[n] = c; n++ }
+    }
+    buf[n] = 0
+    return n
+}
+
+fn cls() { CON_CMD = CMD_CLS }
+fn gotoxy(col, row: byte) { CON_COL = col; CON_ROW = row }
+fn setattr(a: byte) { CON_ATTR = a }
+fn setmode(ctrl: byte) { CON_CTRL = ctrl }

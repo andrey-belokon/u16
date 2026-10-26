@@ -1,0 +1,28 @@
+# the shell script: the interactive shell
+after "A:/> " steps 2000 type "help\n"
+# command history: arrows up (scancode $48) and down ($50)
+after "A:/> " steps 2000 type "echo aaa\n"
+after "A:/> " steps 2000 type "echo bbb\n"
+after "A:/> " steps 2000 key 00 48
+after "echo bbb" steps 2000 type "X\n"
+after "A:/> " steps 2000 key 00 48
+after "echo bbbX" steps 2000 key 00 48
+after "echo bbb" steps 2000 type "Y\n"
+after "A:/> " steps 2000 type "echo zz"
+after "echo zz" steps 2000 key 00 48
+after "echo bbbY" steps 2000 key 00 50
+after "echo zz" steps 2000 type "q\n"
+after "A:/> " steps 2000 type "echo one ; echo two > /tmp/x ; cat /tmp/x\n"
+after "A:/> " steps 2000 type "abc"
+after "abc" steps 2000 ctrlc
+after "A:/> " steps 2000 type "cat\n"
+after "cat\n" steps 3000 type "typed line\n"
+after "typed line\n" steps 3000 ctrlc
+after "A:/> " steps 2000 type "cd /data ; pwd\n"
+after "A:/data> " steps 2000 type "ls\n"
+after "A:/data> " steps 2000 type "\"unclosed\n"
+after "A:/data> " steps 2000 type "echo x >\n"
+after "A:/data> " steps 2000 type "ls | | cat\n"
+after "A:/data> " steps 2000 type "nothing\n"
+after "A:/data> " steps 2000 type "exit 7\n"
+after "A:/> " steps 2000 type "exit\n"

@@ -1,0 +1,198 @@
+// ulib.b16 - common functions of the shell and utilities ("Shell and Utilities", sect. 4.3, 6, 8).
+include "sys.b16"
+
+var prog: ptr byte = "?"        // the program name for messages
+var ign: uint                   // a result that is not needed
+
+fn fputs(h: uint, s: ptr byte) {
+    var e, n: uint
+    e, n = sys_write(h, s, strlen(s))
+}
+
+fn fputc(h: uint, c: uint) {
+    var b: [2]byte
+    b[0] = byte(c)
+    var e, n: uint
+    e, n = sys_write(h, &b[0], 1)
+}
+
+fn eputs(s: ptr byte) { fputs(STDERR, s) }
+
+// Unsigned decimal, 32 bits, with a field width (spaces on the left).
+fn fputul(h: uint, v: ulong, width: uint) {
+    var buf: [12]byte
+    var i: uint = 11
+    buf[11] = 0
+    loop {
+        i--
+        buf[i] = byte('0' + uint(v % 10))
+        v /= 10
+        if v == 0 { break }
+    }
+    while 11 - i < width { i--; buf[i] = ' ' }
+    fputs(h, &buf[i])
+}
+
+fn fput2(h: uint, v: uint) {
+    fputc(h, '0' + v / 10 % 10)
+    fputc(h, '0' + v % 10)
+}
+
+// The FS16 timestamp (sect. 5.1): YYYY-MM-DD HH:MM[:SS].
+fn fputtime(h: uint, t: ulong, sec: uint) {
+    if t == 0 {                 // no timestamp
+        if sec != 0 { fputs(h, "-------------------") } else { fputs(h, "----------------") }
+        return
+    }
+    var tm: uint = uint(t)
+    var dt: uint = uint(t >> 16)
+    fputul(h, ulong((dt >> 10) + 2025), 0)
+    fputc(h, '-')
+    fput2(h, (dt >> 6) & 15)
+    fputc(h, '-')
+    fput2(h, (dt >> 1) & 31)
+    fputc(h, ' ')
+    fput2(h, (tm >> 12) + 12 * (dt & 1))
+    fputc(h, ':')
+    fput2(h, (tm >> 6) & 63)
+    if sec != 0 {
+        fputc(h, ':')
+        fput2(h, tm & 63)
+    }
+}
+
+// The error text ("Shell and Utilities", sect. 8.2).
+fn err_text(e: uint): ptr byte {
+    if e == E_NOENT { return "no such file or directory" }
+    if e == E_EXIST { return "already exists" }
+    if e == E_NOTDIR { return "not a directory" }
+    if e == E_ISDIR { return "is a directory" }
+    if e == E_NOTEMPTY { return "directory not empty" }
+    if e == E_RDONLY { return "read-only" }
+    if e == E_NOSPC { return "no space left" }
+    if e == E_BADNAME { return "invalid name" }
+    if e == E_BADPATH { return "invalid path" }
+    if e == E_NODEV { return "volume not mounted" }
+    if e == E_IO { return "I/O error" }
+    if e == E_NOEXEC { return "not an executable" }
+    if e == E_BADVER { return "unsupported program version" }
+    if e == E_ARGS { return "bad arguments" }
+    if e == E_NOMEM { return "not enough memory" }
+    if e == E_NOPROC { return "too many nested programs" }
+    if e == E_BUSY { return "busy" }
+    if e == E_XDEV { return "different volumes" }
+    if e == E_NOTFS { return "no file system" }
+    if e == E_INVAL { return "invalid argument" }
+    if e == E_MFILE { return "too many open files" }
+    return 0
+}
+
+// The message "program: object: text" to descriptor 2.
+fn fail(obj: ptr byte, e: uint) {
+    eputs(prog)
+    eputs(": ")
+    if obj != 0 { eputs(obj); eputs(": ") }
+    var t = err_text(e)
+    if t != 0 { eputs(t) } else { eputs("error "); fputul(STDERR, ulong(e), 0) }
+    eputs("\n")
+}
+
+fn usage(text: ptr byte): int {
+    eputs("usage: ")
+    eputs(prog)
+    eputs(" ")
+    eputs(text)
+    eputs("\n")
+    return 2
+}
+
+fn atou(s: ptr byte): (uint, uint) {     // the value, 1 - a number without extra characters
+    var n: uint = 0
+    if *s == 0 { return 0, 0 }
+    while *s >= '0' && *s <= '9' { n = n * 10 + (*s - '0'); s++ }
+    if *s != 0 { return n, 0 }
+    return n, 1
+}
+
+// A volume in a utility argument: a letter A-H in either case, with or without a colon, or, as before,
+// a number 0-7 ("System Calls", sect. 4.1). The volume number or $FFFF.
+fn drive_arg(s: ptr byte): uint {
+    var c: uint = s[0]
+    if c == 0 || (s[1] != 0 && (s[1] != ':' || s[2] != 0)) { return $FFFF }
+    if c >= 'a' && c <= 'h' { return c - 'a' }
+    if c >= 'A' && c <= 'H' { return c - 'A' }
+    if c >= '0' && c <= '7' { return c - '0' }
+    return $FFFF
+}
+
+// The volume at the start of a path "X:" (a letter or digit) or $FFFF.
+fn path_drive(p: ptr byte): uint {
+    if p[0] == 0 || p[1] != ':' { return $FFFF }
+    var c: uint = p[0]
+    if c >= 'a' && c <= 'h' { return c - 'a' }
+    if c >= 'A' && c <= 'H' { return c - 'A' }
+    if c >= '0' && c <= '7' { return c - '0' }
+    return $FFFF
+}
+
+// A volume for a human: a letter and a colon ("B:").
+fn fputdrv(h: uint, d: uint) {
+    fputc(h, 'A' + d)
+    fputc(h, ':')
+}
+
+// The last name of a path (after the last / or :).
+fn basename(p: ptr byte): ptr byte {
+    var b = p
+    while *p != 0 {
+        if *p == '/' || *p == ':' { b = p + 1 }
+        p++
+    }
+    return b
+}
+
+fn strcpy(d: ptr byte, s: ptr byte) {
+    while *s != 0 { *d = *s; d++; s++ }
+    *d = 0
+}
+
+fn strcat(d: ptr byte, s: ptr byte) {
+    while *d != 0 { d++ }
+    strcpy(d, s)
+}
+
+// n digits from position s; $FFFF - not digits.
+fn num_digits(s: ptr byte, n: uint): uint {
+    var v: uint = 0
+    while n != 0 {
+        if *s < '0' || *s > '9' { return $FFFF }
+        v = v * 10 + (*s - '0')
+        s++
+        n--
+    }
+    return v
+}
+
+// "YYYY-MM-DD" and "HH:MM:SS" -> an FS16 timestamp (sect. 5.1): 1 and the timestamp, or 0.
+fn parse_time(d: ptr byte, c: ptr byte): (uint, ulong) {
+    if strlen(d) != 10 || strlen(c) != 8 || d[4] != '-' || d[7] != '-' || c[2] != ':' || c[5] != ':' { return 0, 0 }
+    var y: uint = num_digits(d, 4)
+    var mo: uint = num_digits(d + 5, 2)
+    var dd: uint = num_digits(d + 8, 2)
+    var hh: uint = num_digits(c, 2)
+    var mi: uint = num_digits(c + 3, 2)
+    var ss: uint = num_digits(c + 6, 2)
+    if y < 2025 || y > 2088 || mo < 1 || mo > 12 || dd < 1 || dd > 31 || hh > 23 || mi > 59 || ss > 59 { return 0, 0 }
+    var pm: uint = 0
+    if hh >= 12 { pm = 1; hh -= 12 }
+    var dw: uint = (y - 2025) << 10 | mo << 6 | dd << 1 | pm
+    var tw: uint = hh << 12 | mi << 6 | ss
+    return 1, ulong(dw) << 16 | tw
+}
+
+fn is_dir(path: ptr byte): uint {
+    var st: Stat
+    if sys_stat(path, &st) != OK { return 0 }
+    if uint(st.size >> 16) & A_DIR != 0 { return 1 }
+    return 0
+}

@@ -1,0 +1,74 @@
+// test: bare-only (its own vector table and interrupts)
+var OUT at $FF20: byte
+var VEC at $FF00: [16]ptr interrupt fn()
+var fails: uint
+
+fn putc(c: byte) { OUT = c }
+fn puts(s: ptr byte) { while *s != 0 { putc(*s++) } }
+fn check(id: uint, got, want: int) {
+    if got != want { fails++; puts("FAIL "); putc(byte(id / 10) + '0'); putc(byte(id % 10) + '0'); putc(10) }
+}
+
+fn is_even(n: uint): uint          // prototype: mutual recursion
+fn is_odd(n: uint): uint { if n == 0 { return 0 }; return is_even(n - 1) }
+fn is_even(n: uint): uint { if n == 0 { return 1 }; return is_odd(n - 1) }
+
+fn sq(x: int): int { return x * x }
+fn inc(x: int): int { return x + 1 }
+
+var ops: [2]ptr fn(int): int = {sq, inc}
+var msgp: ptr byte = "xyz"
+var first: ptr int = &table[1]
+var table: [3]int = {5, 6, 7}
+var counter: uint
+var sum_isr: uint
+
+interrupt fn isr_calls() { counter += 1; sum_isr += uint(sq(3)) }
+
+fn exprs(a, b, c: int): int {
+    return a + sq(b) * inc(c) - sq(a + sq(c))
+}
+
+fn relax(n: uint): uint {
+    var s: uint = 0
+    while n != 0 {
+        s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n
+        s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n
+        s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n
+        s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n; s += n
+        s ^= counter; s ^= counter; s ^= counter; s ^= counter; s ^= counter; s ^= counter
+        s ^= counter; s ^= counter; s ^= counter; s ^= counter; s ^= counter; s ^= counter
+        s ^= counter; s ^= counter; s ^= counter; s ^= counter; s ^= counter; s ^= counter
+        n--
+    }
+    return s
+}
+
+fn asm_add(a, b: int): int {
+    asm {
+        ADD   R0, R1
+    }
+    return a
+}
+
+fn main() {
+    check(1, int(is_even(10)), 1)
+    check(2, int(is_odd(7)), 1)
+    check(3, ops[0](5) + ops[1](5), 31)
+    check(4, int(*msgp), 'x')
+    check(5, *first, 6)
+    check(6, exprs(1, 2, 3), 1 + 4 * 4 - 100)
+    VEC[9] = isr_calls
+    trap(9); trap(9)
+    check(7, int(counter), 2)
+    check(8, int(sum_isr), 18)
+    check(9, int(relax(4)), (4 + 3 + 2 + 1) * 40)
+    check(10, asm_add(40, 2), 42)
+    var i: int = 0
+    while 1 { i++; if i > 4 { break } }
+    check(11, i, 5)
+    var v: uint = 5
+    check(12, int(v++) * 10 + int(v), 56)
+    check(13, int(--v), 5)
+    if fails == 0 { puts("ALL OK\n") }
+}

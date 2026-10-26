@@ -1,0 +1,5 @@
+tests/diag/results_parens.b16:5: error: type expected
+tests/diag/results_parens.b16:6: error: expected ')'
+tests/diag/results_parens.b16:7: error: expected end of statement (newline or ';')
+tests/diag/results_parens.b16:8: error: a function returns at most 4 values
+rc 1

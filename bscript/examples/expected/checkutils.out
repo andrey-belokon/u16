@@ -1,0 +1,8 @@
+ok    mkdir
+ok    cat
+ok    cp_mv
+ok    ls
+ok    redirect
+ok    errors
+ok    rm
+7 of 7 passed

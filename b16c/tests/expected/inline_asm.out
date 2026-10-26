@@ -1,0 +1,8 @@
+1. bswap($1234) = $3412
+2. ($0001:8001) << 4 = $00180010
+3. 60000 + 10000 = 4464 carry 1
+   $1:0000 < $0:FFFF? 0   $0:FFFF < $1:0000? 1
+4. FLAGS: IF=1 after di(): IF=0
+5. [4,16][3,9][2,4][1,1]
+6. illegal instructions skipped: 4
+7. syscall: 42 144 BEEF FFFF

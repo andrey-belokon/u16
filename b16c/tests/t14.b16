@@ -1,0 +1,33 @@
+// t14: a mutable string in a local variable (sect. 2.7, 5.3): an array with a string initializer is its own
+// copy, filled on every execution of the declaration; var p = "..." without a type is a pointer to a literal.
+include "console.b16"
+
+fn make_name(n: uint, out: ptr byte) {
+    var s: [8]byte = "tmp0000"
+    var i: uint = 6
+    loop {
+        s[i] = byte(n % 10) + '0'
+        n /= 10
+        if i == 3 { break }
+        i--
+    }
+    var k: uint = 0
+    while k < 8 { out[k] = s[k]; k++ }
+}
+
+// A pointer to a literal: it may be returned (the literal lives for the whole run of the program), but not written through.
+fn lit(): ptr byte {
+    var p = "lit"
+    p = p + 1
+    return p
+}
+
+var buf1: [8]byte
+var buf2: [8]byte
+
+fn main() {
+    make_name(42, buf1)
+    make_name(7, buf2)
+    make_name(1234, buf1)
+    puts(buf1); putc(' '); puts(buf2); putc(' '); puts(lit()); putnl()
+}

@@ -1,0 +1,251 @@
+// dir.b16 - FS16 directories (sect. 7, 9): looking up an entry by name (case-insensitive), iteration,
+// creating and deleting an entry, creating a directory, renaming and moving.
+
+var dfree: EAddr                    // the first free entry found by dir_find
+
+// Converting a name byte to a lower-case letter (FS16, sect. 7.1): A-Z, Cyrillic capitals (+$20), capital Yo -> yo.
+static fn nfold(c: uint): uint {
+    if c >= 'A' && c <= 'Z' || c >= $C0 && c <= $DF { return c + $20 }
+    if c == $B3 { return $A3 }
+    return c
+}
+
+// The entry's name (up to 32 bytes, zero-padded) equals s[0..len) ignoring letter case
+// (FS16, sect. 7.1). len = 0 - any name.
+static fn name_eq(e: ptr byte, s: ptr byte, len: uint): uint {
+    if len == 0 { return 1 }
+    if len < 32 && e[len] != 0 { return 0 }
+    while len != 0 {
+        if nfold(*e++) != nfold(*s++) { return 0 }
+        len--
+    }
+    return 1
+}
+
+// The entry's name matches s[0..len) byte by byte.
+static fn name_same(e: ptr byte, s: ptr byte, len: uint): uint {
+    if len < 32 && e[len] != 0 { return 0 }
+    while len != 0 {
+        if *e++ != *s++ { return 0 }
+        len--
+    }
+    return 1
+}
+
+// Look up an entry in directory d by sector (8 entries). On the way it remembers the first
+// free entry in dfree. len = 0 - the first occupied entry (an emptiness check).
+fn dir_find(d: ptr Node, name: ptr byte, len: uint): uint, uint, uint {
+    dfree.clu = 0
+    var cn = uint(d.size >> 11)
+    var k: uint = 0
+    while k < cn {
+        var c, e: uint
+        c, e = bmap(d, k)
+        if e != E_OK { return 0, 0, e }
+        var s: uint = 0
+        while s < 4 {
+            var b: ptr byte
+            b, e = cache_get(d.drv, ulong(c) << 2 | s)
+            if e != E_OK { return 0, 0, e }
+            var ent = ptr DirEnt(b)
+            var i: uint = 0
+            while i < 8 {
+                if ent.name[0] == 0 {
+                    if dfree.clu == 0 { dfree.clu = c; dfree.idx = (s << 3) + i }
+                } else if name_eq(&ent.name[0], name, len) {
+                    return c, (s << 3) + i, E_OK
+                }
+                ent++
+                i++
+            }
+            s++
+        }
+        k++
+    }
+    return 0, 0, E_NOENT
+}
+
+static fn vol_rw(drv: uint): ptr Vol, uint {
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(drv)
+    if e != E_OK { return 0, e }
+    if v.fl & V_RW == 0 { return 0, E_ROFS }
+    return v, E_OK
+}
+
+// A free entry in directory d (after dir_find). If there is none - add a cluster of zeros
+// to the directory and write the directory entry with the new size.
+static fn dir_slot(v: ptr Vol, d: ptr Node): uint, uint, uint {
+    if dfree.clu != 0 { return dfree.clu, dfree.idx, E_OK }
+    var k = nclus(d)
+    var e = node_alloc(v, k)
+    if e != E_OK { return 0, 0, e }
+    var c = nal.c
+    e = clu_init(d.drv, c, 0)
+    if e == E_OK { e = node_link(d, k) }
+    if e != E_OK { return 0, 0, e }
+    d.size += 2048
+    d.mtime = now()
+    e = node_store(d)
+    return c, 0, e
+}
+
+// Create an entry (a file or a directory, flags - the high bits of word +34).
+// n is the descriptor of the new entry.
+fn dir_create(path: ptr byte, flags: uint, n: ptr Node): uint {
+    var d: Node
+    var name: ptr byte
+    var len, e: uint
+    e, name, len = path_walk(path, &d, 1)
+    if e != E_OK { return e }
+    var v: ptr Vol
+    v, e = vol_rw(d.drv)
+    if e != E_OK { return e }
+    _, _, e = dir_find(&d, name, len)
+    if e == E_OK { return E_EXISTS }
+    if e == E_NOENT && d.flags & F_RDONLY != 0 { return E_RDONLY }
+    if e != E_NOENT { return e }
+    var clu, idx: uint
+    clu, idx, e = dir_slot(v, &d)
+    if e != E_OK { return e }
+    var de: ptr DirEnt
+    var b: ptr byte
+    de, b, e = ent_get(d.drv, clu, idx)
+    if e != E_OK { return e }
+    kmemzero(de, sizeof(DirEnt))
+    kmemcpy(&de.name[0], name, len)
+    de.size = ulong(flags & F_MASK) << 16
+    de.mtime = now()
+    e = ent_put(b, clu)
+    if e != E_OK { return e }
+    node_fill(n, de, d.drv, clu, idx)
+    d.mtime = now()
+    return node_store(&d)
+}
+
+fn fs_mkdir(path: ptr byte): uint {
+    var n: Node
+    return dir_create(path, F_DIR, &n)
+}
+
+// Deletion: RDONLY is not deleted, a directory only if empty. First the entry is
+// zeroed, then its clusters are freed.
+fn fs_delete(path: ptr byte): uint {
+    var d, t: Node
+    var name: ptr byte
+    var len, e: uint
+    e, name, len = path_walk(path, &d, 1)
+    if e != E_OK { return e }
+    var v: ptr Vol
+    v, e = vol_rw(d.drv)
+    if e != E_OK { return e }
+    var clu, idx: uint
+    clu, idx, e = dir_find(&d, name, len)
+    if e != E_OK { return e }
+    if d.flags & F_RDONLY != 0 { return E_RDONLY }
+    if ent_busy(d.drv, clu, idx) != 0 { return E_BUSY }
+    e = node_load(&t, d.drv, clu, idx)
+    if e != E_OK { return e }
+    if t.flags & F_RDONLY != 0 { return E_RDONLY }
+    if t.flags & F_DIR != 0 {
+        _, _, e = dir_find(&t, 0, 0)
+        if e == E_OK { return E_NOTEMPTY }
+        if e != E_NOENT { return e }
+    }
+    var de: ptr DirEnt
+    var b: ptr byte
+    de, b, e = ent_get(d.drv, clu, idx)
+    if e != E_OK { return e }
+    kmemzero(de, sizeof(DirEnt))
+    e = ent_put(b, clu)
+    if e != E_OK { return e }
+    e = node_release(v, &t.addr[0], nclus(&t), 0)
+    if e != E_OK { return e }
+    d.mtime = now()
+    return node_store(&d)
+}
+
+// Renaming and moving within a volume. On a move the entry is first
+// written to the new place, then the old one is zeroed. A directory cannot be moved
+// into its own subdirectory: checked along the destination path chain.
+fn fs_rename(from: ptr byte, to: ptr byte): uint {
+    var sd, dd: Node
+    var sn, dn: ptr byte
+    var sl, dl, e: uint
+    e, sn, sl = path_walk(from, &sd, 1)
+    if e != E_OK { return e }
+    var sclu, sidx: uint
+    sclu, sidx, e = dir_find(&sd, sn, sl)
+    if e != E_OK { return e }
+    if ent_busy(sd.drv, sclu, sidx) != 0 { return E_BUSY }
+    e, dn, dl = path_walk(to, &dd, 1)
+    if e != E_OK { return e }
+    if dd.drv != sd.drv { return E_XDEV }
+    if sd.flags & F_RDONLY != 0 || dd.flags & F_RDONLY != 0 { return E_RDONLY }
+    var v: ptr Vol
+    v, e = vol_rw(dd.drv)
+    if e != E_OK { return e }
+    if chain_has(sclu, sidx) { return E_LOOP }
+    var tclu, tidx: uint
+    tclu, tidx, e = dir_find(&dd, dn, dl)
+    var se, de: ptr DirEnt
+    var sb, db: ptr byte
+    if e == E_OK && tclu == sclu && tidx == sidx {
+        // new names the same object: the name differs only in letter case (or is the same)
+        se, sb, e = ent_get(sd.drv, sclu, sidx)
+        if e != E_OK { return e }
+        if name_same(&se.name[0], dn, dl) != 0 { return E_OK }
+        kmemzero(&se.name[0], 32)
+        kmemcpy(&se.name[0], dn, dl)
+        e = ent_put(sb, sclu)
+        if e != E_OK { return e }
+        sd.mtime = now()
+        return node_store(&sd)
+    }
+    if e == E_OK { return E_EXISTS }
+    if e != E_NOENT { return e }
+    if dd.eclu == sd.eclu && dd.eidx == sd.eidx {
+        se, sb, e = ent_get(sd.drv, sclu, sidx)     // the same directory: only NAME
+        if e != E_OK { return e }
+        kmemzero(&se.name[0], 32)
+        kmemcpy(&se.name[0], dn, dl)
+        e = ent_put(sb, sclu)
+        if e != E_OK { return e }
+    } else {
+        var clu, idx: uint
+        clu, idx, e = dir_slot(v, &dd)
+        if e != E_OK { return e }
+        se, sb, e = ent_get(sd.drv, sclu, sidx)
+        if e != E_OK { return e }
+        de, db, e = ent_get(dd.drv, clu, idx)
+        if e != E_OK { return e }
+        kmemcpy(ptr byte(de), ptr byte(se), sizeof(DirEnt))
+        kmemzero(&de.name[0], 32)
+        kmemcpy(&de.name[0], dn, dl)
+        e = ent_put(db, clu)
+        if e != E_OK { return e }
+        se, sb, e = ent_get(sd.drv, sclu, sidx)
+        if e != E_OK { return e }
+        kmemzero(se, sizeof(DirEnt))
+        e = ent_put(sb, sclu)
+        if e != E_OK { return e }
+        dd.mtime = now()
+        e = node_store(&dd)
+        if e != E_OK { return e }
+    }
+    sd.mtime = now()
+    return node_store(&sd)
+}
+
+// The next occupied directory entry of one opened by fs_open. E_NOENT - no more entries.
+fn fs_readdir(f: ptr File, out: ptr DirEnt): uint {
+    if f.n.flags & F_DIR == 0 { return E_NOTDIR }
+    loop {
+        var e, got: uint
+        e, got = fs_read(f, ptr byte(out), sizeof(DirEnt))
+        if e != E_OK { return e }
+        if got != sizeof(DirEnt) { return E_NOENT }
+        if out.name[0] != 0 { return E_OK }
+    }
+}

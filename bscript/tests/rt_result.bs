@@ -1,0 +1,2 @@
+fn bad(): int { return "str" }
+println(bad())

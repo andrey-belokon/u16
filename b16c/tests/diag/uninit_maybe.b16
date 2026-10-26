@@ -1,0 +1,34 @@
+// b16c-flags: -Wmaybe-uninit
+// Same as uninit.b16, with the -Wmaybe-uninit key.
+fn never(): int {
+    var a: int
+    return a                          // on no path: always a warning
+}
+fn cond(deep: uint): uint {
+    var t: uint
+    if deep != 0 { t = 5 }
+    if deep != 0 { return t }         // the conditions are consistent: the read is safe, but the analysis does not see it
+    return 0
+}
+fn loopy(n: uint): uint {
+    var prev: uint
+    var i: uint = 0
+    var r: uint = 0
+    while i < n {
+        if i != 0 { r += prev }       // prev was assigned on the previous loop iteration
+        prev = i
+        i++
+    }
+    return r
+}
+fn shortc(a: uint): uint {
+    var x: uint
+    if a != 0 && (x = a) != 0 { return x }
+    return 0
+}
+fn nowhere(n: uint): uint {
+    var k: uint
+    if n != 0 { return n }
+    return k + 1                      // on no path, although there is a branch above
+}
+fn main() { never(); cond(1); loopy(3); shortc(2); nowhere(0) }

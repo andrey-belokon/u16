@@ -1,0 +1,37 @@
+// Garbage collection: many temporary objects, live data is preserved
+var keep = []
+var i = 0
+while i < 2000 {
+    var s = "item " + str(i)
+    var tmp = [s, s + "!", {"k": s}]
+    if i % 100 == 0 { keep.push(tmp) }
+    i++
+}
+println(keep.len())
+println(keep[19][2]["k"])
+var words = "the quick brown fox jumps over the lazy dog ".repeat(20).split(" ")
+println(words.len())
+var counts = {}
+for w in words {
+    if w == "" { continue }
+    counts[w] = (counts[w] ?? 0) + 1
+}
+println($"{|counts["the"]|} {|counts["fox"]|} {|counts.len()|}")
+var acc = ""
+i = 0
+while i < 300 { acc += str(i % 10); i++ }
+println(acc.len())
+println(acc.slice(290))
+fn tree(d: int): array {
+    if d == 0 { return [] }
+    return [tree(d - 1), tree(d - 1)]
+}
+fn count(t: array): int {
+    var n = 1
+    for c in t { n += count(c) }
+    return n
+}
+var tr = tree(7)
+i = 0
+while i < 500 { var junk = ["x".repeat(20)]; i++ }
+println(count(tr))

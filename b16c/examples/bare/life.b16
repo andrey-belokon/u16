@@ -1,0 +1,147 @@
+// test: bare-only (screen snapshot)
+// test: steps 2000000
+// life.b16 - the Game of Life on a torus: two-dimensional arrays, pointers to arrays,
+// signed offsets (char), the screen's coordinate mode.
+// Run: cpu16 --screen life.bin
+include "../../lib/console.b16"
+include "../../lib/math.b16"
+
+const W = 32                        // a power of two: wrap-around at the edge via & (W-1)
+const H = 16
+const GENS = 30
+
+var field_a, field_b, field_c: [H][W]byte
+var prv: ptr [H][W]byte = &field_a  // previous generation
+var cur: ptr [H][W]byte = &field_b  // current generation
+var nxt: ptr [H][W]byte = &field_c  // next
+
+// Offsets of the eight neighbours: signed bytes.
+var dx: [8]char = {-1, 0, 1, -1, 1, -1, 0, 1}
+var dy: [8]char = {-1, -1, -1, 0, 0, 1, 1, 1}
+
+fn neighbours(x, y: uint): uint {
+    var n: uint = 0
+    var k: uint = 0
+    while k < 8 {
+        var nx = uint(int(x) + int(dx[k])) & (W - 1)
+        var ny = uint(int(y) + int(dy[k]) + H) % H
+        n += (*cur)[ny][nx]
+        k++
+    }
+    return n
+}
+
+// One generation: the results are the number of live cells and a flag for change.
+// A non-leaf function (calls neighbours) with eight variables: all of R4..R11
+// are taken, temporary values are left with R0..R3.
+fn step(): uint, uint {
+    var alive: uint = 0
+    var changed: uint = 0
+    var changed_prv: uint = 0
+    var y: uint = 0
+    while y < H {
+        var x: uint = 0
+        while x < W {
+            var n = neighbours(x, y)
+            var c = (*cur)[y][x]
+            var v: byte = 0
+            if n == 3 || c != 0 && n == 2 { v = 1; alive++ }
+            (*nxt)[y][x] = v
+            if v != c { changed = 1 }
+            if v != (*prv)[y][x] { changed_prv = 1 }
+            x++
+        }
+        y++
+    }
+    var t = prv; prv = cur; cur = nxt; nxt = t          // swapping buffers is swapping pointers
+    if !changed_prv { changed = 0 }
+    return alive, changed 
+}
+
+fn put(x, y: uint, pattern: ptr byte) {      // pattern: rows separated by '/', '#' is a live cell
+    var x0 = x
+    while *pattern != 0 {
+        var c = *pattern++
+        if c == '/' { y++; x = x0; continue }
+        if c == '#' { (*cur)[y][x] = 1 }
+        x++
+    }
+}
+
+fn fill_random() {
+    var y: uint = 0
+    var x: uint = 0
+    while y < H {
+    	x = 0
+        while x < W {
+        	if rand() & 7 == 0 { (*cur)[y][x] = 1 }
+        	else { (*cur)[y][x] = 0 }
+            x++
+        }
+        y++
+    }
+}
+
+fn draw(gen, alive: uint) {
+    setattr(attr(GREEN, BLACK))
+    var y: uint = 0
+    while y < H {
+        gotoxy(2, byte(y) + 1)
+        var x: uint = 0
+        while x < W {
+            if (*cur)[y][x] != 0 { putc('█') } else { putc('·') }
+            x++
+        }
+        y++
+    }
+    setattr(attr(WHITE, BLACK))
+    gotoxy(2, H + 2)
+    puts("generation "); putu(gen); puts(", alive "); putu(alive); puts("  ")
+}
+
+var TIMER   at $FF29: byte
+var VEC     at $FF00: [16]ptr interrupt fn()
+
+var ticks: uint
+
+interrupt fn on_tick() { ticks++ }
+
+fn main() {
+    VEC[0] = on_tick            // first the vector,
+    TIMER = 1                   // then the timer,
+    ei()                        // then STI
+    put(1, 1, ".#/..#/###")                  // glider
+    put(20, 3, "###")                        // blinker
+    put(12, 9, ".##/##/.#")                  // R-pentomino
+    var alive: uint = 0
+    var changed: uint = 0
+    var delay: uint = 0
+    var g: uint = 1
+    setmode(CTRL_CURSOR)                     // coordinate mode for the picture
+    cls()
+	draw(g, alive)
+    gotoxy(2, H + 3)
+    puts("Press any key for restart");
+	srand(ticks)
+    loop {
+        alive, changed = step()
+        g++
+	    draw(g, alive)
+	    if !changed { 
+	      if ++delay > 20 {
+	      	srand(ticks)
+	      	fill_random()
+	      	delay = 0
+	      	g = 1
+	      }
+	    }
+	    if getc() {
+	      	srand(ticks)
+	      	fill_random()
+	      	delay = 0
+	      	g = 1
+	    }
+    }
+    setmode(CTRL_TTY | CTRL_CURSOR)
+    gotoxy(0, H + 4)
+}

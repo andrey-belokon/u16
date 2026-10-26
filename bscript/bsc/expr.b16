@@ -1,0 +1,663 @@
+// expr.b16 - expressions (the specification, sect. 8): parsing with code generation and constant folding.
+//
+// Every parsing function returns a descriptor (k, a, b, c):
+//   K_VAL       the value is already on the stack
+//   K_INT a     an int constant; K_BOOL a; K_NULL; K_STRC a = address of the bytes, b = length
+//   K_LOC a     a local variable, b - an annotation (the code has not been emitted yet)
+//   K_GLB a     a global variable, b - an annotation
+//   K_IDX       a container and an index on the stack, waiting for GETIDX or SETIDX
+//   K_CALL a    the call is emitted, a - the position of the mode byte, b - the number of results (255 - unknown)
+//   K_DISC      the name _ (only a target of multiple assignment)
+const K_VAL = 0
+const K_INT = 1
+const K_BOOL = 2
+const K_NULL = 3
+const K_STRC = 4
+const K_LOC = 5
+const K_GLB = 6
+const K_IDX = 7
+const K_CALL = 8
+const K_DISC = 9
+
+var dk, da, db, dc: uint         // descriptor of the parse result
+var nobrace: uint               // the if/while/for/switch condition: { begins the block
+var in_fn: uint                 // 1 - the body of a declared function, 0 - top-level code
+
+fn is_const(k: uint): uint { return uint(k >= K_INT && k <= K_STRC) }
+
+fn expect(t: uint, what: ptr byte) {
+    if tok != t { err2("expected ", what) }
+    next()
+}
+
+// ---- local names ----------------------------------------------------------------------------
+const L_VAR = 1
+const L_CONST = 2
+struct Loc {
+    name: uint
+    nlen: byte
+    kind: byte
+    ty: byte
+    depth: byte
+    a: uint
+    b: uint
+}
+const LOCMAX = 96
+var locs: [LOCMAX]Loc
+var nloc: uint
+var sdepth: uint                // depth of blocks in the function
+var nslot: uint                 // occupied slots
+var maxslot: uint
+
+fn lfind(s: ptr byte, n: uint): uint {
+    var k = nloc
+    while k > 0 {
+        var p = &locs[k - 1]
+        if uint(p.nlen) == n && memeq(&npool[p.name], s, n) != 0 { return k }
+        k--
+    }
+    return 0
+}
+
+fn new_slot(): uint {
+    if nslot >= 250 { err("too many local variables") }
+    nslot++
+    if nslot > maxslot { maxslot = nslot }
+    return nslot - 1
+}
+
+fn check_name(s: ptr byte, n: uint) {
+    if n >= 2 && s[0] == '_' && s[1] == '_' { err("names starting with __ are reserved") }
+    if n == 1 && s[0] == '_' { err("_ cannot be declared") }
+    if ns_lookup(s, n) != 0 || global_builtin(s, n) != 0 { err2("reserved name: ", s) }
+    if n == 4 && memeq(s, "enum", 4) != 0 ||
+       n == 6 && (memeq(s, "record", 6) != 0 || memeq(s, "static", 6) != 0) ||
+       n == 5 && memeq(s, "defer", 5) != 0 { err2("reserved name: ", s) }
+}
+
+fn ladd(s: ptr byte, n: uint, kind: uint): ptr Loc {
+    var k = nloc
+    while k > 0 {
+        var q = &locs[k - 1]
+        if uint(q.depth) != sdepth { break }
+        if uint(q.nlen) == n && memeq(&npool[q.name], s, n) != 0 { err2("redeclared: ", s) }
+        k--
+    }
+    check_name(s, n)
+    if nloc >= LOCMAX { err("too many local names") }
+    var p = &locs[nloc]
+    p.name = name_copy(s, n)
+    p.nlen = byte(n)
+    p.kind = byte(kind)
+    p.depth = byte(sdepth)
+    p.ty = 0
+    p.a = 0
+    p.b = 0
+    nloc++
+    return p
+}
+
+var scope_slot: [64]uint
+var scope_nused: [64]uint
+
+fn scope_enter() {
+    if sdepth >= 33 { err("blocks nested too deep") }
+    scope_slot[sdepth] = nslot
+    scope_nused[sdepth] = nused
+    sdepth++
+}
+
+fn scope_leave() {
+    sdepth--
+    while nloc > 0 && uint(locs[nloc - 1].depth) > sdepth { nloc-- }
+    nslot = scope_slot[sdepth]
+    nused = scope_nused[sdepth]
+}
+
+// ---- pushing a value onto the stack ---------------------------------------------------------------------
+fn emit_int(v: uint) {
+    if int(v) >= -128 && int(v) <= 127 { op1(OP_INT8, v & $FF) } else { op2w(OP_INT16, v) }
+}
+
+fn chk_nres1(k: uint, b: uint) {
+    if k == K_CALL && b != 255 && b != 1 {
+        if b == 0 { err("function has no result") }
+        err("function returns several results")
+    }
+}
+
+fn val(k: uint, a: uint, b: uint, _c: uint) {
+    if k == K_VAL { return }
+    if k == K_INT { emit_int(a); return }
+    if k == K_BOOL { if a != 0 { op(OP_TRUE) } else { op(OP_FALSE) }; return }
+    if k == K_NULL { op(OP_NULL); return }
+    if k == K_STRC { op2w(OP_STR, kintern(ptr byte(a), b)); return }
+    if k == K_LOC { op1(OP_LDL, a); return }
+    if k == K_GLB { op2w(OP_LDG, a); return }
+    if k == K_IDX { op(OP_GETIDX); return }
+    if k == K_CALL { chk_nres1(k, b); return }
+    err("_ used as a value")
+}
+
+fn expr_val() {
+    var k, a, b, c: uint
+    expr(); k = dk; a = da; b = db; c = dc
+    val(k, a, b, c)
+}
+
+// ---- constant folding ---------------------------------------------------------------------------
+fn str_cmp(a: ptr byte, la: uint, b: ptr byte, lb: uint): int {
+    var n = la
+    if lb < n { n = lb }
+    var i: uint = 0
+    while i < n {
+        if a[i] != b[i] { if a[i] < b[i] { return -1 }; return 1 }
+        i++
+    }
+    if la < lb { return -1 }
+    if la > lb { return 1 }
+    return 0
+}
+
+// The folding result: k = $FF - cannot be folded.
+fn fold(o: uint, k1: uint, a1: uint, b1: uint, k2: uint, a2: uint, b2: uint) {
+    if o == OP_EQ || o == OP_NE {
+        var eq: uint = 0
+        if k1 == k2 {
+            if k1 == K_NULL { eq = 1 }
+            else if k1 == K_STRC { eq = uint(b1 == b2 && memeq(ptr byte(a1), ptr byte(a2), b1) != 0) }
+            else { eq = uint(a1 == a2) }
+        }
+        if o == OP_NE { eq ^= 1 }
+        { dk = K_BOOL; da = eq; db = 0; dc = 0; return }
+    }
+    if k1 == K_STRC && k2 == K_STRC {
+        if o == OP_ADD {
+            if b1 + b2 > 32767 { err("string too long") }
+            if a1 + b1 == a2 { { dk = K_STRC; da = a1; db = b1 + b2; dc = 0; return } }
+            var p = sput(ptr byte(a1), b1)
+            ign = uint(sput(ptr byte(a2), b2))
+            { dk = K_STRC; da = uint(p); db = b1 + b2; dc = 0; return }
+        }
+        if o >= OP_LT && o <= OP_GE {
+            var r = str_cmp(ptr byte(a1), b1, ptr byte(a2), b2)
+            { dk = K_BOOL; da = cmp_res(o, r); db = 0; dc = 0; return }
+        }
+        { dk = $FF; da = 0; db = 0; dc = 0; return }
+    }
+    if k1 != K_INT || k2 != K_INT { { dk = $FF; da = 0; db = 0; dc = 0; return } }
+    var x: int = int(a1)
+    var y: int = int(a2)
+    if o == OP_ADD { { dk = K_INT; da = a1 + a2; db = 0; dc = 0; return } }
+    if o == OP_SUB { { dk = K_INT; da = a1 - a2; db = 0; dc = 0; return } }
+    if o == OP_MUL { { dk = K_INT; da = a1 * a2; db = 0; dc = 0; return } }
+    if o == OP_DIV || o == OP_MOD {
+        if y == 0 { { dk = $FF; da = 0; db = 0; dc = 0; return } }
+        if a1 == $8000 && y == -1 { if o == OP_DIV { { dk = K_INT; da = $8000; db = 0; dc = 0; return } }; { dk = K_INT; da = 0; db = 0; dc = 0; return } }
+        if o == OP_DIV { { dk = K_INT; da = uint(x / y); db = 0; dc = 0; return } }
+        { dk = K_INT; da = uint(x % y); db = 0; dc = 0; return }
+    }
+    if o == OP_AND { { dk = K_INT; da = a1 & a2; db = 0; dc = 0; return } }
+    if o == OP_OR { { dk = K_INT; da = a1 | a2; db = 0; dc = 0; return } }
+    if o == OP_XOR { { dk = K_INT; da = a1 ^ a2; db = 0; dc = 0; return } }
+    if o == OP_SHL || o == OP_SHR || o == OP_USHR {
+        if y < 0 { { dk = $FF; da = 0; db = 0; dc = 0; return } }
+        if a2 >= 16 {
+            if o == OP_SHR && x < 0 { { dk = K_INT; da = $FFFF; db = 0; dc = 0; return } }
+            { dk = K_INT; da = 0; db = 0; dc = 0; return }
+        }
+        if o == OP_SHL { { dk = K_INT; da = a1 << a2; db = 0; dc = 0; return } }
+        if o == OP_SHR { { dk = K_INT; da = uint(x >> a2); db = 0; dc = 0; return } }
+        { dk = K_INT; da = a1 >> a2; db = 0; dc = 0; return }
+    }
+    if o >= OP_LT && o <= OP_GE {
+        var r: int = 0
+        if x < y { r = -1 } else if x > y { r = 1 }
+        { dk = K_BOOL; da = cmp_res(o, r); db = 0; dc = 0; return }
+    }
+    { dk = $FF; da = 0; db = 0; dc = 0; return }
+}
+
+fn cmp_res(o: uint, r: int): uint {
+    if o == OP_LT { return uint(r < 0) }
+    if o == OP_LE { return uint(r <= 0) }
+    if o == OP_GT { return uint(r > 0) }
+    return uint(r >= 0)
+}
+
+// ---- operation levels --------------------------------------------------------------------------
+fn level_op(lv: uint, t: uint): uint {
+    if lv == 1 {
+        if t == T_STAR { return OP_MUL }
+        if t == T_SLASH { return OP_DIV }
+        if t == T_PCT { return OP_MOD }
+    } else if lv == 2 {
+        if t == T_PLUS { return OP_ADD }
+        if t == T_MINUS { return OP_SUB }
+    } else if lv == 3 {
+        if t == T_SHL { return OP_SHL }
+        if t == T_SHR { return OP_SHR }
+        if t == T_USHR { return OP_USHR }
+    } else if lv == 4 {
+        if t == T_AMP { return OP_AND }
+    } else if lv == 5 {
+        if t == T_CARET { return OP_XOR }
+    } else if lv == 6 {
+        if t == T_BAR { return OP_OR }
+    } else if lv == 7 {
+        if t == T_EQ { return OP_EQ }
+        if t == T_NE { return OP_NE }
+        if t == T_LT { return OP_LT }
+        if t == T_LE { return OP_LE }
+        if t == T_GT { return OP_GT }
+        if t == T_GE { return OP_GE }
+        if t == T_IN { return OP_IN }
+    }
+    return 0
+}
+
+// A binary operation: the left operand has been parsed (k1, a1, b1, c1), the current token is the operator.
+fn binary(o: uint, lv: uint, k1: uint, a1: uint, b1: uint, c1: uint) {
+    next()
+    var konst = is_const(k1)
+    if konst != 0 { save_code() }
+    val(k1, a1, b1, c1)
+    var k2, a2, b2, c2: uint
+    binlevel(lv - 1); k2 = dk; a2 = da; b2 = db; c2 = dc
+    if konst != 0 && is_const(k2) != 0 && o != OP_IN {
+        var k, a, b, c: uint
+        fold(o, k1, a1, b1, k2, a2, b2); k = dk; a = da; b = db; c = dc
+        if k != $FF { restore_code(); { dk = k; da = a; db = b; dc = c; return } }
+    }
+    val(k2, a2, b2, c2)
+    op(o)
+    { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+}
+
+// the precedence level of operator t (1 - * / %, ..., 7 - comparisons) or 0
+fn op_level(t: uint): uint {
+    var lv: uint = 1
+    while lv <= 7 {
+        if level_op(lv, t) != 0 { return lv }
+        lv++
+    }
+    return 0
+}
+
+// Binary operations of levels 1..maxlv by precedence climbing: recursion only into the right
+// operand of higher precedence, so the stack depth does not grow by 8 calls per operand.
+fn binlevel(maxlv: uint) {
+    var k, a, b, c: uint
+    unary(); k = dk; a = da; b = db; c = dc
+    loop {
+        var lv = op_level(tok)
+        if lv == 0 || lv > maxlv { break }
+        binary(level_op(lv, tok), lv, k, a, b, c); k = dk; a = da; b = db; c = dc
+        if lv == 7 && op_level(tok) == 7 { err("comparisons cannot be chained") }
+    }
+    dk = k; da = a; db = b; dc = c
+}
+
+fn and_or(lv: uint) {
+    var k, a, b, c: uint
+    if lv == 8 { binlevel(7) } else { and_or(8) }
+    k = dk; a = da; b = db; c = dc
+    var t: uint = T_ANDAND
+    var j: uint = OP_JFK
+    if lv == 9 { t = T_OROR; j = OP_JTK }
+    while tok == t {
+        next()
+        val(k, a, b, c)
+        var p = jump(j)
+        if lv == 8 { binlevel(7) } else { and_or(8) }
+    k = dk; a = da; b = db; c = dc
+        val(k, a, b, c)
+        op(OP_CHKB)
+        patch_here(p)
+        k = K_VAL
+    }
+    { dk = k; da = a; db = b; dc = c; return }
+}
+
+// Stack reserve: parsing is recursive (about 300 bytes per bracket level), and an overflow would corrupt
+// the compiler's data. The limit is above the process argument block (PIB, args_end).
+var PIB_ARGS_END at $0012: uint
+var stack_limit: uint
+
+fn stack_check() {
+    var probe: uint = 0
+    if uint(&probe) < stack_limit { err("expression or block nested too deep") }
+}
+
+const EDEPTH_MAX = 24
+var edepth: uint                // nesting of expressions (brackets, arguments, literals)
+
+fn expr() {
+    stack_check()
+    if edepth >= EDEPTH_MAX { err("expression nested too deep") }
+    edepth++
+    var k, a, b, c: uint
+    and_or(9); k = dk; a = da; b = db; c = dc
+    edepth--
+    if tok == T_QQ {
+        next()
+        val(k, a, b, c)
+        var p = jump(OP_JNN)
+        expr_val()
+        patch_here(p)
+        { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+    }
+    { dk = k; da = a; db = b; dc = c; return }
+}
+
+// ---- unary operations ---------------------------------------------------------------------------
+fn unary() {
+    var t = tok
+    if t == T_MINUS || t == T_PLUS || t == T_TILDE || t == T_BANG {
+        next()
+        if t == T_MINUS && tok == T_NUM && tbig != 0 {
+            next()
+            { postfix_tail(K_INT, $8000, 0, 0); return }
+        }
+        var k, a, b, c: uint
+        unary(); k = dk; a = da; b = db; c = dc
+        if t == T_BANG {
+            if k == K_BOOL { { dk = K_BOOL; da = a ^ 1; db = 0; dc = 0; return } }
+            val(k, a, b, c); op(OP_NOT)
+        } else if k == K_INT {
+            if t == T_MINUS { { dk = K_INT; da = 0 - a; db = 0; dc = 0; return } }
+            if t == T_TILDE { { dk = K_INT; da = ~a; db = 0; dc = 0; return } }
+            { dk = K_INT; da = a; db = 0; dc = 0; return }
+        } else {
+            val(k, a, b, c)
+            if t == T_MINUS { op(OP_NEG) } else if t == T_TILDE { op(OP_BNOT) } else { op(OP_POS) }
+        }
+        { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+    }
+    { postfix(); return }
+}
+
+// ---- calls ---------------------------------------------------------------------------------------
+// Arguments in brackets: the current token is (. The result is the number of arguments.
+fn args(): uint {
+    var nb = nobrace
+    nobrace = 0
+    next()
+    var n: uint = 0
+    if tok != T_RPAREN {
+        loop {
+            expr_val()
+            n++
+            if tok != T_COMMA { break }
+            next()
+        }
+    }
+    expect(T_RPAREN, ")")
+    nobrace = nb
+    return n
+}
+
+fn call_mode(): uint {
+    emit(MODE_EXACT | 1)
+    return cpos - 1
+}
+
+// A call of a built-in function: k is the number in bi_tab + 1.
+fn call_builtin(k: uint) {
+    var bi = &bi_tab[k - 1]
+    var line0 = tline
+    var col0 = tcol
+    var n = args()
+    if n < uint(bi.amin) || n > uint(bi.amax) {
+        err_at(tfile, line0, col0, "wrong number of arguments for ", bi.name)
+    }
+    op(OP_CALLB)
+    emit(uint(bi.id))
+    emit(n)
+    var m = call_mode()
+    { dk = K_CALL; da = m; db = uint(bi.nres); dc = 0; return }
+}
+
+fn call_user(s: ptr Sym) {
+    var f = s.a
+    var line0 = tline
+    var col0 = tcol
+    var n = args()
+    if n != uint(fn_np[f]) {
+        var nm: [64]byte
+        memcpy(&nm[0], &npool[s.name], uint(s.nlen)); nm[s.nlen] = 0
+        err_at(tfile, line0, col0, "wrong number of arguments for ", &nm[0])
+    }
+    op2w(OP_CALL, f)
+    var m = call_mode()
+    { dk = K_CALL; da = m; db = uint(fn_nr[f]); dc = 0; return }
+}
+
+// ---- primary expressions ------------------------------------------------------------------------
+// constant descriptor: a string is kept as a pool number and copied into the scratch area
+fn const_use(k: uint, a: uint, b: uint) {
+    if k == K_STRC { a = uint(kfetch(a)) }
+    dk = k; da = a; db = b; dc = 0
+}
+
+fn name_term() {
+    var nm: [64]byte
+    var n = tlen
+    memcpy(&nm[0], &tbuf[0], n + 1)
+    var s = &nm[0]
+    var nl0 = tline
+    var nc0 = tcol
+    var nf0 = tfile
+    next()
+    if n == 1 && s[0] == '_' { { dk = K_DISC; da = 0; db = 0; dc = 0; return } }
+    // locals
+    var k = lfind(s, n)
+    if k != 0 {
+        if tok == T_LPAREN { err_at(nf0, nl0, nc0, "not a function: ", s) }
+        var p = &locs[k - 1]
+        if uint(p.kind) == L_CONST { const_use(uint(p.ty), p.a, p.b); return }
+        { dk = K_LOC; da = p.a; db = uint(p.ty); dc = 0; return }
+    }
+    // namespaces
+    var ns = ns_lookup(s, n)
+    if ns != 0 && (ns != NS_STR || tok != T_LPAREN) {
+        if tok != T_DOT { err_at(nf0, nl0, nc0, "namespace used as a value: ", s) }
+        next()
+        if tok != T_IDENT { err("name expected after .") }
+        var mn: [64]byte
+        var ml = tlen
+        memcpy(&mn[0], &tbuf[0], ml + 1)
+        next()
+        if tok != T_LPAREN { { ns_const(ns, &mn[0], ml); return } }
+        var b = bi_lookup(ns, &mn[0], ml)
+        if b == 0 { err2("unknown function: ", &mn[0]) }
+        { call_builtin(b); return }
+    }
+    // global built-ins
+    var b = global_builtin(s, n)
+    if b != 0 {
+        if tok != T_LPAREN { err_at(nf0, nl0, nc0, "builtin function used as a value: ", s) }
+        { call_builtin(b); return }
+    }
+    // args and global names
+    if n == 4 && memeq(s, "args", 4) != 0 {
+        if tok == T_LPAREN { err_at(nf0, nl0, nc0, "not a function: ", s) }
+        { dk = K_GLB; da = 0; db = TY_ARR; dc = 0; return }
+    }
+    k = gfind(s, n)
+    if k == 0 { err_at(nf0, nl0, nc0, "undefined: ", s) }
+    var g = &gsym[k - 1]
+    if uint(g.kind) == S_FN {
+        if tok != T_LPAREN { err_at(nf0, nl0, nc0, "functions are not values: ", s) }
+        { call_user(g); return }
+    }
+    if tok == T_LPAREN { err_at(nf0, nl0, nc0, "not a function: ", s) }
+    if in_fn == 0 && g.decl == 0 { err_at(nf0, nl0, nc0, "used before declaration: ", s) }
+    if uint(g.kind) == S_CONST { const_use(uint(g.ty), g.a, g.b); return }
+    { dk = K_GLB; da = g.a; db = uint(g.ty); dc = 0; return }
+}
+
+// A namespace constant: errors.X, proc.BREAK, proc.BADINSN.
+fn ns_const(ns: uint, s: ptr byte, n: uint) {
+    if ns == NS_ERRORS {
+        var k: uint = 0
+        while k < NERRC {
+            var e = &err_consts[k]
+            if strlen(e.name) == n && memeq(e.name, s, n) != 0 {
+                op1(OP_ERRC, e.code)
+                { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+            }
+            k++
+        }
+    }
+    if ns == NS_PROC {
+        if n == 5 && memeq(s, "BREAK", 5) != 0 { { dk = K_INT; da = $8001; db = 0; dc = 0; return } }
+        if n == 7 && memeq(s, "BADINSN", 7) != 0 { { dk = K_INT; da = $8008; db = 0; dc = 0; return } }
+    }
+    err2("unknown name: ", s)
+    { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+}
+
+// An interpolated string: the current token is the first part (T_ISTR).
+fn interp_str() {
+    var n: uint = 0
+    if tiend != 0 {
+        var p = sput(&tbuf[0], tlen)
+        var l = tlen
+        next()
+        { dk = K_STRC; da = uint(p); db = l; dc = 0; return }
+    }
+    loop {
+        if tlen > 0 {
+            op2w(OP_STR, kintern(&tbuf[0], tlen))
+            n++
+        }
+        if tiend != 0 { break }
+        next()
+        if tok == T_ISTR { err("empty substitution") }
+        expr_val()
+        n++
+        if tok != T_ISTR { err("expected |}") }
+    }
+    next()
+    if n > 255 { err("too many substitutions") }
+    op1(OP_CONCAT, n)
+    { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+}
+
+fn primary() {
+    var t = tok
+    if t == T_NUM {
+        if tbig != 0 { err("number too large") }
+        var v = tval
+        next()
+        { dk = K_INT; da = v; db = 0; dc = 0; return }
+    }
+    if t == T_STR {
+        var p = sput(&tbuf[0], tlen)
+        var l = tlen
+        next()
+        { dk = K_STRC; da = uint(p); db = l; dc = 0; return }
+    }
+    if t == T_ISTR { { interp_str(); return } }
+    if t == T_TRUE { next(); { dk = K_BOOL; da = 1; db = 0; dc = 0; return } }
+    if t == T_FALSE { next(); { dk = K_BOOL; da = 0; db = 0; dc = 0; return } }
+    if t == T_NULL { next(); { dk = K_NULL; da = 0; db = 0; dc = 0; return } }
+    if t == T_IDENT { { name_term(); return } }
+    if t == T_LPAREN {
+        var nb = nobrace
+        nobrace = 0
+        next()
+        var k, a, b, c: uint
+        expr(); k = dk; a = da; b = db; c = dc
+        expect(T_RPAREN, ")")
+        nobrace = nb
+        if k == K_LOC || k == K_GLB || k == K_IDX || k == K_CALL { val(k, a, b, c); k = K_VAL }
+        { dk = k; da = a; db = b; dc = c; return }
+    }
+    if t == T_LBRACK {
+        var nb = nobrace
+        nobrace = 0
+        next()
+        var n: uint = 0
+        while tok != T_RBRACK {
+            expr_val()
+            n++
+            if tok != T_COMMA { break }
+            next()
+        }
+        expect(T_RBRACK, "]")
+        nobrace = nb
+        op2w(OP_ARR, n)
+        { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+    }
+    if t == T_LBRACE {
+        if nobrace != 0 { err("map literal in a condition must be in parentheses") }
+        next()
+        var n: uint = 0
+        loop {
+            while tok == T_EOS { next() }
+            if tok == T_RBRACE { break }
+            expr_val()
+            expect(T_COLON, ":")
+            while tok == T_EOS { next() }
+            expr_val()
+            n++
+            while tok == T_EOS { next() }
+            if tok != T_COMMA { break }
+            next()
+        }
+        while tok == T_EOS { next() }
+        expect(T_RBRACE, "}")
+        op2w(OP_MAP, n)
+        { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+    }
+    err("expression expected")
+    { dk = K_VAL; da = 0; db = 0; dc = 0; return }
+}
+
+fn postfix() {
+    var k, a, b, c: uint
+    primary(); k = dk; a = da; b = db; c = dc
+    { postfix_tail(k, a, b, c); return }
+}
+
+fn postfix_tail(k: uint, a: uint, b: uint, c: uint) {
+    loop {
+        if tok == T_LBRACK {
+            val(k, a, b, c)
+            var nb = nobrace
+            nobrace = 0
+            next()
+            expr_val()
+            expect(T_RBRACK, "]")
+            nobrace = nb
+            k = K_IDX
+            continue
+        }
+        if tok == T_DOT {
+            next()
+            if tok != T_IDENT { err("method name expected") }
+            var m = method_lookup(&tbuf[0], tlen)
+            var mline = tline
+            var mcol = tcol
+            next()
+            if tok != T_LPAREN { err_at(tfile, mline, mcol, "values have no fields", 0) }
+            if m == 0 { err_at(tfile, mline, mcol, "unknown method", 0) }
+            val(k, a, b, c)
+            var n = args()
+            var ma = uint(method_args[m - 1])
+            if n < ma >> 4 || n > ma & 15 { err_at(tfile, mline, mcol, "wrong number of arguments for ", method_names[m - 1]) }
+            op(OP_CALLM)
+            emit(m - 1)
+            emit(n)
+            k = K_CALL
+            a = call_mode()
+            b = 255
+            continue
+        }
+        if tok == T_LPAREN { err("not a function") }
+        break
+    }
+    { dk = k; da = a; db = b; dc = c; return }
+}

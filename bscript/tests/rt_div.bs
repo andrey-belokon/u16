@@ -1,0 +1,2 @@
+var z = 0
+println(10 / z)

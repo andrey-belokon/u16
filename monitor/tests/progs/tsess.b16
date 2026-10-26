@@ -1,0 +1,276 @@
+// tsess.b16 - the sess script (shell): sessions - the calls SESS_INFO, SESS_NEW, SESS_SWITCH,
+// SESS_KILL, switching by Ctrl+] and Ctrl+[ in a computational loop and in a wait, a session's screen,
+// restarting waiting calls. The same program serves as the processes of other sessions (the role is argv[1]).
+// The keyboard is fed by the bench script tests/scripts/sess.scn.
+include "tlib.b16"
+include asm "tsess.asm"
+
+extern fn t_spin(n: uint): uint
+
+var CTRL at $FF22: byte
+var ATTR at $FF23: byte
+var COL  at $FF24: byte
+var ROW  at $FF25: byte
+var DATA at $FF20: byte
+var SCRD at $FF50: uint         // a cell: character | attribute << 8; the position goes to the next one
+
+
+var pi: ProcInfo
+var si: SysInfo
+
+fn sinfo(s: uint, k: uint): (uint, uint, uint, uint) {
+    var e, fl, n, num: uint
+    e, fl, n, num = sys_sess_info(s, k, &pi)
+    return e, fl, n, num
+}
+
+fn nfree(): uint {
+    var e, top, nf, x: uint
+    e, top, nf, x = sys_meminfo()
+    return nf
+}
+
+fn exists(path: ptr byte): uint {
+    var st: Stat
+    if sys_stat(path, &st) == OK { return 1 }
+    return 0
+}
+
+fn touch(path: ptr byte) {
+    var e, h: uint
+    e, h = sys_open(path, O_WRITE | O_CREATE | O_TRUNC, 0)
+    if e == OK { e = sys_close(h) }
+}
+
+var tv: [2]ulong                // exchange between sessions through a file: two numbers
+
+fn put_tv(path: ptr byte) {
+    var e, h, n: uint
+    e, h = sys_open(path, O_WRITE | O_CREATE | O_TRUNC, 0)
+    if e == OK { e, n = sys_write(h, &tv[0], 8); e = sys_close(h) }
+}
+
+fn get_tv(path: ptr byte) {
+    var e, h, n: uint
+    tv[0] = $FFFFFFFF
+    tv[1] = $FFFFFFFF
+    e, h = sys_open(path, O_READ, 0)
+    if e == OK { e, n = sys_read(h, &tv[0], 8); e = sys_close(h) }
+}
+
+fn cell(c: uint, r: uint): uint {
+    COL = byte(c)
+    ROW = byte(r)
+    return SCRD
+}
+
+fn ticks(): ulong {
+    var e: uint
+    var t: ulong
+    e, t = sys_ticks()
+    return t
+}
+
+// ---- session 0: the main process ------------------------------------------------------------------
+fn master(): int {
+    var e, fl, n, num, s, top, nf, x: uint
+    check(sys_sysinfo(&si) == OK && si.session == 0 && si.max_sess == MAXSESS && si.depth == 1, "sysinfo: session 0 of 4, chain 1")
+    e, top, nf, x = sys_meminfo()
+    e, fl, n, num = sinfo(SAME, 0)
+    check(e == OK && fl == SF_CUR && n == 1 && num == 0, "info: current session 0, one process")
+    check(pi.state == PS_RUN && streq(&pi.cmd[0], "A:/sys/shell.cx") != 0 && pi.top == top && pi.frames == top >> 13, "info: process - running, command line, memory")
+    e, fl, n, num = sys_sess_info(SAME, 0, ptr ProcInfo(0))
+    check(e == OK && n == 1 && num == 0, "info: without ProcInfo")
+    e, fl, n, num = sinfo(4, 0)
+    check(e == E_INVAL, "info: session 4 -> INVAL")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == E_NOENT, "info: unused session -> NOENT")
+    e, fl, n, num = sinfo(SAME, 1)
+    check(e == E_INVAL, "info: process beyond the chain -> INVAL")
+    check(sys_sess_switch(2) == E_NOENT, "switch: unused session -> NOENT")
+    check(sys_sess_kill(0, 2) == E_INVAL, "kill: bad flags -> INVAL")
+    check(sys_sess_kill(SAME, 0) == E_BUSY && sys_sess_kill(0, SK_FORCE) == E_BUSY, "kill: the only session -> BUSY")
+    e, s = sys_sess_new(ptr byte(0), 2)
+    check(e == E_INVAL, "new: bad flags -> INVAL")
+    var free0: uint = nfree()
+    e, s = sys_sess_new("A:/nope.cx", 0)
+    check(e == E_NOENT && nfree() == free0, "new: no program -> NOENT, nothing allocated")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == E_NOENT, "new: failed session is not created")
+
+    // a session's screen: a drawing in coordinate mode, a switch, a return
+    e = sys_chdir("A:/bin")
+    CTRL = 0
+    ATTR = $1E
+    COL = 5
+    ROW = 3
+    var m = "MASTER"
+    var i: uint = 0
+    while m[i] != 0 { DATA = m[i]; i++ }
+    COL = 10
+    ROW = 20
+    ATTR = $2F
+    CTRL = 2
+    e, s = sys_sess_new("A:/sys/shell.cx child", 0)      // session 1 will return here with SESS_SWITCH(0)
+    var c0: uint = CTRL
+    var a0: uint = ATTR
+    var x0: uint = COL
+    var y0: uint = ROW
+    var ok: uint = 1
+    i = 0
+    while m[i] != 0 { if cell(5 + i, 3) != $1E00 | m[i] { ok = 0 }; i++ }
+    CTRL = 3
+    ATTR = $07
+    COL = 0
+    ROW = 22
+    e = sys_chdir("A:/")
+    check(e == OK && s == 1, "new: session 1, switched to it and back")
+    check(c0 == 2 && a0 == $2F && x0 == 10 && y0 == 20, "switch: display mode, attribute and position restored")
+    check(ok != 0, "switch: screen contents restored")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == OK && fl == 0 && n == 1 && num == 1, "info: session 1 - not current, one process")
+    check(pi.state == PS_SUSP && streq(&pi.cmd[0], "A:/sys/shell.cx child") != 0, "info: frozen process and its command line")
+    check(exists("A:/tmp/sess1") != 0, "child ran in session 1")
+
+    // Ctrl+] in a computational loop: an exact frame
+    puts("SPIN\n")
+    var r: uint = t_spin(20000)
+    check(r == 0, "preempt: flags and registers survive the switch from a tick")
+    check(exists("A:/tmp/sess2") != 0, "Ctrl+]: session 1 ran during the loop")
+
+    // a wait in session 1 is restarted; SLEEP - for the remainder
+    puts("TO CHILD\n")
+    e = sys_sess_switch(1)                  // session 1 will return here with Ctrl+[ during SLEEP
+    var tm0: ulong = ticks()
+    check(e == OK, "switch: returns when the other session switches back")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == OK && pi.state == PS_SUSP, "info: session 1 frozen in SLEEP")
+    tv[0] = tm0                             // when session 0 got the processor
+    tv[1] = ticks() - tm0 + 2               // and how long it owned it
+    put_tv("A:/tmp/frozen")
+    e = sys_sess_switch(1)                  // session 1 will close: its root terminates
+    check(e == OK, "switch: returns after the other session closed")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == E_NOENT && nfree() == free0, "exit of a session root closes the session, frames freed")
+
+    // SESS_KILL
+    e, s = sys_sess_new("A:/sys/shell.cx child", SN_BACK)
+    e, fl, n, num = sinfo(SAME, 0)
+    check(e == OK && s == 1 && num == 0, "new SN_BACK: session 1 created, still in session 0")
+    check(sys_sess_kill(1, 0) == OK, "kill: session of one process")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == E_NOENT && nfree() == free0, "kill: session gone, frames freed")
+    e, s = sys_sess_new("A:/sys/shell.cx spawn", 0)       // the child of session 1 will return here
+    e, fl, n, num = sinfo(1, 0)
+    check(e == OK && n == 2 && pi.state == PS_WAIT && streq(&pi.cmd[0], "A:/sys/shell.cx spawn") != 0, "info: chain of two, root waits")
+    e, fl, n, num = sinfo(1, 1)
+    check(e == OK && pi.state == PS_SUSP && streq(&pi.cmd[0], "A:/sys/shell.cx grand") != 0, "info: top of the chain frozen")
+    check(sys_sess_kill(1, 0) == E_BUSY, "kill: several processes without SK_FORCE -> BUSY")
+    check(sys_sess_kill(1, SK_FORCE) == OK, "kill: SK_FORCE")
+    e, fl, n, num = sinfo(1, 0)
+    check(e == E_NOENT && nfree() == free0, "kill: all processes released")
+    e, s = sys_sess_new("A:/sys/shell.cx killme", 0)      // session 1 will terminate itself
+    e, fl, n, num = sinfo(1, 0)
+    check(e == E_NOENT && nfree() == free0, "kill: own session, back to session 0")
+
+    // the last session: the root of session 0 terminates, work continues in session 1
+    e, s = sys_sess_new("A:/sys/shell.cx last", SN_BACK)
+    check(e == OK && s == 1, "new: session for the end of the test")
+    return finish()
+}
+
+// ---- processes of other sessions ---------------------------------------------------------------------
+fn child(): int {
+    var e, fl, n, num, ev: uint
+    var c0: uint = CTRL         // before the first output
+    var a0: uint = ATTR
+    var x0: uint = COL
+    var y0: uint = ROW
+    var b0: uint = cell(5, 3)
+    COL = 0
+    ROW = 0
+    e, fl, n, num = sinfo(SAME, 0)
+    check(e == OK && fl == SF_CUR && n == 1 && num == 1 && pi.state == PS_RUN, "child: session 1 is current")
+    check(c0 == 3 && a0 == $07 && x0 == 0 && y0 == 0, "child: new session - teletype, $07, (0, 0)")
+    check(b0 == $0720, "child: new session - empty screen")
+    var cwd: [64]byte
+    e, n = sys_getcwd(&cwd[0], 64)
+    check(e == OK && streq(&cwd[0], "A:/bin") != 0, "child: current directory of the creator")
+    e, fl, n, num = sinfo(0, 0)
+    check(e == OK && fl == 0 && pi.state == PS_SUSP, "child: session 0 frozen")
+    touch("A:/tmp/sess1")
+    e = sys_sess_switch(0)                  // session 0 will return here on Ctrl+] in the loop
+    check(e == OK, "child: back from session 0")
+    touch("A:/tmp/sess2")
+    puts("CHILD BACK\n")
+    e, ev, fl = sys_con_getev(0)            // Ctrl+[ - to session 0; then the call again
+    check(e == OK && ev == $2D78, "getev: restarted, switch keys not delivered")
+    puts("SLEEP\n")
+    var t0: ulong = ticks()
+    e = sys_sleep(1000)                      // Ctrl+[ in the middle: session 0 returns here
+    var t: ulong = ticks() - t0
+    get_tv("A:/tmp/frozen")
+    var before: ulong = tv[0] - t0          // slept before the switch
+    var own: ulong = t - tv[1]              // its own sleep time: without session 0's time
+    check(e == OK && t >= 1000 && before >= 100 && before < 1000, "sleep: interrupted by the switch, full time slept")
+    check(own >= 1000 && own < 1000 + before / 2, "sleep: restarted for the rest of the time")
+    if own < 1000 || own >= 1000 + before / 2 || before < 100 {
+        puts("t ")
+        puthex(uint(t))
+        puts(" before ")
+        puthex(uint(before))
+        puts(" frozen ")
+        puthex(uint(tv[1]))
+        putnl()
+    }
+    if fails != 0 { puts("FAILED\n"); sys_shutdown() }
+    return 7
+}
+
+fn spawner(): int {
+    var e, c: uint
+    e, c = run("A:/sys/shell.cx grand")
+    puts("FAIL spawner: the child returned ")
+    puthex(e)
+    putnl()
+    return 0
+}
+
+fn grand(): int {
+    var e: uint = sys_sess_switch(0)
+    if e == OK { puts("FAIL grand: resumed after kill\n") }
+    return 0
+}
+
+fn killme(): int {
+    var e: uint = sys_sess_kill(SAME, 0)
+    puts("FAIL killme: kill returned\n")
+    puthex(e)
+    return 0
+}
+
+fn last(): int {
+    var e, fl, n, num: uint
+    e, fl, n, num = sinfo(SAME, 0)
+    check(e == OK && fl == SF_CUR && n == 1 && num == 1, "last: session 1 is current")
+    e, fl, n, num = sinfo(0, 0)
+    check(e == E_NOENT, "last: session 0 closed with its root")
+    check(sys_sysinfo(&si) == OK && si.session == 1, "last: SYSINFO session 1")
+    check(CTRL == 3 && ATTR == $07, "last: own screen")
+    check(sys_sess_kill(SAME, 0) == E_BUSY, "last: the only session -> BUSY")
+    if fails != 0 { puts("FAILED\n"); sys_shutdown() }
+    puts("LAST OK\n")
+    return 0
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    if argc < 2 { return master() }
+    var r = argv[1]
+    if streq(r, "child") != 0 { return child() }
+    if streq(r, "spawn") != 0 { return spawner() }
+    if streq(r, "grand") != 0 { return grand() }
+    if streq(r, "killme") != 0 { return killme() }
+    if streq(r, "last") != 0 { return last() }
+    puts("FAIL: unknown role\n")
+    return 1
+}

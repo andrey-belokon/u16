@@ -1,0 +1,5 @@
+var parts = []
+var i = 0
+while i < 400 { parts.push($"item {|i|}"); i++ }
+var s = str.join(parts, ",")
+println(s.len())

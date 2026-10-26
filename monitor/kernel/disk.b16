@@ -1,0 +1,55 @@
+// disk.b16 - the disk controller driver ("CPU16 Monitor: Kernel Internals", sect. 6.1).
+
+const DK_ACK = 0
+const DK_READ = 1
+const DK_WRITE = 2
+const DK_INFO = 3
+const DK_FLUSH = 4
+
+// The controller's INFO block ("The Machine", sect. 6.3).
+struct DiskInfo {
+    sectors: ulong
+    flags: byte
+    res: [11]byte
+    label: [16]byte
+}
+assert sizeof(DiskInfo) == 32, "INFO block"
+const DI_RO = 1
+
+fn disk_present(drv: uint): uint {
+    if drv > 7 { return 0 }
+    if DK_DRIVES & byte(1 << drv) == 0 { return 0 }
+    return 1
+}
+
+// A controller command with waiting for IRQ1 (uninterruptible). buf is an address in the kernel map.
+fn disk_io(cmd: uint, drv: uint, lba: ulong, buf: ptr, count: uint): uint {
+    if disk_present(drv) == 0 { return E_NODEV }
+    RES.dk_done = 0
+    DK_DISK = byte(drv)
+    DK_COUNT = byte(count)
+    DK_ADDR = uint(buf)
+    DK_LBA_LO = uint(lba)
+    DK_LBA_HI = uint(lba >> 16)
+    DK_CMD = byte(cmd)
+    while RES.dk_done == 0 {
+        wfi()
+        ei()
+        di()
+    }
+    var e: uint = DK_ERR
+    if e == 0 { return OK }
+    if e == 1 { return E_NODEV }
+    if e == 3 { return E_INVAL }
+    if e == 4 { return E_FAULT }
+    if e == 5 { return E_RDONLY }
+    return E_IO
+}
+
+fn disk_info(drv: uint, di: ptr DiskInfo): uint {
+    return disk_io(DK_INFO, drv, 0, di, 0)
+}
+
+fn disk_flush(drv: uint): uint {
+    return disk_io(DK_FLUSH, drv, 0, 0, 0)
+}

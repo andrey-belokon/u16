@@ -1,0 +1,74 @@
+// wc.b16 - files under the monitor: lines, words and bytes in files or in standard input.
+//
+//     wc [file ...]
+//
+// OPEN, READ in blocks of 512 bytes, CLOSE; a file error gives the message "wc: file: text" to the error
+// stream and exit code 1, like the shell utilities ("Shell", sect. 4.3, 6). Without arguments
+// standard input is read: from the console (ends with empty input, as with cat) or from a file (wc < f).
+// The counters are ulong: an FS16 file can be larger than 64 KB.
+include "sys.b16"                       // monitor calls and output: puts, putnl, putdec, puthex
+include "mon.b16"                       // how the program was started, and output of numbers and errors
+option max_top = $2000
+
+var buf: [512]byte
+var tl, tw, tb: ulong           // total over all files
+
+// A number with a field width of 8 (spaces on the left).
+fn putw(v: ulong) {
+    var digits: uint = 1
+    var t = v
+    while t >= 10 { t /= 10; digits++ }
+    while digits < 8 { putc(' '); digits++ }
+    putudec(v)
+}
+
+fn report(l, w, b: ulong, name: ptr byte) {
+    putw(l); putw(w); putw(b)
+    if name != 0 { putc(' '); puts(name) }
+    putnl()
+}
+
+// Counting by descriptor h; 1 - read error.
+fn count(h: uint, name: ptr byte): uint {
+    var l: ulong = 0            // local variables are not zeroed automatically
+    var w: ulong = 0
+    var b: ulong = 0
+    var inword: uint = 0
+    loop {
+        var e, n: uint
+        e, n = sys_read(h, &buf[0], 512)
+        if e != OK { fail("wc", name, e); return 1 }
+        if n == 0 { break }
+        b += n
+        var i: uint = 0
+        while i < n {
+            var c = buf[i]
+            if c == '\n' { l++ }
+            if c == ' ' || c == '\t' || c == '\n' || c == '\r' { inword = 0 }
+            else if inword == 0 { inword = 1; w++ }
+            i++
+        }
+    }
+    report(l, w, b, name)
+    tl += l; tw += w; tb += b
+    return 0
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    if on_monitor() == 0 { return 1 }    // there are no monitor calls on a bare machine
+    if argc < 2 { return int(count(STDIN, 0)) }
+    var bad: uint = 0
+    var i: uint = 1
+    while i < argc {
+        var e, h: uint
+        e, h = sys_open(argv[i], O_READ, 0)
+        if e != OK { fail("wc", argv[i], e); bad = 1 }
+        else {
+            bad |= count(h, argv[i])
+            e = sys_close(h)
+        }
+        i++
+    }
+    if argc > 2 { report(tl, tw, tb, "total") }
+    return int(bad)
+}

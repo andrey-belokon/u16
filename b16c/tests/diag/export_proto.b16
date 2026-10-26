@@ -1,0 +1,3 @@
+// An export function is defined in B16: a prototype without a definition is an error.
+export fn entry(x: int): int
+fn main() { }

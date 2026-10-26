@@ -1,0 +1,38 @@
+// run: bs /ex/logscan.bs error /ex/data
+// logscan.bs - the number of lines with a tag in the *.log files of a directory (example B.1 of the specification).
+//
+//   logscan tag [directory]
+if args.len() < 1 {
+    eprintln("usage: logscan mark [dir]")
+    return 2
+}
+var mark = args[0]
+var dir = "."
+if args.len() > 1 {
+    dir = args[1]
+}
+
+var total = 0
+// A directory read error is not intercepted: the script ends with
+// the message "logscan: directory: text" and code 1.
+for e in fs.list(dir) {
+    if e["dir"] || !path.match("*.log", e["name"]) {
+        continue
+    }
+    var name = path.join(dir, e["name"])
+    var f, err = fs.open(name, "r")
+    if err != null {
+        eprintln($"{|proc.name()|}: {|err|}")
+        continue
+    }
+    var count = 0
+    loop {
+        var line = f.read_line()
+        if line == null { break }
+        if mark in line { count++ }
+    }
+    f.close()
+    println($"{|e["name"].pad_right(20)|} {|count|}")
+    total += count
+}
+println($"total {|total|}")

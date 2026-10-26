@@ -1,0 +1,13 @@
+random: ok 400
+sorted: ok 400
+reversed: ok 400
+equal: ok 100
+n=0: ok 0
+n=1: ok 1
+n=2: ok 2
+n=3: ok 3
+n=13: ok 13
+n=14: ok 14
+,Apple,apple,fig,pear,ёж,банан,яблоко
+bsvm: A:/t/sort.bs:38: sort: elements must be all int or all strings
+exit code 125

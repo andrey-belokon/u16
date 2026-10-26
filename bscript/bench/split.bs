@@ -1,0 +1,5 @@
+var line = "alpha,beta,gamma,delta,epsilon,zeta,eta,theta"
+var i = 0
+var n = 0
+while i < 300 { n += line.split(",").len(); i++ }
+println(n)

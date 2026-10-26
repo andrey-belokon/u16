@@ -1,0 +1,29 @@
+# the session script: the shell command session, switching by Ctrl+] and Ctrl+[.
+# Events typed before the end of a switch are discarded by the kernel, and the shell that is returned to
+# prints no new prompt: after a switch the script waits some steps.
+after "A:/> " steps 2000 type "session\n"
+after "A:/> " steps 2000 type "session new -b\n"
+after "A:/> " steps 2000 type "session\n"
+after "A:/> " steps 2000 type "session 7\n"
+after "A:/> " steps 2000 type "session bogus\n"
+after "A:/> " steps 2000 type "cd data\n"
+after "A:/data> " steps 2000 type "session new\n"
+# session 2: the shell in the creator's directory
+after "A:/data> " steps 2000 type "session\n"
+after "A:/data> " steps 2000 type "session kill 1\n"
+after "A:/data> " steps 2000 type "session new cat\n"
+# session 1 is cat; Ctrl+] - the next session in a circle (2)
+after "" steps 300000 type "line for cat\n"
+after "line for cat\n" steps 3000 key 1D 00
+after "" steps 300000 type "session\n"
+after "A:/data> " steps 2000 type "session kill 1\n"
+after "A:/data> " steps 2000 type "session 0\n"
+# session 0: cat is the second process of the session; Ctrl+[ - the previous session (2)
+after "" steps 300000 type "cat\n"
+after "cat\n" steps 30000 key 00 1A 2
+after "" steps 300000 type "session\n"
+after "A:/data> " steps 2000 type "session kill 0\n"
+after "A:/data> " steps 2000 type "session kill -f 0\n"
+after "A:/data> " steps 2000 type "session\n"
+after "A:/data> " steps 2000 type "session kill\n"
+after "A:/data> " steps 2000 type "exit\n"

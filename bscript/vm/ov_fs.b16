@@ -1,0 +1,358 @@
+// ov_fs.b16 - the fs overlay (the specification, sect. 12.9): the fs and path namespaces (10.4, 10.6).
+include "ov_common.b16"
+
+fn b_read_text(): uint {
+    bn = 1
+    var p: [256]byte
+    if cpath(0, &p[0]) == 0 { return 1 }
+    if read_file(&p[0], arg_str(0)) != 0 { return 1 }
+    return res_str(rl_h)
+}
+
+fn write_file(mode: uint): uint {
+    bn = 0
+    var p: [256]byte
+    if cpath(0, &p[0]) == 0 { return 1 }
+    var t = arg_str(1)
+    var e, h: uint
+    e, h = open_gc(&p[0], O_WRITE | O_CREATE | mode)
+    if e != OK { return fail_code(e, arg_str(0)) }
+    var w: uint
+    e, w = sys_write(h, ptr byte(hp(t)), slen(t))
+    var e2 = sys_close(h)
+    if e == OK { e = e2 }
+    if e != OK { return fail_code(e, arg_str(0)) }
+    return 0
+}
+
+fn b_write_text(): uint { return write_file(O_TRUNC) }
+
+fn b_append_text(): uint { return write_file(O_APPEND) }
+
+fn b_open(): uint {
+    bn = 1
+    var p: [256]byte
+    if cpath(0, &p[0]) == 0 { return 1 }
+    var m = arg_str(1)
+    var mode: uint = 0
+    var sm: uint = SM_WRITE
+    if slen(m) == 1 {
+        var c = hgb(m, 0)
+        if c == 'r' { mode = O_READ; sm = SM_READ }
+        else if c == 'w' { mode = O_WRITE | O_CREATE | O_TRUNC }
+        else if c == 'a' { mode = O_WRITE | O_CREATE | O_APPEND }
+    }
+    if mode == 0 { rt_err("fs.open: bad mode") }
+    var k = slot_alloc()
+    if k == 0 { gc(); k = slot_alloc() }
+    if k == 0 { return fail_code(E_MFILE, arg_str(0)) }
+    var e, h: uint
+    e, h = open_gc(&p[0], mode)
+    if e != OK { return fail_code(e, arg_str(0)) }
+    if is_dir_h(h) != 0 { ign = sys_close(h); return fail_code(E_ISDIR, arg_str(0)) }
+    var fo = alloc(TY_FILE, 4)
+    hsw(fo, FO_SLOT, k)
+    hset_ref(fo, FO_PATH, arg_str(0))
+    var s = &slots[k]
+    s.fd = h; s.mode = sm; s.n = 0; s.pos = 0; s.eof = 0; s.con = 0; s.werr = 0
+    res(0, TAG_FILE, fo)
+    return 0
+}
+
+// STAT: 0 - none, 1 - a file, 2 - a directory
+fn stat_kind(): uint {
+    var p: [256]byte
+    var h = arg_str(0)
+    if slen(h) > 255 || slen(h) == 0 { return 0 }
+    ign = uint(cstr(h, &p[0], 256))
+    var st: Stat
+    if sys_stat(&p[0], &st) != OK { return 0 }
+    if uint(st.size >> 16) & A_DIR != 0 { return 2 }
+    return 1
+}
+
+fn b_exists(): uint { bn = 1; return res_bool(uint(stat_kind() != 0)) }
+
+fn b_is_dir(): uint { bn = 1; return res_bool(uint(stat_kind() == 2)) }
+
+fn b_is_file(): uint { bn = 1; return res_bool(uint(stat_kind() == 1)) }
+
+fn b_list(): uint {
+    bn = 1
+    var p: [256]byte
+    if cpath(0, &p[0]) == 0 { return 1 }
+    var e, h: uint
+    e, h = open_gc(&p[0], O_READ)
+    if e != OK { return fail_code(e, arg_str(0)) }
+    if is_dir_h(h) == 0 { ign = sys_close(h); return fail_code(E_NOTDIR, arg_str(0)) }
+    var a = new_arr(8)
+    tpush(a)
+    var kn = str_c("name"); tpush(kn)
+    var kd = str_c("dir"); tpush(kd)
+    var kh = str_c("hidden"); tpush(kh)
+    var ks = str_c("system"); tpush(ks)
+    var kr = str_c("rdonly"); tpush(kr)
+    loop {
+        var st: Stat
+        var more: uint
+        e, more = sys_readdir(h, &st)
+        if e != OK { ign = sys_close(h); return fail_code(e, arg_str(0)) }
+        if more == 0 { break }
+        var m = new_map(5)
+        tpush(m)
+        var nm = str_c(&st.name[0])
+        map_set(m, kn, TAG_STR, nm)
+        var fa = uint(st.size >> 16)
+        map_set(m, kd, TAG_BOOL, uint(fa & A_DIR != 0))
+        map_set(m, kh, TAG_BOOL, uint(fa & A_HIDDEN != 0))
+        map_set(m, ks, TAG_BOOL, uint(fa & A_SYSTEM != 0))
+        map_set(m, kr, TAG_BOOL, uint(fa & A_RDONLY != 0))
+        arr_push(a, TAG_MAP, m)
+        ntr--
+    }
+    ign = sys_close(h)
+    res(0, TAG_ARR, a)
+    return 0
+}
+
+fn path_call(k: uint): uint {
+    bn = 0
+    var p: [256]byte
+    if cpath(0, &p[0]) == 0 { return 1 }
+    var e: uint
+    if k == 0 { e = sys_mkdir(&p[0]) } else if k == 1 { e = sys_delete(&p[0]) } else { e = sys_chdir(&p[0]) }
+    if e != OK { return fail_code(e, arg_str(0)) }
+    return 0
+}
+
+fn b_mkdir(): uint { return path_call(0) }
+
+fn b_remove(): uint { return path_call(1) }
+
+fn b_chdir(): uint { return path_call(2) }
+
+fn b_rename(): uint {
+    bn = 0
+    var a: [256]byte
+    var b: [256]byte
+    if cpath(0, &a[0]) == 0 || cpath(1, &b[0]) == 0 { return 1 }
+    var e = sys_rename(&a[0], &b[0])
+    if e == OK { return 0 }
+    if e == E_EXIST { return fail_code(e, arg_str(1)) }
+    var st: Stat
+    if e != E_NOENT && sys_stat(&a[0], &st) == OK { return fail_code(e, arg_str(1)) }
+    return fail_code(e, arg_str(0))
+}
+
+fn b_cwd(): uint {
+    bn = 1
+    var buf: [PATHMAX]byte
+    var e, n: uint
+    e, n = sys_getcwd(&buf[0], PATHMAX)
+    if e != OK { return fail_code(e, 0) }
+    return res_str(str_c(&buf[0]))
+}
+
+var cwbuf: [PATHMAX]byte
+var abs_s: [PATHMAX]byte
+var abs_d: [PATHMAX]byte
+
+fn b_copy(): uint {
+    bn = 0
+    var s = &pb[0]
+    var d = &pb2[0]
+    if cpath(0, s) == 0 || cpath(1, d) == 0 { return 1 }
+    var st: Stat
+    var e = sys_stat(s, &st)
+    if e != OK { return fail_code(e, arg_str(0)) }
+    if uint(st.size >> 16) & A_DIR != 0 { return fail_code(E_ISDIR, arg_str(0)) }
+    var dobj = arg_str(1)
+    if sys_stat(d, &st) == OK && uint(st.size >> 16) & A_DIR != 0 {
+        var n = strlen(d)
+        if n > 0 && d[n - 1] != '/' && d[n - 1] != ':' { d[n] = '/'; n++ }
+        var b = c_basename(s)
+        if n + strlen(b) > 255 { return fail_code(E_BADPATH, dobj) }
+        strcpy(d + n, b)
+        dobj = str_c(d)
+        tpush(dobj)
+    }
+    var r: uint
+    e, r = sys_getcwd(&cwbuf[0], PATHMAX)
+    if make_abs(&abs_s[0], &cwbuf[0], s) != 0 && make_abs(&abs_d[0], &cwbuf[0], d) != 0 && strieq(&abs_s[0], &abs_d[0]) != 0 {
+        return fail_code(E_SAMEFILE, arg_str(0))
+    }
+    var hs, hd: uint
+    e, hs = open_gc(s, O_READ)
+    if e != OK { return fail_code(e, arg_str(0)) }
+    e, hd = open_gc(d, O_WRITE | O_CREATE | O_TRUNC)
+    if e != OK { ign = sys_close(hs); return fail_code(e, dobj) }
+    var buf: [256]byte
+    var bad: uint = 0
+    var bobj = dobj
+    loop {
+        var n, w: uint
+        e, n = sys_read(hs, &buf[0], 256)
+        if e != OK { bad = e; bobj = arg_str(0); break }
+        if n == 0 { break }
+        e, w = sys_write(hd, &buf[0], n)
+        if e != OK { bad = e; break }
+    }
+    ign = sys_close(hs)
+    e = sys_close(hd)
+    if bad == 0 { bad = e }
+    if bad != 0 { return fail_code(bad, bobj) }
+    return 0
+}
+
+// the length of the volume prefix "N:" or "dev:" (up to ':' in the first name)
+fn prefix_len(p: ptr byte): uint {
+    var i: uint = 0
+    while p[i] != 0 && p[i] != '/' {
+        if p[i] == ':' { return i + 1 }
+        i++
+    }
+    return 0
+}
+
+fn c_is_abs(p: ptr byte): uint { return uint(p[0] == '/' || prefix_len(p) != 0) }
+
+// normalization in place
+fn c_normalize(p: ptr byte) {
+    var out: [300]byte
+    var pl = prefix_len(p)
+    memcpy(&out[0], p, pl)
+    var r = pl
+    var rooted = uint(p[pl] == '/' || pl != 0)
+    if rooted != 0 { out[r] = '/'; r++ }
+    var base = r                  // start of the steps
+    var i = pl
+    loop {
+        while p[i] == '/' { i++ }
+        if p[i] == 0 { break }
+        var s = i
+        while p[i] != 0 && p[i] != '/' { i++ }
+        var len = i - s
+        if len == 1 && p[s] == '.' { continue }
+        if len == 2 && p[s] == '.' && p[s + 1] == '.' {
+            // the previous name, if it is not ".."
+            var q = r
+            if q > base {
+                var t = q - 1          // r points past the "/" after the name
+                var ns = t
+                while ns > base && out[ns - 1] != '/' { ns-- }
+                if !(t - ns == 2 && out[ns] == '.' && out[ns + 1] == '.') {
+                    r = ns
+                    continue
+                }
+            } else if rooted != 0 { continue }
+        }
+        memcpy(&out[r], p + s, len)
+        r += len
+        out[r] = '/'; r++
+    }
+    if r > base { r-- }
+    if r == 0 { out[0] = '.'; r = 1 }
+    out[r] = 0
+    strcpy(p, &out[0])
+}
+
+fn b_pjoin(): uint {
+    bn = 1
+    var a = arg_cbuf(0, &pb[0])
+    var b = arg_cbuf(1, &pb2[0])
+    if c_is_abs(b) != 0 || *a == 0 { return res_str(arg_str(1)) }
+    var n = strlen(a)
+    if a[n - 1] != '/' && a[n - 1] != ':' { a[n] = '/'; n++ }
+    var bb = b
+    while *bb == '/' { bb++ }
+    strcpy(a + n, bb)
+    return res_str(str_c(a))
+}
+
+fn strip_slash(p: ptr byte) {
+    var n = strlen(p)
+    while n > 1 && p[n - 1] == '/' && p[n - 2] != ':' { n--; p[n] = 0 }
+}
+
+fn b_basename(): uint {
+    bn = 1
+    var a = arg_cbuf(0, &pb[0])
+    strip_slash(a)
+    return res_str(str_c(c_basename(a)))
+}
+
+fn b_dirname(): uint {
+    bn = 1
+    var a = arg_cbuf(0, &pb[0])
+    strip_slash(a)
+    var b = c_basename(a)
+    var n = uint(b) - uint(a)
+    if n == 0 { return res_str(str_c(".")) }
+    // remove the "/" before the last name, except for the root
+    if n >= 2 && a[n - 1] == '/' && a[n - 2] != ':' { n-- }
+    a[n] = 0
+    return res_str(str_c(a))
+}
+
+fn b_extension(): uint {
+    bn = 1
+    var a = arg_cbuf(0, &pb[0])
+    var b = c_basename(a)
+    var d: ptr byte = 0
+    var p = b + 1
+    if *b == 0 { p = b }
+    while *p != 0 { if *p == '.' { d = p }; p++ }
+    if d == 0 { return res_str(str_c("")) }
+    return res_str(str_c(d))
+}
+
+fn b_normalize(): uint {
+    bn = 1
+    var a = arg_cbuf(0, &pb[0])
+    c_normalize(a)
+    return res_str(str_c(a))
+}
+
+fn b_is_abs(): uint { bn = 1; return res_bool(c_is_abs(arg_cbuf(0, &pb[0]))) }
+
+fn b_pequal(): uint {
+    bn = 1
+    var a = arg_cbuf(0, &pb[0])
+    var b = arg_cbuf(1, &pb2[0])
+    c_normalize(a)
+    c_normalize(b)
+    return res_bool(strieq(a, b))
+}
+
+fn glob_match(p: ptr byte, pn: uint, s: ptr byte, sn: uint): uint {
+    while pn != 0 {
+        var c = uint(*p)
+        if c == '*' {
+            p++; pn--
+            loop {
+                if glob_match(p, pn, s, sn) != 0 { return 1 }
+                if sn == 0 || *s == '/' { return 0 }
+                s++; sn--
+            }
+        }
+        if sn == 0 { return 0 }
+        if c != '?' && chfold(c) != chfold(*s) { return 0 }
+        if c == '?' && *s == '/' { return 0 }
+        p++; pn--; s++; sn--
+    }
+    return uint(sn == 0)
+}
+
+fn b_match(): uint {
+    bn = 1
+    var p = arg_str(0)
+    var s = arg_str(1)
+    var pc = arg_cbuf(0, &pb[0])
+    var sc = arg_cbuf(1, &pb2[0])
+    return res_bool(glob_match(pc, slen(p), sc, slen(s)))
+}
+
+var ov_table: [NOV_FS]ptr fn(): uint = {
+    b_read_text, b_write_text, b_append_text, b_open, b_exists, b_is_dir, b_is_file, b_list,
+    b_mkdir, b_remove, b_rename, b_copy, b_cwd, b_chdir, b_pjoin, b_basename, b_dirname,
+    b_extension, b_normalize, b_is_abs, b_pequal, b_match }

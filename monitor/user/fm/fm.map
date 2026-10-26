@@ -1,0 +1,1963 @@
+; CPU16 memory map: D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s
+
+== Summary ==
+occupied  $0000..$8F6D
+file      $0000..$5DE9   24042 bytes
+code       20696 bytes
+data        3346 bytes
+bss        12676 bytes   .reserve
+padding        0 bytes   alignment
+gaps           0 bytes   unused addresses inside the file
+total      36718 bytes   code + data + bss + padding
+
+== By source file ==
+  code    data     bss     pad   total  file
+    98      24       0       0     122  D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s
+  2046      44     260       0    2350  D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16
+  8858    1428    3254       0   13540  D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16
+  2470     136      20       0    2626  D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16
+  6094    1238    9140       0   16472  D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16
+   238       2       0       0     240  D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16
+   704     380       2       0    1086  D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16
+   188      94       0       0     282  D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm
+
+== Objects by address ==
+start  end      size  type       name             source
+$0000  $001B      28  code+data  __header         D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:507
+$001C  $0069      78  code       __start          D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:516
+$003A  $0041       8  code         @vec           D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:525
+$0042  $004F      14  code         @skip          D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:529
+$0050  $0059      10  code         @bss           D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:535
+$005A  $0061       8  code         @args          D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:540
+$0062  $0069       8  code         @monitor       D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:544
+$006A              0  -          __fault          D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:550
+$006A  $0077      14  code       __halt           D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:551
+$0074  $0077       4  code         @stop          D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:556
+$0078  $0079       2  code       __irq_ignore     D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:561
+$007A  $0095      28  code       strlen           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:64
+$0086  $0091      12  code         @L1            D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:66
+$0092  $0095       4  code         @L3            D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:66
+$0096  $00C3      46  code       puts             D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:70
+$00C4  $00CF      12  code       putnl            D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:75
+$00D0  $00F1      34  code       streq            D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:102
+$00D8  $00E1      10  code         @L18           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:103
+$00E2  $00ED      12  code         @L21           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:104
+$00EE  $00EF       2  code         @L20           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:103
+$00F0  $00F1       2  code         @L17           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:108
+$00F2  $011B      42  code       chfold           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:112
+$00FE  $0109      12  code         @L25           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:113
+$010A  $010F       6  code         @L24           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:113
+$0110  $0119      10  code         @L23           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:113
+$011A              0  -            @L26           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:114
+$011A  $011B       2  code         @L22           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:114
+$011C  $0167      76  code       strieq           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:119
+$013C  $0145      10  code         @L28           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:120
+$0146  $015F      26  code         @L31           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:121
+$0160  $0161       2  code         @L30           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:120
+$0162  $0167       6  code         @L27           D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:125
+$0168  $019B      52  code       fputs            D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:7
+$019C  $01AD      18  code       eputs            D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:19
+$01AE  $022B     126  code       fputul           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:22
+$01CC  $01FF      52  code         @L36           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:25
+$0200  $0213      20  code         @L40           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:32
+$0214  $022B      24  code         @L42           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:32
+$022C  $0327     252  code       err_text         D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:65
+$0238  $0243      12  code         @L50           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:66
+$0244  $024F      12  code         @L51           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:67
+$0250  $025B      12  code         @L52           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:68
+$025C  $0267      12  code         @L53           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:69
+$0268  $0273      12  code         @L54           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:70
+$0274  $027F      12  code         @L55           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:71
+$0280  $028B      12  code         @L56           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:72
+$028C  $0297      12  code         @L57           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:73
+$0298  $02A3      12  code         @L58           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:74
+$02A4  $02AF      12  code         @L59           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:75
+$02B0  $02BB      12  code         @L60           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:76
+$02BC  $02C7      12  code         @L61           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:77
+$02C8  $02D3      12  code         @L62           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:78
+$02D4  $02DF      12  code         @L63           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:79
+$02E0  $02EB      12  code         @L64           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:80
+$02EC  $02F7      12  code         @L65           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:81
+$02F8  $0303      12  code         @L66           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:82
+$0304  $030F      12  code         @L67           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:83
+$0310  $0319      10  code         @L68           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:84
+$031A  $0323      10  code         @L69           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:85
+$0324  $0325       2  code         @L70           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:86
+$0326  $0327       2  code         @L49           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:87
+$0328  $038D     102  code       fail             D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:91
+$0356  $0369      20  code         @L72           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:94
+$036A  $037D      20  code         @L73           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:96
+$037E  $038D      16  code         @L74           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:96
+$038E  $03B5      40  code       basename         D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:145
+$0396  $03A5      16  code         @L98           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:147
+$03A6  $03A9       4  code         @L102          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:148
+$03AA  $03B1       8  code         @L101          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:148
+$03B2  $03B5       4  code         @L100          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:147
+$03B6  $03CF      26  code       strcpy           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:154
+$03BC  $03C9      14  code         @L104          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:155
+$03CA  $03CF       6  code         @L106          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:155
+$03D0  $03F5      38  code       strcat           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:159
+$03E0  $03E7       8  code         @L108          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:160
+$03E8  $03F5      14  code         @L110          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:160
+$03F6  $0427      50  code       is_dir           D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:193
+$0410  $041D      14  code         @L124          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:195
+$041E  $041F       2  code         @L125          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:196
+$0420  $0427       8  code         @L123          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:197
+$0428  $0435      14  code       gotoxy           D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:67
+$0436  $043D       8  code       putch            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:72
+$043E  $0479      60  code       fill             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:75
+$0466  $046F      10  code         @L129          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:78
+$0470  $0479      10  code         @L131          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:78
+$047A  $04F3     122  code       putsn            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:82
+$04A8  $04C7      32  code         @L133          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:85
+$04C8              0  -            @L136          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:85
+$04C8  $04CF       8  code         @L135          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:85
+$04D0  $04E9      26  code         @L137          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:86
+$04EA  $04F3      10  code         @L139          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:86
+$04F4  $0531      62  code       putsa            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:90
+$051A  $0527      14  code         @L141          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:93
+$0528  $0531      10  code         @L143          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:93
+$0532  $0591      96  code       putsc            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:97
+$0556  $056D      24  code         @L145          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:99
+$056E  $0585      24  code         @L146          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:102
+$0586  $0591      12  code         @L148          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:102
+$0592  $06B5     292  code       box              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:106
+$05FA  $0653      90  code         @L150          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:111
+$0654  $06B5      98  code         @L152          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:111
+$06B6  $06C3      14  code       scr_coord        D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:122
+$06C4  $06D7      20  code       scr_tty          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:128
+$06D8  $06F5      30  code       cursor_at        D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:135
+$06F6  $06FD       8  code       cursor_off       D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:140
+$06FE  $077F     130  code       getkey           D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:155
+$0730  $0755      38  code         @L159          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:161
+$0756  $0759       4  code         @L161          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:161
+$075A              0  -            @L158          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:162
+$075A  $0771      24  code         @L162          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:162
+$0772  $0773       2  code         @L165          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:167
+$0774  $077F      12  code         @L157          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:167
+$0780  $07E3     100  code       poll_esc         D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:172
+$0788  $079B      20  code         @L167          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:172
+$079C  $07B1      22  code         @L170          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:176
+$07B2  $07D9      40  code         @L171          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:177
+$07DA  $07DB       2  code         @L172          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:178
+$07DC  $07E3       8  code         @L166          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:178
+$07E4  $07F3      16  code       lower            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:183
+$07F4  $0801      14  code       mb_clear         D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:191
+$0802  $082B      42  code       mb_c             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:193
+$082A  $082B       2  code         @L176          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:194
+$082C  $0849      30  code       mb_s             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:197
+$0838  $0845      14  code         @L178          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:198
+$0846  $0849       4  code         @L180          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:198
+$084A  $08C3     122  code       ultoa            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:202
+$0862  $0895      52  code         @L182          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:204
+$0896  $08A9      20  code         @L186          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:213
+$08AA  $08C3      26  code         @L188          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:213
+$08C4  $08E7      36  code       mb_ul            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:218
+$08E8  $0919      50  code       mb_err           D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:225
+$0904  $0913      16  code         @L191          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:227
+$0914  $0919       6  code         @L192          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:227
+$091A  $0999     128  code       dlg_open         D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:236
+$098E  $0999      12  code         @L194          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:245
+$099A  $09E5      76  code       dlg_line         D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:250
+$09C0  $09E5      38  code         @L196          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:252
+$09E6  $0A41      92  code       dlg_msg          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:257
+$0A02  $0A23      34  code         @L198          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:259
+$0A24  $0A41      30  code         @L199          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:262
+$0A42  $0AFD     188  code       dlg_ask          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:274
+$0A6C  $0A8D      34  code         @L201          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:276
+$0A8E  $0A9B      14  code         @L202          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:279
+$0A9C  $0AB9      30  code         @L203          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:281
+$0ABA  $0ACD      20  code         @L206          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:285
+$0ACE  $0AD7      10  code         @L207          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:286
+$0AD8  $0AE1      10  code         @L208          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:288
+$0AE2  $0AE9       8  code         @L211          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:289
+$0AEA  $0AEB       2  code         @L210          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:288
+$0AEC  $0AFD      18  code         @L200          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:288
+$0AFE  $0C25     296  code       dlg_input        D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:296
+$0B5C  $0B6D      18  code         @L213          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:300
+$0B6E  $0B97      42  code         @L216          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:303
+$0B98  $0BC3      44  code         @L217          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:306
+$0BC4  $0BCF      12  code         @L218          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:310
+$0BD0  $0BE1      18  code         @L219          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:311
+$0BE2  $0BE3       2  code         @L221          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:313
+$0BE4  $0BF1      14  code         @L220          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:313
+$0BF2  $0C0D      28  code         @L223          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:316
+$0C0E              0  -            @L225          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:320
+$0C0E              0  -            @L224          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:320
+$0C0E  $0C11       4  code         @L222          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:320
+$0C12  $0C25      20  code         @L212          D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:320
+$0C26  $0C7B      86  code       vread            D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:21
+$0C58  $0C6B      20  code         @L227          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:25
+$0C6C  $0C7B      16  code         @L226          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:27
+$0C7C  $0D19     158  code       vrow             D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:32
+$0C8C  $0C9D      18  code         @L229          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:34
+$0C9E  $0CA9      12  code         @L235          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:39
+$0CAA  $0CB5      12  code         @L238          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:41
+$0CB6  $0CB7       2  code         @L240          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:43
+$0CB8  $0CB9       2  code         @L239          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:43
+$0CBA  $0CBB       2  code         @L237          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:43
+$0CBC  $0CC5      10  code         @L234          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:45
+$0CC6  $0CC7       2  code         @L241          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:47
+$0CC8  $0CD1      10  code         @L230          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:48
+$0CD2              0  -            @L242          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:34
+$0CD2  $0CDD      12  code         @L231          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:34
+$0CDE  $0CEB      14  code         @L243          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:50
+$0CEC              0  -            @L246          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:50
+$0CEC  $0CF9      14  code         @L245          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:50
+$0CFA  $0D03      10  code         @L247          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:51
+$0D04  $0D13      16  code         @L249          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:52
+$0D14              0  -            @L251          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:52
+$0D14  $0D19       6  code         @L248          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:52
+$0D1A  $0DA5     140  code       vdraw_text       D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:56
+$0D4E  $0D65      24  code         @L253          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:61
+$0D66  $0D89      36  code         @L256          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:62
+$0D8A  $0DA5      28  code         @L255          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:61
+$0DA6  $0E9B     246  code       vprev            D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:72
+$0DC8  $0DE1      26  code         @L258          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:73
+$0DE2  $0E01      32  code         @L259          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:75
+$0E02  $0E13      18  code         @L260          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:77
+$0E14  $0E2D      26  code         @L261          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:82
+$0E2E  $0E31       4  code         @L264          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:84
+$0E32  $0E57      38  code         @L263          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:82
+$0E58  $0E5D       6  code         @L266          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:87
+$0E5E  $0E6D      16  code         @L265          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:88
+$0E6E  $0E81      20  code         @L267          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:92
+$0E82  $0E8B      10  code         @L269          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:92
+$0E8C  $0E9B      16  code         @L257          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:96
+$0E9C  $0EB7      28  code       hex2             D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:99
+$0EB8  $1051     410  code       vdraw_hex        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:104
+$0EE8  $0F4B     100  code         @L272          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:107
+$0F4C  $0F69      30  code         @L276          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:120
+$0F6A  $0F81      24  code         @L279          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:121
+$0F82  $0F8D      12  code         @L280          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:121
+$0F8E  $0F95       8  code         @L281          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:122
+$0F96  $0FA5      16  code         @L278          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:120
+$0FA6  $0FC3      30  code         @L282          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:127
+$0FC4              0  -            @L286          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:129
+$0FC4  $0FD1      14  code         @L285          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:129
+$0FD2  $0FDB      10  code         @L284          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:127
+$0FDC  $0FEB      16  code         @L287          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:134
+$0FEC  $0FED       2  code         @L289          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:134
+$0FEE  $1007      26  code         @L275          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:134
+$1008  $1017      16  code         @L290          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:136
+$1018  $1051      58  code         @L274          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:107
+$1052  $1189     312  code       vstatus          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:144
+$1112  $1133      34  code         @L293          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:154
+$1134              0  -            @L294          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:154
+$1134  $113D      10  code         @L292          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:154
+$113E  $1189      76  code         @L295          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:156
+$118A  $11DF      86  code       looks_binary     D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:165
+$11AA  $11C1      24  code         @L297          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:169
+$11C2  $11C3       2  code         @L301          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:171
+$11C4  $11C9       6  code         @L300          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:171
+$11CA  $11D5      12  code         @L299          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:169
+$11D6  $11DF      10  code         @L302          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:174
+$11E0  $15CB    1004  code       view_entry       D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:177
+$1268  $12A9      66  code         @L305          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:190
+$12AA  $12C1      24  code         @L306          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:194
+$12C2  $12D7      22  code         @L307          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:197
+$12D8  $12E3      12  code         @L310          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:199
+$12E4  $131D      58  code         @L311          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:199
+$131E              0  -            @L314          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:204
+$131E  $1321       4  code         @L313          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:204
+$1322  $1367      70  code         @L312          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:204
+$1368  $136B       4  code         @L317          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:210
+$136C  $1381      22  code         @L316          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:210
+$1382  $13B9      56  code         @L319          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:212
+$13BA  $13C5      12  code         @L323          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:214
+$13C6  $13C9       4  code         @L324          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:214
+$13CA  $13FD      52  code         @L322          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:214
+$13FE  $1401       4  code         @L327          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:215
+$1402  $1429      40  code         @L326          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:215
+$142A  $1435      12  code         @L330          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:216
+$1436  $1439       4  code         @L331          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:216
+$143A  $1469      48  code         @L329          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:216
+$146A  $146B       2  code         @L334          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:217
+$146C  $14CB      96  code         @L333          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:217
+$14CC              0  -            @L337          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14CC              0  -            @L336          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14CC              0  -            @L335          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14CC              0  -            @L332          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14CC              0  -            @L328          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14CC  $14CF       4  code         @L325          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14D0  $14ED      30  code         @L321          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:221
+$14EE  $1515      40  code         @L339          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:224
+$1516  $1519       4  code         @L342          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:225
+$151A  $1527      14  code         @L341          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:225
+$1528  $1543      28  code         @L345          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:226
+$1544  $1545       2  code         @L347          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:226
+$1546  $156D      40  code         @L344          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:226
+$156E  $156F       2  code         @L350          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:227
+$1570  $158D      30  code         @L349          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:227
+$158E  $15A9      28  code         @L353          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L355          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L352          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L351          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L348          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L343          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L340          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L338          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA              0  -            @L320          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AA  $15AD       4  code         @L318          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15AE  $15B9      12  code         @L309          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:231
+$15BA  $15CB      18  code         @L303          D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:236
+$15CC  $164B     128  code       pjoin            D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:28
+$1604  $1605       2  code         @L358          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:31
+$1606  $1623      30  code         @L357          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:31
+$1624  $1631      14  code         @L359          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:32
+$1632  $1641      16  code         @L360          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:33
+$1642  $164B      10  code         @L356          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:35
+$164C  $16B3     104  code       is_sub           D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:39
+$1668  $1689      34  code         @L362          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:42
+$168A  $168F       6  code         @L365          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:42
+$1690  $16A7      24  code         @L364          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:42
+$16A8  $16A9       2  code         @L367          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:43
+$16AA              0  -            @L366          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:43
+$16AA  $16B3      10  code         @L361          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:43
+$16B4  $176F     188  code       last_name        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:47
+$16DE  $16F1      20  code         @L369          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:49
+$16F2              0  -            @L372          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:49
+$16F2  $1713      34  code         @L371          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:49
+$1714  $1735      34  code         @L373          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:51
+$1736              0  -            @L376          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:51
+$1736  $1741      12  code         @L375          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:51
+$1742  $175B      26  code         @L377          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:53
+$175C              0  -            @L380          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:53
+$175C  $176F      20  code         @L379          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:53
+$1770  $180D     158  code       sel_build        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:58
+$1798  $17CF      56  code         @L383          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:63
+$17D0  $17D7       8  code         @L386          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:64
+$17D8  $17D9       2  code         @L385          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:63
+$17DA  $1803      42  code         @L382          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:63
+$1804              0  -            @L388          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:69
+$1804  $180D      10  code         @L387          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:69
+$180E  $196D     352  code       canon            D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:76
+$185C  $187D      34  code         @L390          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:83
+$187E  $1899      28  code         @L391          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:89
+$189A              0  -            @L394          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:89
+$189A  $18A1       8  code         @L393          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:89
+$18A2  $18B9      24  code         @L395          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:92
+$18BA  $18BB       2  code         @L399          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:92
+$18BC  $18C1       6  code         @L398          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:92
+$18C2  $18D3      18  code         @L397          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:92
+$18D4  $18FF      44  code         @L400          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:95
+$1900  $190B      12  code         @L403          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:98
+$190C  $1913       8  code         @L402          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:98
+$1914  $191B       8  code         @L404          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:98
+$191C  $192D      18  code         @L401          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:99
+$192E  $193B      14  code         @L405          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:101
+$193C  $1951      22  code         @L406          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:102
+$1952  $1959       8  code         @L407          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:103
+$195A  $196D      20  code         @L389          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:105
+$196E  $19B5      72  code       prog_box         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:109
+$19B0  $19B5       6  code         @L409          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:114
+$19B6  $1A35     128  code       prog_bytes       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:119
+$1A36  $1A79      68  code       check_abort      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:130
+$1A44  $1A6F      44  code         @L412          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:131
+$1A70  $1A77       8  code         @L413          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:132
+$1A78  $1A79       2  code         @L411          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:134
+$1A7A  $1AE5     108  code       op_errt          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:138
+$1AD8  $1ADD       6  code         @L415          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:144
+$1ADE  $1AE5       8  code         @L414          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:146
+$1AE6  $1B3D      88  code       op_err           D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:149
+$1B10  $1B25      22  code         @L417          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:152
+$1B26  $1B3D      24  code         @L418          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:152
+$1B3E  $1BAD     112  code       ask_over         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:157
+$1B4E  $1B7F      50  code         @L420          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:158
+$1B80  $1B97      24  code         @L421          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:160
+$1B98  $1BA3      12  code         @L422          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:161
+$1BA4  $1BA9       6  code         @L423          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:162
+$1BAA  $1BAD       4  code         @L419          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:164
+$1BAE  $1C7D     208  code       list_dir         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:168
+$1BDA              0  -            @L425          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:171
+$1BDA  $1BED      20  code         @L426          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:171
+$1BEE  $1BEF       2  code         @L430          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:175
+$1BF0  $1C01      18  code         @L429          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:175
+$1C02  $1C13      18  code         @L431          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:177
+$1C14              0  -            @L434          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:177
+$1C14  $1C27      20  code         @L433          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:177
+$1C28  $1C2D       6  code         @L435          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:178
+$1C2E  $1C4B      30  code         @L436          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:180
+$1C4C  $1C63      24  code         @L438          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:180
+$1C64  $1C6B       8  code         @L428          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:182
+$1C6C  $1C7D      18  code         @L424          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:185
+$1C7E  $1CB3      54  code       keep_attr        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:188
+$1CAE  $1CB3       6  code         @L440          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:191
+$1CB4  $1E29     374  code       copy_file        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:196
+$1CF6  $1D05      16  code         @L443          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:199
+$1D06              0  -            @L444          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:200
+$1D06  $1D2D      40  code         @L442          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:200
+$1D2E  $1D5D      48  code         @L445          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:204
+$1D5E  $1D7B      30  code         @L446          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:206
+$1D7C  $1DA3      40  code         @L447          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:209
+$1DA4  $1DA5       2  code         @L451          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:213
+$1DA6  $1DC7      34  code         @L450          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:213
+$1DC8  $1DD3      12  code         @L452          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:215
+$1DD4  $1DEF      28  code         @L449          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:217
+$1DF0  $1E0B      28  code         @L455          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:221
+$1E0C  $1E0F       4  code         @L456          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:223
+$1E10  $1E17       8  code         @L454          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:224
+$1E18  $1E29      18  code         @L441          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:227
+$1E2A  $1F8F     358  code       copy_obj         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:231
+$1E56  $1E81      44  code         @L458          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:232
+$1E82  $1E83       2  code         @L460          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:235
+$1E84  $1E99      22  code         @L459          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:235
+$1E9A              0  -            @L462          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:237
+$1E9A  $1EC1      40  code         @L461          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:237
+$1EC2  $1ED7      22  code         @L463          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:241
+$1ED8  $1F07      48  code         @L464          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:245
+$1F08  $1F1B      20  code         @L467          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:250
+$1F1C  $1F3B      32  code         @L468          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:252
+$1F3C  $1F45      10  code         @L470          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:255
+$1F46              0  -            @L471          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:255
+$1F46  $1F51      12  code         @L469          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:255
+$1F52  $1F5D      12  code         @L472          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:257
+$1F5E  $1F6B      14  code         @L473          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:258
+$1F6C              0  -            @L474          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:245
+$1F6C  $1F79      14  code         @L466          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:245
+$1F7A  $1F8F      22  code         @L457          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:262
+$1F90  $2043     180  code       ro_check         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:267
+$1FB0  $1FE9      58  code         @L476          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:269
+$1FEA  $2001      24  code         @L478          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:272
+$2002  $200D      12  code         @L479          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:273
+$200E  $2011       4  code         @L480          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:274
+$2012  $2037      38  code         @L477          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:275
+$2038  $2039       2  code         @L481          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:278
+$203A  $2043      10  code         @L475          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:279
+$2044  $2179     310  code       del_obj          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:283
+$206E  $20A5      56  code         @L483          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:284
+$20A6  $20B7      18  code         @L485          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:290
+$20B8  $20E5      46  code         @L486          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:294
+$20E6  $2105      32  code         @L489          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:299
+$2106  $210B       6  code         @L491          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:302
+$210C  $2111       6  code         @L492          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:302
+$2112  $211D      12  code         @L490          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:303
+$211E              0  -            @L493          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:294
+$211E  $212D      16  code         @L488          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:294
+$212E  $2137      10  code         @L494          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:307
+$2138              0  -            @L495          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:308
+$2138  $2143      12  code         @L484          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:308
+$2144  $2161      30  code         @L496          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:310
+$2162  $2163       2  code         @L497          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:312
+$2164  $2179      22  code         @L482          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:313
+$217A  $226B     242  code       move_obj         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:318
+$21D4  $21EF      28  code         @L500          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:323
+$21F0              0  -            @L501          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:325
+$21F0  $21F7       8  code         @L499          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:325
+$21F8  $220D      22  code         @L502          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:327
+$220E  $221F      18  code         @L503          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:328
+$2220  $2229      10  code         @L504          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:330
+$222A  $225B      50  code         @L505          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:331
+$225C  $226B      16  code         @L498          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:340
+$226C  $2295      42  code       op_start         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:344
+$2296  $25AB     790  code       do_copy          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:355
+$22EE  $22F5       8  code         @L509          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:361
+$22F6  $2323      46  code         @L510          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:361
+$2324  $2333      16  code         @L511          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:365
+$2334  $234B      24  code         @L512          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:368
+$234C  $2369      30  code         @L513          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:372
+$236A  $2371       8  code         @L515          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:373
+$2372  $23AF      62  code         @L514          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:373
+$23B0  $23E1      50  code         @L516          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:380
+$23E2  $23EF      14  code         @L517          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:386
+$23F0  $23F7       8  code         @L518          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:388
+$23F8  $2403      12  code         @L519          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:388
+$2404  $2415      18  code         @L520          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:390
+$2416  $246B      86  code         @L521          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:392
+$246C  $24B5      74  code         @L524          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:399
+$24B6  $24C5      16  code         @L527          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:408
+$24C6              0  -            @L526          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:408
+$24C6  $24EB      38  code         @L525          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:408
+$24EC  $250F      36  code         @L528          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:410
+$2510  $253D      46  code         @L530          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:413
+$253E  $253F       2  code         @L532          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:416
+$2540  $2569      42  code         @L529          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:417
+$256A  $2579      16  code         @L533          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:421
+$257A  $257F       6  code         @L534          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:424
+$2580              0  -            @L535          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:424
+$2580  $258D      14  code         @L522          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:424
+$258E              0  -            @L536          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:392
+$258E  $2595       8  code         @L523          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:392
+$2596  $25AB      22  code         @L507          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:427
+$25AC  $2713     360  code       do_delete        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:431
+$25DE  $25F7      26  code         @L539          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:437
+$25F8  $25FD       6  code         @L542          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:437
+$25FE  $2613      22  code         @L541          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:437
+$2614  $261B       8  code         @L544          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:440
+$261C  $263D      34  code         @L545          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:440
+$263E  $2655      24  code         @L543          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:442
+$2656  $265F      10  code         @L546          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:446
+$2660  $2689      42  code         @L547          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:449
+$268A  $269F      22  code         @L548          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:450
+$26A0  $26E3      68  code         @L549          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:453
+$26E4  $26ED      10  code         @L552          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:459
+$26EE  $26F9      12  code         @L550          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:461
+$26FA              0  -            @L553          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:453
+$26FA  $2701       8  code         @L551          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:453
+$2702  $2713      18  code         @L537          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:464
+$2714  $27A3     144  code       do_mkdir         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:468
+$273E  $2743       6  code         @L556          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:470
+$2744  $277D      58  code         @L555          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:470
+$277E  $279B      30  code         @L557          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:476
+$279C  $279F       4  code         @L558          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:479
+$27A0  $27A3       4  code         @L554          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:480
+$27A4  $2801      94  code       attr_row         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:483
+$27CC  $2801      54  code         @L560          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:486
+$2802  $29AB     426  code       do_attr          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:492
+$2872  $2881      16  code         @L563          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:499
+$2882  $289D      28  code         @L564          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:499
+$289E  $28ED      80  code         @L565          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:501
+$28EE  $28FB      14  code         @L568          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:508
+$28FC  $2905      10  code         @L570          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:510
+$2906  $290F      10  code         @L571          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:511
+$2910  $2911       2  code         @L572          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:512
+$2912  $2927      22  code         @L567          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:512
+$2928  $2967      64  code         @L573          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:516
+$2968  $2985      30  code         @L576          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:521
+$2986              0  -            @L577          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:523
+$2986  $2991      12  code         @L574          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:523
+$2992              0  -            @L578          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:516
+$2992  $2999       8  code         @L575          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:516
+$299A  $29AB      18  code         @L561          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:526
+$29AC  $2A19     110  code       clusters         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:534
+$29DC  $2A09      46  code         @L580          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:537
+$2A0A  $2A19      16  code         @L581          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:538
+$2A1A  $2A89     112  code       du_show          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:542
+$2A8A  $2C09     384  code       du_obj           D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:553
+$2B10  $2B35      38  code         @L584          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:556
+$2B36  $2B65      48  code         @L585          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:559
+$2B66  $2B7F      26  code         @L586          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:562
+$2B80  $2BAD      46  code         @L587          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:566
+$2BAE  $2BCF      34  code         @L590          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:571
+$2BD0  $2BD7       8  code         @L592          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:574
+$2BD8  $2BDD       6  code         @L593          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:574
+$2BDE  $2BEB      14  code         @L591          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:575
+$2BEC              0  -            @L594          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:566
+$2BEC  $2BF7      12  code         @L589          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:566
+$2BF8  $2C09      18  code         @L583          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:579
+$2C0A  $2D99     400  code       do_dirinfo       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:584
+$2C94  $2D77     228  code         @L597          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:596
+$2D78  $2D91      26  code         @L598          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:617
+$2D92  $2D99       8  code         @L595          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:621
+$2D9A  $2DBF      38  code       entp             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:68
+$2DC0  $2DC7       8  code       eflags           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:70
+$2DC8  $2DDB      20  code       edir             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:72
+$2DDC  $2E05      42  code       ename            D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:75
+$2DE6  $2DF9      20  code         @L603          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:77
+$2DFA  $2E05      12  code         @L605          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:77
+$2E06  $2E27      34  code       is_up            D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:82
+$2E24  $2E27       4  code         @L607          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:82
+$2E28  $2E8F     104  code       ext_is           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:90
+$2E56  $2E59       4  code         @L610          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:92
+$2E5A  $2E5F       6  code         @L609          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:92
+$2E60  $2E7B      28  code         @L611          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:94
+$2E7C  $2E81       6  code         @L614          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:95
+$2E82  $2E83       2  code         @L613          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:94
+$2E84  $2E8F      12  code         @L608          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:98
+$2E90  $2F0D     126  code       is_exec          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:101
+$2EA6  $2EB7      18  code         @L616          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:102
+$2EB8  $2EC9      18  code         @L617          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:104
+$2ECA              0  -            @L620          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:104
+$2ECA  $2EDD      20  code         @L619          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:104
+$2EDE  $2EF1      20  code         @L621          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:105
+$2EF2  $2F05      20  code         @L622          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:106
+$2F06  $2F07       2  code         @L623          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:107
+$2F08  $2F0D       6  code         @L615          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:108
+$2F0E  $2F31      36  code       is_root          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:111
+$2F2E  $2F31       4  code         @L625          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:111
+$2F32  $2FB3     130  code       less             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:114
+$2F62  $2F63       2  code         @L628          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:117
+$2F64  $2F6B       8  code         @L627          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:117
+$2F6C  $2F8F      36  code         @L629          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:119
+$2F90  $2F91       2  code         @L633          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:122
+$2F92  $2F99       8  code         @L632          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:122
+$2F9A  $2FA1       8  code         @L634          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:123
+$2FA2  $2FA3       2  code         @L631          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:119
+$2FA4  $2FB3      16  code         @L626          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:126
+$2FB4  $309D     234  code       sort             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:130
+$2FE0  $2FE9      10  code         @L636          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:133
+$2FEA  $302B      66  code         @L639          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:135
+$302C  $3075      74  code         @L642          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:138
+$3076              0  -            @L645          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:138
+$3076  $3085      16  code         @L644          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:138
+$3086  $308B       6  code         @L641          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:135
+$308C  $309D      18  code         @L638          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:133
+$309E  $30E7      74  code       path_up          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:150
+$30C0  $30D3      20  code         @L647          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:152
+$30D4              0  -            @L650          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:152
+$30D4  $30D9       6  code         @L649          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:152
+$30DA  $30E7      14  code         @L651          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:153
+$30E8  $316B     132  code       fix_top          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:157
+$310E  $311F      18  code         @L653          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:159
+$3120  $313D      30  code         @L654          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:160
+$313E  $314F      18  code         @L655          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:161
+$3150  $3169      26  code         @L656          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:162
+$316A              0  -            @L658          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:162
+$316A  $316B       2  code         @L657          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:162
+$316C  $340D     674  code       load             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:167
+$3190  $31BD      46  code         @L660          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:170
+$31BE  $31CF      18  code         @L664          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:175
+$31D0  $31EB      28  code         @L666          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:176
+$31EC              0  -            @L667          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:177
+$31EC  $31ED       2  code         @L665          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:177
+$31EE  $3217      42  code         @L662          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:177
+$3218  $3237      32  code         @L669          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:183
+$3238  $3271      58  code         @L671          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:183
+$3272  $327B      10  code         @L668          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:188
+$327C  $3289      14  code         @L672          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:191
+$328A  $32B5      44  code         @L675          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:193
+$32B6  $32B7       2  code         @L677          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:195
+$32B8  $32BB       4  code         @L676          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:195
+$32BC  $32C9      14  code         @L674          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:196
+$32CA  $32EF      38  code         @L678          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:200
+$32F0  $332B      60  code         @L680          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:200
+$332C  $3385      90  code         @L681          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:208
+$3386  $338B       6  code         @L684          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:209
+$338C  $3397      12  code         @L683          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:208
+$3398  $33B7      32  code         @L686          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:214
+$33B8  $33BD       6  code         @L689          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:215
+$33BE              0  -            @L688          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:214
+$33BE  $33F9      60  code         @L685          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:214
+$33FA              0  -            @L691          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:224
+$33FA              0  -            @L690          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:224
+$33FA  $340D      20  code         @L659          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:224
+$340E  $346B      94  code       reload_all       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:229
+$341C  $3441      38  code         @L693          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:232
+$3442  $3445       4  code         @L696          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:233
+$3446  $3453      14  code         @L697          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:233
+$3454  $346B      24  code         @L695          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:232
+$346C  $352B     192  code       fmt_date         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:242
+$3496  $351B     134  code         @L699          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:243
+$351C  $352B      16  code         @L698          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:250
+$352C  $35C1     150  code       fmt_time         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:254
+$3554  $35B1      94  code         @L701          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:255
+$35B2  $35C1      16  code         @L700          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:261
+$35C2  $3657     150  code       fmt_size         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:265
+$3616  $3621      12  code         @L703          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:272
+$3622  $362B      10  code         @L704          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:274
+$362C  $363F      20  code         @L705          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:277
+$3640  $3657      24  code         @L707          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:277
+$3658  $3967     784  code       draw_frame       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:282
+$36F0  $3755     102  code         @L709          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:290
+$3756  $391F     458  code         @L711          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:290
+$3920  $3929      10  code         @L712          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:320
+$392A  $393F      22  code         @L713          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:322
+$3940  $3967      40  code         @L714          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:326
+$3968  $3BE7     640  code       draw_row         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:331
+$3A20  $3A43      36  code         @L716          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:342
+$3A44  $3A4F      12  code         @L717          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:347
+$3A50              0  -            @L719          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:347
+$3A50  $3A5B      12  code         @L718          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:347
+$3A5C  $3A85      42  code         @L720          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:348
+$3A86  $3AA9      36  code         @L721          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:350
+$3AAA  $3AAD       4  code         @L723          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:353
+$3AAE  $3AB1       4  code         @L724          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:353
+$3AB2  $3AEF      62  code         @L722          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:354
+$3AF0  $3B07      24  code         @L725          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:359
+$3B08  $3B39      50  code         @L726          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:361
+$3B3A  $3B51      24  code         @L727          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:365
+$3B52  $3B69      24  code         @L729          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:366
+$3B6A              0  -            @L730          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:367
+$3B6A  $3BAD      68  code         @L728          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:367
+$3BAE  $3BBD      16  code         @L731          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:370
+$3BBE  $3BD5      24  code         @L732          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:370
+$3BD6  $3BE7      18  code         @L715          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:371
+$3BE8  $3C0D      38  code       draw_list        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:374
+$3BF8  $3C07      16  code         @L734          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:376
+$3C08  $3C0D       6  code         @L736          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:376
+$3C0E  $3E09     508  code       draw_info        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:380
+$3CB6              0  -            @L739          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:390
+$3CB6  $3D0D      88  code         @L738          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:390
+$3D0E  $3D45      56  code         @L740          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:400
+$3D46  $3D51      12  code         @L742          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:403
+$3D52  $3D75      36  code         @L743          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:403
+$3D76  $3D7D       8  code         @L744          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:406
+$3D7E  $3DB5      56  code         @L745          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:406
+$3DB6              0  -            @L747          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:411
+$3DB6              0  -            @L746          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:411
+$3DB6  $3DC5      16  code         @L741          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:411
+$3DC6  $3DD9      20  code         @L748          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:414
+$3DDA  $3DFB      34  code         @L749          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:417
+$3DFC  $3E09      14  code         @L750          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:418
+$3E0A  $3E25      28  code       draw_panel       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:421
+$3E26  $3EE7     194  code       draw_cmd         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:432
+$3E60  $3E77      24  code         @L753          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:437
+$3E78  $3E87      16  code         @L754          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:442
+$3E88  $3E95      14  code         @L757          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:444
+$3E96  $3E9F      10  code         @L759          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:444
+$3EA0  $3EA7       8  code         @L761          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:444
+$3EA8              0  -            @L762          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:444
+$3EA8              0  -            @L760          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:444
+$3EA8  $3EB5      14  code         @L758          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:444
+$3EB6  $3EBB       6  code         @L756          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:442
+$3EBC  $3ECB      16  code         @L763          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:449
+$3ECC  $3EE7      28  code         @L765          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:449
+$3EE8  $3F29      66  code       cmd_add          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:453
+$3EF8  $3F1D      38  code         @L767          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:454
+$3F1E              0  -            @L770          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:454
+$3F1E  $3F29      12  code         @L769          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:454
+$3F2A  $3FC1     152  code       hist_add         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:465
+$3F66  $3F73      14  code         @L773          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:467
+$3F74  $3F8F      28  code         @L775          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:470
+$3F90  $3F99      10  code         @L777          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:470
+$3F9A  $3FBB      34  code         @L774          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:471
+$3FBC  $3FC1       6  code         @L771          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:475
+$3FC2  $3FED      44  code       hist_set         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:478
+$3FEA  $3FED       4  code         @L779          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:482
+$3FEE  $4083     150  code       draw_keys_with   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:488
+$4002  $402B      42  code         @L781          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:490
+$402C  $4037      12  code         @L784          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:494
+$4038  $4043      12  code         @L785          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:494
+$4044  $4071      46  code         @L786          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:496
+$4072  $4077       6  code         @L787          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:498
+$4078  $4083      12  code         @L783          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:490
+$4084  $408F      12  code       draw_keys        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:503
+$4090  $40AB      28  code       redraw           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:505
+$40AC  $40EF      68  code       moveto           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:514
+$40D0  $40EB      28  code         @L792          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:517
+$40EC  $40EF       4  code         @L790          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:521
+$40F0  $4119      42  code       move_by          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:524
+$410E  $4119      12  code         @L794          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:527
+$411A  $4211     248  code       set_mark         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:532
+$418A  $41BF      54  code         @L797          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:539
+$41C0  $41E3      36  code         @L799          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:543
+$41E4  $4201      30  code         @L800          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:544
+$4202              0  -            @L801          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:544
+$4202  $4211      16  code         @L795          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:544
+$4212  $4295     132  code       mark_all         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:548
+$4230  $4253      36  code         @L803          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:551
+$4254  $4255       2  code         @L807          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:552
+$4256  $4269      20  code         @L806          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:552
+$426A  $4275      12  code         @L809          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:553
+$4276              0  -            @L810          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:554
+$4276  $427D       8  code         @L808          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:554
+$427E  $4295      24  code         @L805          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:551
+$4296  $4343     174  code       panel_cd         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:565
+$42C6  $42F3      46  code         @L812          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:568
+$42F4              0  -            @L814          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:572
+$42F4  $431F      44  code         @L813          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:572
+$4320  $4337      24  code         @L815          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:580
+$4338  $4343      12  code         @L811          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:585
+$4344  $4393      80  code       enter_dir        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:588
+$4382  $4393      18  code         @L817          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:593
+$4394  $4437     164  code       exec_child       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:599
+$43E0  $440B      44  code         @L819          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:606
+$440C  $441F      20  code         @L820          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:613
+$4420  $4437      24  code         @L821          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:618
+$4438  $44BD     134  code       cl_word          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:628
+$444C  $4481      54  code         @L823          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:631
+$4482  $4483       2  code         @L827          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:631
+$4484  $448B       8  code         @L826          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:631
+$448C  $449B      16  code         @L825          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:631
+$449C  $44B5      26  code         @L828          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:632
+$44B6  $44BD       8  code         @L829          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:634
+$44BE  $4583     198  code       run_entry        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:642
+$452C  $453D      18  code         @L832          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:654
+$453E  $454D      16  code         @L834          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:656
+$454E              0  -            @L836          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:658
+$454E              0  -            @L835          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:658
+$454E  $4569      28  code         @L833          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:658
+$456A  $4575      12  code         @L837          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:661
+$4576  $4583      14  code         @L830          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:662
+$4584  $4701     382  code       run_cmdline      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:669
+$45A2  $45AB      10  code         @L839          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:672
+$45AC  $45CD      34  code         @L841          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:672
+$45CE  $45E9      28  code         @L842          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:675
+$45EA              0  -            @L845          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:675
+$45EA  $4601      24  code         @L844          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:675
+$4602  $462B      42  code         @L846          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:678
+$462C  $4637      12  code         @L848          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:680
+$4638  $4641      10  code         @L849          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:682
+$4642  $464B      10  code         @L851          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:682
+$464C  $4657      12  code         @L852          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:683
+$4658  $4679      34  code         @L847          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:685
+$467A  $468F      22  code         @L853          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:689
+$4690  $46C5      54  code         @L854          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:691
+$46C6  $46CB       6  code         @L856          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:696
+$46CC  $46E5      26  code         @L855          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:697
+$46E6  $46EF      10  code         @L857          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:701
+$46F0              0  -            @L858          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:703
+$46F0  $4701      18  code         @L838          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:703
+$4702  $471B      26  code       drv_key          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:708
+$4712  $4719       8  code         @L860          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:709
+$471A  $471B       2  code         @L859          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:710
+$471C  $49A1     646  code       pick_drive       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:714
+$4740  $4769      42  code         @L862          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:719
+$476A  $4777      14  code         @L866          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:721
+$4778  $4789      18  code         @L865          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:723
+$478A  $47E3      90  code         @L864          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:719
+$47E4  $47EB       8  code         @L868          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:732
+$47EC  $47F7      12  code         @L871          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:735
+$47F8  $483F      72  code         @L874          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:737
+$4840  $4857      24  code         @L875          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:744
+$4858              0  -            @L878          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:744
+$4858  $485B       4  code         @L877          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:744
+$485C  $4869      14  code         @L879          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:745
+$486A  $48B1      72  code         @L881          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:745
+$48B2  $48E5      52  code         @L873          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:735
+$48E6  $4905      32  code         @L882          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:756
+$4906  $4921      28  code         @L884          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:758
+$4922  $4935      20  code         @L885          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:759
+$4936  $4943      14  code         @L887          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:763
+$4944  $4949       6  code         @L890          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:763
+$494A  $4955      12  code         @L889          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:763
+$4956  $4959       4  code         @L886          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:764
+$495A  $498F      54  code         @L870          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:764
+$4990  $49A1      18  code         @L861          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:773
+$49A2  $4A1F     126  code       help             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:800
+$49E8  $4A09      34  code         @L893          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:806
+$4A0A  $4A1F      22  code         @L895          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:806
+$4A20  $4A7F      96  code       name_to_cmd      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:817
+$4A7A  $4A7F       6  code         @L896          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:826
+$4A80  $4DFD     894  code       key              D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:829
+$4ABA  $4AC9      16  code         @L901          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:834
+$4ACA  $4ADB      18  code         @L903          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:835
+$4ADC  $4AED      18  code         @L905          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:836
+$4AEE  $4AFD      16  code         @L907          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:837
+$4AFE  $4B0F      18  code         @L909          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:838
+$4B10  $4B31      34  code         @L911          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:839
+$4B32  $4B35       4  code         @L914          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:841
+$4B36  $4B43      14  code         @L913          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:841
+$4B44  $4B51      14  code         @L916          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:843
+$4B52  $4B5F      14  code         @L918          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:844
+$4B60  $4B8D      46  code         @L920          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:845
+$4B8E  $4B9D      16  code         @L924          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:849
+$4B9E              0  -            @L926          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:849
+$4B9E              0  -            @L925          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:849
+$4B9E  $4BA1       4  code         @L923          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:849
+$4BA2  $4BBF      30  code         @L922          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:849
+$4BC0  $4BED      46  code         @L929          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:853
+$4BEE              0  -            @L931          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:854
+$4BEE  $4BEF       2  code         @L930          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:854
+$4BF0  $4BFD      14  code         @L928          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:854
+$4BFE  $4C0B      14  code         @L933          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:856
+$4C0C  $4C17      12  code         @L935          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:857
+$4C18  $4C23      12  code         @L937          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:858
+$4C24  $4C2F      12  code         @L939          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:859
+$4C30  $4C61      50  code         @L941          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:860
+$4C62  $4C65       4  code         @L944          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L945          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L943          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L942          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L940          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L938          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L936          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L934          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L932          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L927          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L921          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L919          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L917          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L915          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L912          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L910          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L908          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L906          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66              0  -            @L904          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C66  $4C69       4  code         @L902          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$4C6A  $4C9B      50  code         @L900          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:864
+$4C9C  $4CAF      20  code         @L946          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:872
+$4CB0  $4CD9      42  code         @L948          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:875
+$4CDA  $4CEB      18  code         @L950          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:878
+$4CEC              0  -            @L952          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:879
+$4CEC  $4CEF       4  code         @L951          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:879
+$4CF0  $4D09      26  code         @L947          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:880
+$4D0A  $4D2D      36  code         @L953          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:882
+$4D2E  $4D31       4  code         @L955          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:884
+$4D32  $4D4B      26  code         @L954          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:885
+$4D4C  $4D5D      18  code         @L956          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:887
+$4D5E  $4D77      26  code         @L957          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:888
+$4D78  $4D79       2  code         @L959          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:890
+$4D7A  $4D97      30  code         @L958          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:891
+$4D98  $4D99       2  code         @L961          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:894
+$4D9A  $4DB9      32  code         @L960          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:895
+$4DBA  $4DC5      12  code         @L964          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:898
+$4DC6  $4DF1      44  code         @L963          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:898
+$4DF2              0  -            @L965          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:903
+$4DF2              0  -            @L962          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:903
+$4DF2  $4DFD      12  code         @L899          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:903
+$4DFE  $4E69     108  code       map_ents         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:909
+$4E24  $4E27       4  code         @L968          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:913
+$4E28  $4E2D       6  code         @L967          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:913
+$4E2E  $4E3D      16  code         @L969          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:915
+$4E3E  $4E51      20  code         @L972          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:918
+$4E52  $4E57       6  code         @L973          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:920
+$4E58  $4E59       2  code         @L971          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:915
+$4E5A  $4E69      16  code         @L966          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:923
+$4E6A  $4F75     268  code       main             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:926
+$4E98  $4EC1      42  code         @L975          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:931
+$4EC2  $4F09      72  code         @L976          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:935
+$4F0A              0  -            @L979          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:941
+$4F0A  $4F11       8  code         @L978          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:941
+$4F12  $4F37      38  code         @L977          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:943
+$4F38  $4F4B      20  code         @L980          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:950
+$4F4C  $4F53       8  code         @L983          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:952
+$4F54  $4F69      22  code         @L982          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:950
+$4F6A  $4F75      12  code         @L974          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:956
+$4F76  $4F85      16  code       __mul32          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$4F86  $4FD1      76  code       __divu32         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$4F9E  $4FAB      14  code         @slow          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$4FAC  $4FBF      20  code         @loop          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$4FC0  $4FC1       2  code         @set           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$4FC2  $4FD1      16  code         @next          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$4FD2  $5025      84  code       __udivc32        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$5026  $5033      14  code       __umodc32        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:957
+$5034  $5039       6  code+data  sys_exit         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:5
+$503A  $503F       6  code+data  sys_spawn        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:9
+$5040  $5045       6  code+data  sys_exec         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:13
+$5046  $504B       6  code+data  sys_onevent      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:17
+$504C  $5051       6  code+data  sys_open         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:21
+$5052  $5057       6  code+data  sys_close        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:25
+$5058  $505D       6  code+data  sys_read         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:29
+$505E  $5063       6  code+data  sys_write        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:33
+$5064  $5069       6  code+data  sys_seek         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:37
+$506A  $506F       6  code+data  sys_dup          D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:41
+$5070  $5075       6  code+data  sys_hinfo        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:45
+$5076  $507B       6  code+data  sys_setsize      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:49
+$507C  $5081       6  code+data  sys_fstat        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:53
+$5082  $5087       6  code+data  sys_stat         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:57
+$5088  $508D       6  code+data  sys_delete       D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:61
+$508E  $5093       6  code+data  sys_rename       D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:65
+$5094  $5099       6  code+data  sys_mkdir        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:69
+$509A  $509F       6  code+data  sys_chdir        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:73
+$50A0  $50A5       6  code+data  sys_getcwd       D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:77
+$50A6  $50AB       6  code+data  sys_readdir      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:81
+$50AC  $50B1       6  code+data  sys_setattr      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:85
+$50B2  $50B7       6  code+data  sys_volinfo      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:89
+$50B8  $50BD       6  code+data  sys_mount        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:93
+$50BE  $50C3       6  code+data  sys_unmount      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:97
+$50C4  $50C9       6  code+data  sys_sync         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:101
+$50CA  $50CF       6  code+data  sys_setmtime     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:105
+$50D0  $50D5       6  code+data  sys_con_mode     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:109
+$50D6  $50DB       6  code+data  sys_con_getev    D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:113
+$50DC  $50E1       6  code+data  sys_con_flush    D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:117
+$50E2  $50E7       6  code+data  sys_meminfo      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:121
+$50E8  $50ED       6  code+data  sys_settop       D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:125
+$50EE  $50F3       6  code+data  sys_xalloc       D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:129
+$50F4  $50F9       6  code+data  sys_xfree        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:133
+$50FA  $50FF       6  code+data  sys_xmap         D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:137
+$5100  $5105       6  code+data  sys_time_get     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:141
+$5106  $510B       6  code+data  sys_time_set     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:145
+$510C  $5111       6  code+data  sys_ticks        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:149
+$5112  $5117       6  code+data  sys_sleep        D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:153
+$5118  $511D       6  code+data  sys_tickhook     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:157
+$511E  $5123       6  code+data  sys_disk_info    D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:161
+$5124  $5129       6  code+data  sys_disk_io      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:165
+$512A  $512F       6  code+data  sys_sysinfo      D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:169
+$5130  $5135       6  code+data  sys_shutdown     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:173
+$5136  $513B       6  code+data  sys_sess_info    D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:177
+$513C  $5141       6  code+data  sys_sess_new     D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:181
+$5142  $5147       6  code+data  sys_sess_switch  D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:185
+$5148  $514D       6  code+data  sys_sess_kill    D:/Radio/Projects/CPU/u16/monitor/user/lib/sys.asm:189
+$514E              0  -          __data_start     D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:10764
+$514E  $514F       2  data       prog             D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:4
+$5150  $5161      18  data       hexd             D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:16
+$5162  $5175      20  data       vkeys            D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$5176  $5189      20  data       vkeysh           D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$518A  $518B       2  data       op_title         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:23
+$518C  $519F      20  data       keylab           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$51A0  $51AF      16  data       editor           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:640
+$51B0  $51BD      14  data       tmpcmd           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:665
+$51BE  $51E5      40  data       helptext         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:777
+$51E6  $51E7       2  data       putnl.s0         D:/Radio/Projects/CPU/u16/monitor/user/lib/sysdefs.b16:75
+$51E8  $51E9       2  data       prog.s0          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:4
+$51EA  $5203      26  data       err_text.s0      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:66
+$5204  $5213      16  data       err_text.s1      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:67
+$5214  $5223      16  data       err_text.s2      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:68
+$5224  $5233      16  data       err_text.s3      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:69
+$5234  $5247      20  data       err_text.s4      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:70
+$5248  $5251      10  data       err_text.s5      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:71
+$5252  $525F      14  data       err_text.s6      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:72
+$5260  $526D      14  data       err_text.s7      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:73
+$526E  $527B      14  data       err_text.s8      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:74
+$527C  $528F      20  data       err_text.s9      D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:75
+$5290  $5299      10  data       err_text.s10     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:76
+$529A  $52AB      18  data       err_text.s11     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:77
+$52AC  $52C7      28  data       err_text.s12     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:78
+$52C8  $52D5      14  data       err_text.s13     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:79
+$52D6  $52E7      18  data       err_text.s14     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:80
+$52E8  $5301      26  data       err_text.s15     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:81
+$5302  $5307       6  data       err_text.s16     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:82
+$5308  $5319      18  data       err_text.s17     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:83
+$531A  $5329      16  data       err_text.s18     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:84
+$532A  $533B      18  data       err_text.s19     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:85
+$533C  $534F      20  data       err_text.s20     D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:86
+$5350  $5353       4  data       fail.s0          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:93
+$5354  $5357       4  data       fail.s1          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:94
+$5358  $535F       8  data       fail.s2          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:96
+$5360  $5361       2  data       fail.s3          D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:97
+$5362  $5369       8  data       mb_err.s0        D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:227
+$536A  $536B       2  data       dlg_open.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:244
+$536C  $5373       8  data       dlg_msg.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:263
+$5374  $538D      26  data       dlg_input.s0     D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:299
+$538E  $538F       2  data       vkeys.s0         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$5390  $5391       2  data       vkeys.s1         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$5392  $5397       6  data       vkeys.s2         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$5398  $539B       4  data       vkeys.s3         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$539C  $539D       2  data       vkeys.s4         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$539E  $539F       2  data       vkeys.s5         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$53A0  $53A1       2  data       vkeys.s6         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$53A2  $53A3       2  data       vkeys.s7         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$53A4  $53A5       2  data       vkeys.s8         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$53A6  $53AB       6  data       vkeys.s9         D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:17
+$53AC  $53AD       2  data       vkeysh.s0        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53AE  $53AF       2  data       vkeysh.s1        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53B0  $53B5       6  data       vkeysh.s2        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53B6  $53BB       6  data       vkeysh.s3        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53BC  $53BD       2  data       vkeysh.s4        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53BE  $53BF       2  data       vkeysh.s5        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53C0  $53C1       2  data       vkeysh.s6        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53C2  $53C3       2  data       vkeysh.s7        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53C4  $53C5       2  data       vkeysh.s8        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53C6  $53CB       6  data       vkeysh.s9        D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:18
+$53CC  $53CD       2  data       vstatus.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:145
+$53CE  $53D1       4  data       vstatus.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:151
+$53D2  $53D5       4  data       vstatus.s2       D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:158
+$53D6  $53DB       6  data       view_entry.s0    D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:188
+$53DC  $53E3       8  data       op_title.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:23
+$53E4  $53E7       4  data       prog_box.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:113
+$53E8  $53ED       6  data       prog_bytes.s0    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:122
+$53EE  $53F5       8  data       prog_bytes.s1    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:124
+$53F6  $53FB       6  data       check_abort.s1   D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:132
+$53FC  $5411      22  data       check_abort.s2   D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:132
+$5412  $541F      14  data       check_abort.s3   D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:132
+$5420  $5423       4  data       check_abort.s0   D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:132
+$5424  $5427       4  data       op_errt.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:142
+$5428  $542D       6  data       op_errt.s2       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:144
+$542E  $5443      22  data       op_errt.s3       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:144
+$5444  $5445       2  data       op_errt.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:144
+$5446  $544D       8  data       op_err.s0        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:152
+$544E  $5455       8  data       ask_over.s1      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:159
+$5456  $546F      26  data       ask_over.s2      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:159
+$5470  $5491      34  data       ask_over.s3      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:159
+$5492  $5495       4  data       ask_over.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:159
+$5496  $54A1      12  data       copy_file.s0     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:199
+$54A2  $54AD      12  data       copy_file.s1     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:204
+$54AE  $54BB      14  data       copy_file.s2     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:206
+$54BC  $54C7      12  data       copy_file.s3     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:223
+$54C8  $54D5      14  data       copy_obj.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:235
+$54D6  $54E3      14  data       copy_obj.s1      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:237
+$54E4  $54EF      12  data       copy_obj.s2      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:241
+$54F0  $54FB      12  data       copy_obj.s3      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:252
+$54FC  $5507      12  data       copy_obj.s4      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:255
+$5508  $550F       8  data       ro_check.s1      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:271
+$5510  $552D      30  data       ro_check.s2      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:271
+$552E  $554F      34  data       ro_check.s3      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:271
+$5550  $5553       4  data       ro_check.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:271
+$5554  $556D      26  data       ro_check.s4      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:278
+$556E  $5579      12  data       del_obj.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:290
+$557A  $5587      14  data       del_obj.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:299
+$5588  $5593      12  data       del_obj.s2       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:302
+$5594  $55A1      14  data       del_obj.s3       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:312
+$55A2  $55AD      12  data       move_obj.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:328
+$55AE  $55BD      16  data       do_copy.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:361
+$55BE  $55C3       6  data       do_copy.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:361
+$55C4  $55CD      10  data       do_copy.s2       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:368
+$55CE  $55D3       6  data       do_copy.s3       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:370
+$55D4  $55D9       6  data       do_copy.s4       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:371
+$55DA  $55E5      12  data       do_copy.s5       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:372
+$55E6  $55EB       6  data       do_copy.s6       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:378
+$55EC  $55F1       6  data       do_copy.s7       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:384
+$55F2  $5601      16  data       do_copy.s8       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:384
+$5602  $5609       8  data       do_copy.s9       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:388
+$560A  $5611       8  data       do_copy.s10      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:388
+$5612  $561D      12  data       do_copy.s11      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:389
+$561E  $5629      12  data       do_copy.s12      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:390
+$562A  $5633      10  data       do_copy.s13      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:413
+$5634  $5657      36  data       do_copy.s14      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:420
+$5658  $566F      24  data       do_delete.s0     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:440
+$5670  $5681      18  data       do_delete.s1     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:440
+$5682  $5685       4  data       do_delete.s2     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:442
+$5686  $568D       8  data       do_delete.s3     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:444
+$568E  $569F      18  data       do_delete.s4     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:446
+$56A0  $56D1      50  data       do_delete.s5     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:449
+$56D2  $56D9       8  data       do_delete.s7     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:450
+$56DA  $56E7      14  data       do_delete.s8     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:450
+$56E8  $56EB       4  data       do_delete.s6     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:450
+$56EC  $56F5      10  data       do_delete.s9     D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:451
+$56F6  $5703      14  data       do_delete.s10    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:459
+$5704  $5713      16  data       do_mkdir.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:470
+$5714  $5729      22  data       do_mkdir.s1      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:470
+$572A  $572F       6  data       do_mkdir.s2      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:476
+$5730  $5735       6  data       attr_row.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:485
+$5736  $5741      12  data       do_attr.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:497
+$5742  $574B      10  data       do_attr.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:499
+$574C  $5777      44  data       do_attr.s2       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:501
+$5778  $5785      14  data       do_attr.s3       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:503
+$5786  $578F      10  data       do_attr.s4       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:504
+$5790  $5799      10  data       do_attr.s5       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:505
+$579A  $57A5      12  data       do_attr.s6       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:514
+$57A6  $57BF      26  data       do_attr.s7       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:521
+$57C0  $57D9      26  data       do_attr.s8       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:523
+$57DA  $57E3      10  data       du_show.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:545
+$57E4  $57EB       8  data       du_show.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:547
+$57EC  $57F7      12  data       du_obj.s0        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:562
+$57F8  $5803      12  data       du_obj.s1        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:571
+$5804  $580F      12  data       du_obj.s2        D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:574
+$5810  $581F      16  data       do_dirinfo.s0    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:587
+$5820  $582F      16  data       do_dirinfo.s1    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:597
+$5830  $5837       8  data       do_dirinfo.s2    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:600
+$5838  $5849      18  data       do_dirinfo.s3    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:602
+$584A  $585D      20  data       do_dirinfo.s4    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:606
+$585E  $5865       8  data       do_dirinfo.s5    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:608
+$5866  $5875      16  data       do_dirinfo.s6    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:611
+$5876  $587B       6  data       do_dirinfo.s7    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:613
+$587C  $5887      12  data       do_dirinfo.s8    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:615
+$5888  $58A7      32  data       do_dirinfo.s9    D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:617
+$58A8  $58AF       8  data       do_dirinfo.s10   D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:618
+$58B0  $58B3       4  data       is_exec.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:105
+$58B4  $58B7       4  data       is_exec.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:106
+$58B8  $58BB       4  data       is_exec.s2       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:107
+$58BC  $58BF       4  data       load.s0          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:176
+$58C0  $58C9      10  data       fmt_date.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:243
+$58CA  $58CF       6  data       fmt_time.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:255
+$58D0  $58D5       6  data       draw_frame.s0    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:298
+$58D6  $58DB       6  data       draw_frame.s1    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:300
+$58DC  $58E1       6  data       draw_frame.s2    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:302
+$58E2  $58E5       4  data       draw_frame.s3    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:319
+$58E6  $58E7       2  data       draw_frame.s4    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:324
+$58E8  $58F1      10  data       draw_row.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:365
+$58F2  $58FB      10  data       draw_row.s1      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:366
+$58FC  $5905      10  data       draw_info.s0     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:398
+$5906  $590D       8  data       draw_info.s1     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:400
+$590E  $5913       6  data       draw_info.s2     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:404
+$5914  $5919       6  data       draw_info.s3     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:406
+$591A  $5921       8  data       draw_info.s4     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:406
+$5922  $5925       4  data       draw_info.s5     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:408
+$5926  $592D       8  data       draw_info.s6     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:410
+$592E  $5933       6  data       draw_info.s7     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:411
+$5934  $5945      18  data       draw_info.s8     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:414
+$5946  $594B       6  data       keylab.s0        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$594C  $5951       6  data       keylab.s1        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$5952  $5957       6  data       keylab.s2        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$5958  $595D       6  data       keylab.s3        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$595E  $5963       6  data       keylab.s4        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$5964  $596B       8  data       keylab.s5        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$596C  $5971       6  data       keylab.s6        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$5972  $5979       8  data       keylab.s7        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$597A  $597F       6  data       keylab.s8        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$5980  $5985       6  data       keylab.s9        D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:486
+$5986  $598B       6  data       panel_cd.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:577
+$598C  $598F       4  data       exec_child.s0    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:604
+$5990  $5993       4  data       exec_child.s1    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:611
+$5994  $59AF      28  data       exec_child.s2    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:616
+$59B0  $59B1       2  data       cl_word.s0       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:632
+$59B2  $59B3       2  data       cl_word.s1       D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:634
+$59B4  $59B5       2  data       run_entry.s0     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:654
+$59B6  $59C3      14  data       run_entry.s1     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:656
+$59C4  $59D3      16  data       run_entry.s2     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:658
+$59D4  $59D7       4  data       run_entry.s3     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:661
+$59D8  $59DB       4  data       run_cmdline.s0   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:683
+$59DC  $59E1       6  data       run_cmdline.s1   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:691
+$59E2  $59E3       2  data       run_cmdline.s2   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:696
+$59E4  $5A01      30  data       run_cmdline.s3   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:700
+$5A02  $5A09       8  data       pick_drive.s0    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:732
+$5A0A  $5A0D       4  data       pick_drive.s1    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:742
+$5A0E  $5A0F       2  data       pick_drive.s2    D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:748
+$5A10  $5A3B      44  data       helptext.s0      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:778
+$5A3C  $5A53      24  data       helptext.s1      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:779
+$5A54  $5A89      54  data       helptext.s2      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:780
+$5A8A  $5ABB      50  data       helptext.s3      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:781
+$5ABC  $5AF5      58  data       helptext.s4      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:782
+$5AF6  $5B21      44  data       helptext.s5      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:783
+$5B22  $5B63      66  data       helptext.s6      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:784
+$5B64  $5BA1      62  data       helptext.s7      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:785
+$5BA2  $5BD9      56  data       helptext.s8      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:786
+$5BDA  $5BF7      30  data       helptext.s9      D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:787
+$5BF8  $5C27      48  data       helptext.s10     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:788
+$5C28  $5C59      50  data       helptext.s11     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:789
+$5C5A  $5C6B      18  data       helptext.s12     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:790
+$5C6C  $5C89      30  data       helptext.s13     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:791
+$5C8A  $5CC9      64  data       helptext.s14     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:792
+$5CCA  $5CED      36  data       helptext.s15     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:793
+$5CEE  $5D11      36  data       helptext.s16     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:794
+$5D12  $5D4F      62  data       helptext.s17     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:795
+$5D50  $5D81      50  data       helptext.s18     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:796
+$5D82  $5D83       2  data       helptext.s19     D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:797
+$5D84  $5D97      20  data       help.s0          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:804
+$5D98  $5D99       2  data       name_to_cmd.s0   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:825
+$5D9A  $5D9F       6  data       key.s1           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$5DA0  $5DB7      24  data       key.s2           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$5DB8  $5DC5      14  data       key.s3           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$5DC6  $5DC9       4  data       key.s0           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:862
+$5DCA  $5DCD       4  data       main.s0          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:927
+$5DCE  $5DE5      24  data       main.s1          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:930
+$5DE6  $5DE9       4  data       main.s2          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:935
+$5DEA              0  -          __image_end      D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:11554
+$5DEA              0  -          __bss_start      D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:11555
+$5DEA  $5DEB       2  bss        ign              D:/Radio/Projects/CPU/u16/monitor/user/lib/ulib.b16:5
+$5DEC  $5E0B      32  bss        pend             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:146
+$5E0C  $5E1B      16  bss        pendm            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:147
+$5E1C  $5E1D       2  bss        npend            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:148
+$5E1E  $5E1F       2  bss        kmods            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:152
+$5E20  $5EE9     202  bss        mb               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:188
+$5EEA  $5EEB       2  bss        mbn              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:189
+$5EEC  $5EED       2  bss        dlg_x            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:233
+$5EEE  $5EEF       2  bss        dlg_y            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:233
+$5EF0  $611F     560  bss        pn               D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:50
+$6120  $62B7     408  bss        ord              D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:56
+$62B8  $644F     408  bss        mark             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:58
+$6450  $6451       2  bss        act              D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:59
+$6452  $6453       2  bss        quit             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:60
+$6454  $646D      26  bss        vi               D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:61
+$646E  $648F      34  bss        nbuf             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:62
+$6490  $6491       2  bss        vh               D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:10
+$6492  $6495       4  bss        vsize            D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:11
+$6496  $6499       4  bss        vtop             D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:12
+$649A  $649D       4  bss        vnext            D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:13
+$649E  $64A1       4  bss        vend             D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:14
+$64A2  $64A3       2  bss        vhex             D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:15
+$64A4  $72A3    3584  bss        cbuf             D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:11
+$72A4  $82A3    4096  bss        pool             D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:13
+$82A4  $82A5       2  bss        ptop             D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:14
+$82A6  $83A5     256  bss        spath            D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:15
+$83A6  $84A5     256  bss        dpath            D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:16
+$84A6  $85A5     256  bss        inbuf            D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:17
+$85A6  $86A5     256  bss        cdst             D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:18
+$86A6  $86A7       2  bss        ov_all           D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:19
+$86A8  $86A9       2  bss        ro_all           D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:20
+$86AA  $86AB       2  bss        op_abort         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:21
+$86AC  $86AD       2  bss        op_skip          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:22
+$86AE  $8845     408  bss        selv             D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:24
+$8846  $8847       2  bss        nsel             D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:25
+$8848  $884B       4  bss        du_files         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:530
+$884C  $884F       4  bss        du_dirs          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:530
+$8850  $8853       4  bss        du_bytes         D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:530
+$8854  $8857       4  bss        du_clus          D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:530
+$8858  $8953     252  bss        cmd              D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:429
+$8954  $8955       2  bss        cmdn             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:430
+$8956  $8D55    1024  bss        hist             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:461
+$8D56  $8D57       2  bss        hn               D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:462
+$8D58  $8D59       2  bss        hpos             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:463
+$8D5A  $8E59     256  bss        cwdbuf           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:562
+$8E5A  $8F6D     276  bss        clbuf            D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:625
+$8F6E              0  -          __bss_end        D:\Radio\Projects\CPU\u16\monitor\user\fm\fm.s:11645
+
+== Objects by size ==
+  size   share  type       name             start
+  4096   11.2%  bss        pool             $72A4
+  3584    9.8%  bss        cbuf             $64A4
+  1024    2.8%  bss        hist             $8956
+  1004    2.7%  code       view_entry       $11E0
+   894    2.4%  code       key              $4A80
+   790    2.2%  code       do_copy          $2296
+   784    2.1%  code       draw_frame       $3658
+   674    1.8%  code       load             $316C
+   646    1.8%  code       pick_drive       $471C
+   640    1.7%  code       draw_row         $3968
+   560    1.5%  bss        pn               $5EF0
+   508    1.4%  code       draw_info        $3C0E
+   426    1.2%  code       do_attr          $2802
+   410    1.1%  code       vdraw_hex        $0EB8
+   408    1.1%  bss        ord              $6120
+   408    1.1%  bss        mark             $62B8
+   408    1.1%  bss        selv             $86AE
+   400    1.1%  code       do_dirinfo       $2C0A
+   384    1.0%  code       du_obj           $2A8A
+   382    1.0%  code       run_cmdline      $4584
+   374    1.0%  code       copy_file        $1CB4
+   360    1.0%  code       do_delete        $25AC
+   358    1.0%  code       copy_obj         $1E2A
+   352    1.0%  code       canon            $180E
+   312    0.8%  code       vstatus          $1052
+   310    0.8%  code       del_obj          $2044
+   296    0.8%  code       dlg_input        $0AFE
+   292    0.8%  code       box              $0592
+   276    0.8%  bss        clbuf            $8E5A
+   268    0.7%  code       main             $4E6A
+   256    0.7%  bss        spath            $82A6
+   256    0.7%  bss        dpath            $83A6
+   256    0.7%  bss        inbuf            $84A6
+   256    0.7%  bss        cdst             $85A6
+   256    0.7%  bss        cwdbuf           $8D5A
+   252    0.7%  code       err_text         $022C
+   252    0.7%  bss        cmd              $8858
+   248    0.7%  code       set_mark         $411A
+   246    0.7%  code       vprev            $0DA6
+   242    0.7%  code       move_obj         $217A
+   234    0.6%  code       sort             $2FB4
+   208    0.6%  code       list_dir         $1BAE
+   202    0.6%  bss        mb               $5E20
+   198    0.5%  code       run_entry        $44BE
+   194    0.5%  code       draw_cmd         $3E26
+   192    0.5%  code       fmt_date         $346C
+   188    0.5%  code       dlg_ask          $0A42
+   188    0.5%  code       last_name        $16B4
+   180    0.5%  code       ro_check         $1F90
+   174    0.5%  code       panel_cd         $4296
+   164    0.4%  code       exec_child       $4394
+   158    0.4%  code       vrow             $0C7C
+   158    0.4%  code       sel_build        $1770
+   152    0.4%  code       hist_add         $3F2A
+   150    0.4%  code       fmt_time         $352C
+   150    0.4%  code       fmt_size         $35C2
+   150    0.4%  code       draw_keys_with   $3FEE
+   144    0.4%  code       do_mkdir         $2714
+   140    0.4%  code       vdraw_text       $0D1A
+   134    0.4%  code       cl_word          $4438
+   132    0.4%  code       fix_top          $30E8
+   132    0.4%  code       mark_all         $4212
+   130    0.4%  code       getkey           $06FE
+   130    0.4%  code       less             $2F32
+   128    0.3%  code       dlg_open         $091A
+   128    0.3%  code       pjoin            $15CC
+   128    0.3%  code       prog_bytes       $19B6
+   126    0.3%  code       fputul           $01AE
+   126    0.3%  code       is_exec          $2E90
+   126    0.3%  code       help             $49A2
+   122    0.3%  code       putsn            $047A
+   122    0.3%  code       ultoa            $084A
+   112    0.3%  code       ask_over         $1B3E
+   112    0.3%  code       du_show          $2A1A
+   110    0.3%  code       clusters         $29AC
+   108    0.3%  code       op_errt          $1A7A
+   108    0.3%  code       map_ents         $4DFE
+   104    0.3%  code       is_sub           $164C
+   104    0.3%  code       ext_is           $2E28
+   102    0.3%  code       fail             $0328
+   100    0.3%  code       poll_esc         $0780
+    96    0.3%  code       putsc            $0532
+    96    0.3%  code       name_to_cmd      $4A20
+    94    0.3%  code       attr_row         $27A4
+    94    0.3%  code       reload_all       $340E
+    92    0.3%  code       dlg_msg          $09E6
+    88    0.2%  code       op_err           $1AE6
+    86    0.2%  code       vread            $0C26
+    86    0.2%  code       looks_binary     $118A
+    84    0.2%  code       __udivc32        $4FD2
+    80    0.2%  code       enter_dir        $4344
+    78    0.2%  code       __start          $001C
+    76    0.2%  code       strieq           $011C
+    76    0.2%  code       dlg_line         $099A
+    76    0.2%  code       __divu32         $4F86
+    74    0.2%  code       path_up          $309E
+    72    0.2%  code       prog_box         $196E
+    68    0.2%  code       check_abort      $1A36
+    68    0.2%  code       moveto           $40AC
+    66    0.2%  code       cmd_add          $3EE8
+    66    0.2%  data       helptext.s6      $5B22
+    64    0.2%  data       helptext.s14     $5C8A
+    62    0.2%  code       putsa            $04F4
+    62    0.2%  data       helptext.s7      $5B64
+    62    0.2%  data       helptext.s17     $5D12
+    60    0.2%  code       fill             $043E
+    58    0.2%  data       helptext.s4      $5ABC
+    56    0.2%  data       helptext.s8      $5BA2
+    54    0.1%  code       keep_attr        $1C7E
+    54    0.1%  data       helptext.s2      $5A54
+    52    0.1%  code       fputs            $0168
+    50    0.1%  code       is_dir           $03F6
+    50    0.1%  code       mb_err           $08E8
+    50    0.1%  data       do_delete.s5     $56A0
+    50    0.1%  data       helptext.s3      $5A8A
+    50    0.1%  data       helptext.s11     $5C28
+    50    0.1%  data       helptext.s18     $5D50
+    48    0.1%  data       helptext.s10     $5BF8
+    46    0.1%  code       puts             $0096
+    44    0.1%  code       hist_set         $3FC2
+    44    0.1%  data       do_attr.s2       $574C
+    44    0.1%  data       helptext.s0      $5A10
+    44    0.1%  data       helptext.s5      $5AF6
+    42    0.1%  code       chfold           $00F2
+    42    0.1%  code       mb_c             $0802
+    42    0.1%  code       op_start         $226C
+    42    0.1%  code       ename            $2DDC
+    42    0.1%  code       move_by          $40F0
+    40    0.1%  code       basename         $038E
+    40    0.1%  data       helptext         $51BE
+    38    0.1%  code       strcat           $03D0
+    38    0.1%  code       entp             $2D9A
+    38    0.1%  code       draw_list        $3BE8
+    36    0.1%  code       mb_ul            $08C4
+    36    0.1%  code       is_root          $2F0E
+    36    0.1%  data       do_copy.s14      $5634
+    36    0.1%  data       helptext.s15     $5CCA
+    36    0.1%  data       helptext.s16     $5CEE
+    34    0.1%  code       streq            $00D0
+    34    0.1%  code       is_up            $2E06
+    34    0.1%  data       ask_over.s3      $5470
+    34    0.1%  data       ro_check.s3      $552E
+    34    0.1%  bss        nbuf             $646E
+    32    0.1%  data       do_dirinfo.s9    $5888
+    32    0.1%  bss        pend             $5DEC
+    30    0.1%  code       cursor_at        $06D8
+    30    0.1%  code       mb_s             $082C
+    30    0.1%  data       ro_check.s2      $5510
+    30    0.1%  data       run_cmdline.s3   $59E4
+    30    0.1%  data       helptext.s9      $5BDA
+    30    0.1%  data       helptext.s13     $5C6C
+    28    0.1%  code+data  __header         $0000
+    28    0.1%  code       strlen           $007A
+    28    0.1%  code       hex2             $0E9C
+    28    0.1%  code       draw_panel       $3E0A
+    28    0.1%  code       redraw           $4090
+    28    0.1%  data       err_text.s12     $52AC
+    28    0.1%  data       exec_child.s2    $5994
+    26    0.1%  code       strcpy           $03B6
+    26    0.1%  code       drv_key          $4702
+    26    0.1%  data       err_text.s0      $51EA
+    26    0.1%  data       err_text.s15     $52E8
+    26    0.1%  data       dlg_input.s0     $5374
+    26    0.1%  data       ask_over.s2      $5456
+    26    0.1%  data       ro_check.s4      $5554
+    26    0.1%  data       do_attr.s7       $57A6
+    26    0.1%  data       do_attr.s8       $57C0
+    26    0.1%  bss        vi               $6454
+    24    0.1%  data       do_delete.s0     $5658
+    24    0.1%  data       helptext.s1      $5A3C
+    24    0.1%  data       key.s2           $5DA0
+    24    0.1%  data       main.s1          $5DCE
+    22    0.1%  data       check_abort.s2   $53FC
+    22    0.1%  data       op_errt.s3       $542E
+    22    0.1%  data       do_mkdir.s1      $5714
+    20    0.1%  code       scr_tty          $06C4
+    20    0.1%  code       edir             $2DC8
+    20    0.1%  data       vkeys            $5162
+    20    0.1%  data       vkeysh           $5176
+    20    0.1%  data       keylab           $518C
+    20    0.1%  data       err_text.s4      $5234
+    20    0.1%  data       err_text.s9      $527C
+    20    0.1%  data       err_text.s20     $533C
+    20    0.1%  data       do_dirinfo.s4    $584A
+    20    0.1%  data       help.s0          $5D84
+    18    0.0%  code       eputs            $019C
+    18    0.0%  data       hexd             $5150
+    18    0.0%  data       err_text.s11     $529A
+    18    0.0%  data       err_text.s14     $52D6
+    18    0.0%  data       err_text.s17     $5308
+    18    0.0%  data       err_text.s19     $532A
+    18    0.0%  data       do_delete.s1     $5670
+    18    0.0%  data       do_delete.s4     $568E
+    18    0.0%  data       do_dirinfo.s3    $5838
+    18    0.0%  data       draw_info.s8     $5934
+    18    0.0%  data       helptext.s12     $5C5A
+    16    0.0%  code       lower            $07E4
+    16    0.0%  code       __mul32          $4F76
+    16    0.0%  data       editor           $51A0
+    16    0.0%  data       err_text.s1      $5204
+    16    0.0%  data       err_text.s2      $5214
+    16    0.0%  data       err_text.s3      $5224
+    16    0.0%  data       err_text.s18     $531A
+    16    0.0%  data       do_copy.s0       $55AE
+    16    0.0%  data       do_copy.s8       $55F2
+    16    0.0%  data       do_mkdir.s0      $5704
+    16    0.0%  data       do_dirinfo.s0    $5810
+    16    0.0%  data       do_dirinfo.s1    $5820
+    16    0.0%  data       do_dirinfo.s6    $5866
+    16    0.0%  data       run_entry.s2     $59C4
+    16    0.0%  bss        pendm            $5E0C
+    14    0.0%  code       __halt           $006A
+    14    0.0%  code       gotoxy           $0428
+    14    0.0%  code       scr_coord        $06B6
+    14    0.0%  code       mb_clear         $07F4
+    14    0.0%  code       __umodc32        $5026
+    14    0.0%  data       tmpcmd           $51B0
+    14    0.0%  data       err_text.s6      $5252
+    14    0.0%  data       err_text.s7      $5260
+    14    0.0%  data       err_text.s8      $526E
+    14    0.0%  data       err_text.s13     $52C8
+    14    0.0%  data       check_abort.s3   $5412
+    14    0.0%  data       copy_file.s2     $54AE
+    14    0.0%  data       copy_obj.s0      $54C8
+    14    0.0%  data       copy_obj.s1      $54D6
+    14    0.0%  data       del_obj.s1       $557A
+    14    0.0%  data       del_obj.s3       $5594
+    14    0.0%  data       do_delete.s8     $56DA
+    14    0.0%  data       do_delete.s10    $56F6
+    14    0.0%  data       do_attr.s3       $5778
+    14    0.0%  data       run_entry.s1     $59B6
+    14    0.0%  data       key.s3           $5DB8
+    12    0.0%  code       putnl            $00C4
+    12    0.0%  code       draw_keys        $4084
+    12    0.0%  data       copy_file.s0     $5496
+    12    0.0%  data       copy_file.s1     $54A2
+    12    0.0%  data       copy_file.s3     $54BC
+    12    0.0%  data       copy_obj.s2      $54E4
+    12    0.0%  data       copy_obj.s3      $54F0
+    12    0.0%  data       copy_obj.s4      $54FC
+    12    0.0%  data       del_obj.s0       $556E
+    12    0.0%  data       del_obj.s2       $5588
+    12    0.0%  data       move_obj.s0      $55A2
+    12    0.0%  data       do_copy.s5       $55DA
+    12    0.0%  data       do_copy.s11      $5612
+    12    0.0%  data       do_copy.s12      $561E
+    12    0.0%  data       do_attr.s0       $5736
+    12    0.0%  data       do_attr.s6       $579A
+    12    0.0%  data       du_obj.s0        $57EC
+    12    0.0%  data       du_obj.s1        $57F8
+    12    0.0%  data       du_obj.s2        $5804
+    12    0.0%  data       do_dirinfo.s8    $587C
+    10    0.0%  data       err_text.s5      $5248
+    10    0.0%  data       err_text.s10     $5290
+    10    0.0%  data       do_copy.s2       $55C4
+    10    0.0%  data       do_copy.s13      $562A
+    10    0.0%  data       do_delete.s9     $56EC
+    10    0.0%  data       do_attr.s1       $5742
+    10    0.0%  data       do_attr.s4       $5786
+    10    0.0%  data       do_attr.s5       $5790
+    10    0.0%  data       du_show.s0       $57DA
+    10    0.0%  data       fmt_date.s0      $58C0
+    10    0.0%  data       draw_row.s0      $58E8
+    10    0.0%  data       draw_row.s1      $58F2
+    10    0.0%  data       draw_info.s0     $58FC
+     8    0.0%  code       putch            $0436
+     8    0.0%  code       cursor_off       $06F6
+     8    0.0%  code       eflags           $2DC0
+     8    0.0%  data       fail.s2          $5358
+     8    0.0%  data       mb_err.s0        $5362
+     8    0.0%  data       dlg_msg.s0       $536C
+     8    0.0%  data       op_title.s0      $53DC
+     8    0.0%  data       prog_bytes.s1    $53EE
+     8    0.0%  data       op_err.s0        $5446
+     8    0.0%  data       ask_over.s1      $544E
+     8    0.0%  data       ro_check.s1      $5508
+     8    0.0%  data       do_copy.s9       $5602
+     8    0.0%  data       do_copy.s10      $560A
+     8    0.0%  data       do_delete.s3     $5686
+     8    0.0%  data       do_delete.s7     $56D2
+     8    0.0%  data       du_show.s1       $57E4
+     8    0.0%  data       do_dirinfo.s2    $5830
+     8    0.0%  data       do_dirinfo.s5    $585E
+     8    0.0%  data       do_dirinfo.s10   $58A8
+     8    0.0%  data       draw_info.s1     $5906
+     8    0.0%  data       draw_info.s4     $591A
+     8    0.0%  data       draw_info.s6     $5926
+     8    0.0%  data       keylab.s5        $5964
+     8    0.0%  data       keylab.s7        $5972
+     8    0.0%  data       pick_drive.s0    $5A02
+     6    0.0%  code+data  sys_exit         $5034
+     6    0.0%  code+data  sys_spawn        $503A
+     6    0.0%  code+data  sys_exec         $5040
+     6    0.0%  code+data  sys_onevent      $5046
+     6    0.0%  code+data  sys_open         $504C
+     6    0.0%  code+data  sys_close        $5052
+     6    0.0%  code+data  sys_read         $5058
+     6    0.0%  code+data  sys_write        $505E
+     6    0.0%  code+data  sys_seek         $5064
+     6    0.0%  code+data  sys_dup          $506A
+     6    0.0%  code+data  sys_hinfo        $5070
+     6    0.0%  code+data  sys_setsize      $5076
+     6    0.0%  code+data  sys_fstat        $507C
+     6    0.0%  code+data  sys_stat         $5082
+     6    0.0%  code+data  sys_delete       $5088
+     6    0.0%  code+data  sys_rename       $508E
+     6    0.0%  code+data  sys_mkdir        $5094
+     6    0.0%  code+data  sys_chdir        $509A
+     6    0.0%  code+data  sys_getcwd       $50A0
+     6    0.0%  code+data  sys_readdir      $50A6
+     6    0.0%  code+data  sys_setattr      $50AC
+     6    0.0%  code+data  sys_volinfo      $50B2
+     6    0.0%  code+data  sys_mount        $50B8
+     6    0.0%  code+data  sys_unmount      $50BE
+     6    0.0%  code+data  sys_sync         $50C4
+     6    0.0%  code+data  sys_setmtime     $50CA
+     6    0.0%  code+data  sys_con_mode     $50D0
+     6    0.0%  code+data  sys_con_getev    $50D6
+     6    0.0%  code+data  sys_con_flush    $50DC
+     6    0.0%  code+data  sys_meminfo      $50E2
+     6    0.0%  code+data  sys_settop       $50E8
+     6    0.0%  code+data  sys_xalloc       $50EE
+     6    0.0%  code+data  sys_xfree        $50F4
+     6    0.0%  code+data  sys_xmap         $50FA
+     6    0.0%  code+data  sys_time_get     $5100
+     6    0.0%  code+data  sys_time_set     $5106
+     6    0.0%  code+data  sys_ticks        $510C
+     6    0.0%  code+data  sys_sleep        $5112
+     6    0.0%  code+data  sys_tickhook     $5118
+     6    0.0%  code+data  sys_disk_info    $511E
+     6    0.0%  code+data  sys_disk_io      $5124
+     6    0.0%  code+data  sys_sysinfo      $512A
+     6    0.0%  code+data  sys_shutdown     $5130
+     6    0.0%  code+data  sys_sess_info    $5136
+     6    0.0%  code+data  sys_sess_new     $513C
+     6    0.0%  code+data  sys_sess_switch  $5142
+     6    0.0%  code+data  sys_sess_kill    $5148
+     6    0.0%  data       err_text.s16     $5302
+     6    0.0%  data       vkeys.s2         $5392
+     6    0.0%  data       vkeys.s9         $53A6
+     6    0.0%  data       vkeysh.s2        $53B0
+     6    0.0%  data       vkeysh.s3        $53B6
+     6    0.0%  data       vkeysh.s9        $53C6
+     6    0.0%  data       view_entry.s0    $53D6
+     6    0.0%  data       prog_bytes.s0    $53E8
+     6    0.0%  data       check_abort.s1   $53F6
+     6    0.0%  data       op_errt.s2       $5428
+     6    0.0%  data       do_copy.s1       $55BE
+     6    0.0%  data       do_copy.s3       $55CE
+     6    0.0%  data       do_copy.s4       $55D4
+     6    0.0%  data       do_copy.s6       $55E6
+     6    0.0%  data       do_copy.s7       $55EC
+     6    0.0%  data       do_mkdir.s2      $572A
+     6    0.0%  data       attr_row.s0      $5730
+     6    0.0%  data       do_dirinfo.s7    $5876
+     6    0.0%  data       fmt_time.s0      $58CA
+     6    0.0%  data       draw_frame.s0    $58D0
+     6    0.0%  data       draw_frame.s1    $58D6
+     6    0.0%  data       draw_frame.s2    $58DC
+     6    0.0%  data       draw_info.s2     $590E
+     6    0.0%  data       draw_info.s3     $5914
+     6    0.0%  data       draw_info.s7     $592E
+     6    0.0%  data       keylab.s0        $5946
+     6    0.0%  data       keylab.s1        $594C
+     6    0.0%  data       keylab.s2        $5952
+     6    0.0%  data       keylab.s3        $5958
+     6    0.0%  data       keylab.s4        $595E
+     6    0.0%  data       keylab.s6        $596C
+     6    0.0%  data       keylab.s8        $597A
+     6    0.0%  data       keylab.s9        $5980
+     6    0.0%  data       panel_cd.s0      $5986
+     6    0.0%  data       run_cmdline.s1   $59DC
+     6    0.0%  data       key.s1           $5D9A
+     4    0.0%  data       fail.s0          $5350
+     4    0.0%  data       fail.s1          $5354
+     4    0.0%  data       vkeys.s3         $5398
+     4    0.0%  data       vstatus.s1       $53CE
+     4    0.0%  data       vstatus.s2       $53D2
+     4    0.0%  data       prog_box.s0      $53E4
+     4    0.0%  data       check_abort.s0   $5420
+     4    0.0%  data       op_errt.s0       $5424
+     4    0.0%  data       ask_over.s0      $5492
+     4    0.0%  data       ro_check.s0      $5550
+     4    0.0%  data       do_delete.s2     $5682
+     4    0.0%  data       do_delete.s6     $56E8
+     4    0.0%  data       is_exec.s0       $58B0
+     4    0.0%  data       is_exec.s1       $58B4
+     4    0.0%  data       is_exec.s2       $58B8
+     4    0.0%  data       load.s0          $58BC
+     4    0.0%  data       draw_frame.s3    $58E2
+     4    0.0%  data       draw_info.s5     $5922
+     4    0.0%  data       exec_child.s0    $598C
+     4    0.0%  data       exec_child.s1    $5990
+     4    0.0%  data       run_entry.s3     $59D4
+     4    0.0%  data       run_cmdline.s0   $59D8
+     4    0.0%  data       pick_drive.s1    $5A0A
+     4    0.0%  data       key.s0           $5DC6
+     4    0.0%  data       main.s0          $5DCA
+     4    0.0%  data       main.s2          $5DE6
+     4    0.0%  bss        vsize            $6492
+     4    0.0%  bss        vtop             $6496
+     4    0.0%  bss        vnext            $649A
+     4    0.0%  bss        vend             $649E
+     4    0.0%  bss        du_files         $8848
+     4    0.0%  bss        du_dirs          $884C
+     4    0.0%  bss        du_bytes         $8850
+     4    0.0%  bss        du_clus          $8854
+     2    0.0%  code       __irq_ignore     $0078
+     2    0.0%  data       prog             $514E
+     2    0.0%  data       op_title         $518A
+     2    0.0%  data       putnl.s0         $51E6
+     2    0.0%  data       prog.s0          $51E8
+     2    0.0%  data       fail.s3          $5360
+     2    0.0%  data       dlg_open.s0      $536A
+     2    0.0%  data       vkeys.s0         $538E
+     2    0.0%  data       vkeys.s1         $5390
+     2    0.0%  data       vkeys.s4         $539C
+     2    0.0%  data       vkeys.s5         $539E
+     2    0.0%  data       vkeys.s6         $53A0
+     2    0.0%  data       vkeys.s7         $53A2
+     2    0.0%  data       vkeys.s8         $53A4
+     2    0.0%  data       vkeysh.s0        $53AC
+     2    0.0%  data       vkeysh.s1        $53AE
+     2    0.0%  data       vkeysh.s4        $53BC
+     2    0.0%  data       vkeysh.s5        $53BE
+     2    0.0%  data       vkeysh.s6        $53C0
+     2    0.0%  data       vkeysh.s7        $53C2
+     2    0.0%  data       vkeysh.s8        $53C4
+     2    0.0%  data       vstatus.s0       $53CC
+     2    0.0%  data       op_errt.s1       $5444
+     2    0.0%  data       draw_frame.s4    $58E6
+     2    0.0%  data       cl_word.s0       $59B0
+     2    0.0%  data       cl_word.s1       $59B2
+     2    0.0%  data       run_entry.s0     $59B4
+     2    0.0%  data       run_cmdline.s2   $59E2
+     2    0.0%  data       pick_drive.s2    $5A0E
+     2    0.0%  data       helptext.s19     $5D82
+     2    0.0%  data       name_to_cmd.s0   $5D98
+     2    0.0%  bss        ign              $5DEA
+     2    0.0%  bss        npend            $5E1C
+     2    0.0%  bss        kmods            $5E1E
+     2    0.0%  bss        mbn              $5EEA
+     2    0.0%  bss        dlg_x            $5EEC
+     2    0.0%  bss        dlg_y            $5EEE
+     2    0.0%  bss        act              $6450
+     2    0.0%  bss        quit             $6452
+     2    0.0%  bss        vh               $6490
+     2    0.0%  bss        vhex             $64A2
+     2    0.0%  bss        ptop             $82A4
+     2    0.0%  bss        ov_all           $86A6
+     2    0.0%  bss        ro_all           $86A8
+     2    0.0%  bss        op_abort         $86AA
+     2    0.0%  bss        op_skip          $86AC
+     2    0.0%  bss        nsel             $8846
+     2    0.0%  bss        cmdn             $8954
+     2    0.0%  bss        hn               $8D56
+     2    0.0%  bss        hpos             $8D58
+
+== Constants ==
+value      name                 source
+$0000      CT_COORD             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:15
+$0000      DiskReq.op           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:176
+$0000      H_FILE               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:106
+$0000      OK                   D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:58
+$0000      Panel.path           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0000      ProcInfo.pid         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:197
+$0000      SEEK_SET             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:102
+$0000      STDIN                D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:87
+$0000      SYS_EXIT             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:7
+$0000      Stat.name            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:160
+$0000      SysInfo.version      D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$0000      VolInfo.label        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:167
+$0001      CM_RAW               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:118
+$0001      CNAME                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:27
+$0001      DA_ERR               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:269
+$0001      DIO_READ             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:141
+$0001      DI_MOUNTED           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:139
+$0001      EVM_SHIFT            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:122
+$0001      EVT_BREAK            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:130
+$0001      EV_NOWAIT            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:121
+$0001      EX_CX                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:86
+$0001      E_NOSYS              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:59
+$0001      H_DIR                D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:107
+$0001      KM_SHIFT             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:149
+$0001      MNT_RDONLY           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:136
+$0001      MOUNT_RDONLY         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:134
+$0001      O_READ               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:93
+$0001      PS_RUN               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:149
+$0001      SEEK_CUR             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:103
+$0001      SF_CUR               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:146
+$0001      SK_FORCE             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:148
+$0001      SN_BACK              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:147
+$0001      STDOUT               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:88
+$0001      SYS_SPAWN            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:8
+$0001      SZ_ZERO              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:100
+$0002      CM_NOECHO            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:119
+$0002      CT_CURSOR            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:16
+$0002      DA_NOENTER           D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:270
+$0002      DIO_WRITE            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:142
+$0002      DI_RDONLY            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:140
+$0002      DiskReq.drive        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:176
+$0002      EVM_CTRL             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:123
+$0002      EVT_BADINSN          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:131
+$0002      EX_BS                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:87
+$0002      E_INVAL              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:60
+$0002      H_CON                D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:108
+$0002      KM_CTRL              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:150
+$0002      LTOP                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:19
+$0002      MNT_DIRTY            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:137
+$0002      MOUNT_REMOUNT        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:135
+$0002      O_WRITE              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:94
+$0002      PS_WAIT              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:150
+$0002      ProcInfo.state       D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:197
+$0002      SEEK_END             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:104
+$0002      STDERR               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:89
+$0002      SYS_EXEC             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:9
+$0002      SysInfo.frames       D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$0003      CT_TTY               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:17
+$0003      EX_BSC               D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:88
+$0003      E_FAULT              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:61
+$0003      H_NUL                D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:109
+$0003      PS_SUSP              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:151
+$0003      SYS_ONEVENT          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:10
+$0004      CM_NOBREAK           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:120
+$0004      DiskReq.count        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:176
+$0004      EVM_ALT              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:124
+$0004      E_NOENT              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:62
+$0004      KM_ALT               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:151
+$0004      MAXSESS              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:145
+$0004      MNT_PROTECT          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:138
+$0004      O_CREATE             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:95
+$0004      ProcInfo.top         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:197
+$0004      SysInfo.free_frames  D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$0005      E_EXIST              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:63
+$0006      DiskReq.buf          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:176
+$0006      E_NOTDIR             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:64
+$0006      ProcInfo.frames      D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:197
+$0006      SysInfo.depth        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$0007      A_CMD                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:31
+$0007      A_KEYN               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:32
+$0007      E_ISDIR              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:65
+$0008      C_BS                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:64
+$0008      DiskReq.lba          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:176
+$0008      E_NOTEMPTY           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:66
+$0008      HMAX                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:459
+$0008      O_TRUNC              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:96
+$0008      ProcInfo.cmd         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:197
+$0008      SysInfo.max_depth    D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$0008      WDATE                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:34
+$0008      WSIZE                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:31
+$0009      C_TAB                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:65
+$0009      E_RDONLY             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:67
+$000A      A_EXEC               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:24
+$000A      C_ENTER              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:62
+$000A      E_NOSPC              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:68
+$000A      SysInfo.mounted      D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$000B      A_FILE               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:22
+$000B      A_FRAME              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:21
+$000B      A_VIEW               D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:7
+$000B      E_BADNAME            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:69
+$000C      DiskReq.sizeof       D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:176
+$000C      E_BADPATH            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:70
+$000C      SysInfo.session      D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$000D      A_HEAD               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:26
+$000D      A_MARK               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:27
+$000D      E_BADF               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:71
+$000E      A_HID                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:25
+$000E      E_MFILE              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:72
+$000E      SysInfo.max_sess     D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$000F      A_DIRN               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:23
+$000F      E_NODEV              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:73
+$0010      E_IO                 D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:74
+$0010      O_EXCL               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:97
+$0010      PENDMAX              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:145
+$0010      SYS_OPEN             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:11
+$0010      SysInfo.sizeof       D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:185
+$0010      VolInfo.serial       D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:167
+$0011      E_NOEXEC             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:75
+$0011      SYS_CLOSE            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:12
+$0012      E_BADVER             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:76
+$0012      LROWS                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:20
+$0012      SYS_READ             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:13
+$0013      E_ARGS               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:77
+$0013      SYS_WRITE            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:14
+$0014      E_NOMEM              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:78
+$0014      RSEP                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:21
+$0014      SYS_SEEK             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:15
+$0014      VolInfo.clusters     D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:167
+$0014      WNAME                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:28
+$0015      CSEP1                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:29
+$0015      E_NOPROC             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:79
+$0015      RINFO                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:22
+$0015      SYS_DUP              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:16
+$0016      CSIZE                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:30
+$0016      E_AGAIN              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:80
+$0016      RBOT                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:23
+$0016      SYS_HINFO            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:17
+$0016      VolInfo.free         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:167
+$0017      E_BUSY               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:81
+$0017      RCMD                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:24
+$0017      SYS_SETSIZE          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:18
+$0017      VROWS                D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:5
+$0018      A_CUR                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:28
+$0018      A_DLGIN              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:36
+$0018      A_KEYL               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:33
+$0018      A_TITLE              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:30
+$0018      A_VSTAT              D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:8
+$0018      E_INTR               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:82
+$0018      RKEYS                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:25
+$0018      SYS_FSTAT            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:19
+$0018      VolInfo.flags        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:167
+$0019      E_XDEV               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:83
+$0019      ROWS                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:12
+$001A      E_NOTFS              D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:84
+$001A      VolInfo.sizeof       D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:167
+$001B      C_ESC                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:61
+$001C      K_ENTER              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:63
+$001D      A_CURMARK            D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:29
+$001E      CSEP2                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:32
+$001F      A_ERRIN              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:38
+$001F      CDATE                D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:33
+$0020      O_APPEND             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:98
+$0020      SYS_STAT             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:20
+$0020      Stat.size            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:160
+$0021      SYS_DELETE           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:21
+$0022      SYS_RENAME           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:22
+$0023      SYS_MKDIR            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:23
+$0024      SYS_CHDIR            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:24
+$0024      Stat.mtime           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:160
+$0025      SYS_GETCWD           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:25
+$0026      SYS_READDIR          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:26
+$0027      A_ERR                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:37
+$0027      SYS_SETATTR          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:27
+$0028      PW                   D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:18
+$0028      SYS_VOLINFO          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:28
+$0028      Stat.sizeof          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:160
+$0029      SYS_MOUNT            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:29
+$002A      SYS_UNMOUNT          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:30
+$002B      SYS_SYNC             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:31
+$002C      SYS_SETMTIME         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:32
+$0030      SYS_CON_MODE         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:33
+$0031      SYS_CON_GETEV        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:34
+$0032      SYS_CON_FLUSH        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:35
+$0038      A_DLG                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:34
+$0038      PI_CMDLEN            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:152
+$003B      K_F1                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:41
+$003C      DLG_FW               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:232
+$003C      K_F2                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:42
+$003D      K_F3                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:43
+$003E      K_F4                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:44
+$003F      A_DLGF               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:35
+$003F      K_F5                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:45
+$0040      DLG_W                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:231
+$0040      K_F6                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:46
+$0040      ProcInfo.sizeof      D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:197
+$0040      SYS_MEMINFO          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:36
+$0041      K_F7                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:47
+$0041      SYS_SETTOP           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:37
+$0042      K_F8                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:48
+$0042      SYS_XALLOC           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:38
+$0043      K_F9                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:49
+$0043      SYS_XFREE            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:39
+$0044      K_F10                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:50
+$0044      SYS_XMAP             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:40
+$0047      K_HOME               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:51
+$0048      K_UP                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:52
+$0049      K_PGUP               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:53
+$004B      K_LEFT               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:54
+$004D      K_RIGHT              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:55
+$004F      K_END                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:56
+$0050      COLS                 D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:11
+$0050      K_DOWN               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:57
+$0050      SYS_TIME_GET         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:41
+$0051      K_PGDN               D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:58
+$0051      SYS_TIME_SET         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:42
+$0052      K_INS                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:59
+$0052      SYS_TICKS            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:43
+$0053      K_DEL                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:60
+$0053      SYS_SLEEP            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:44
+$0054      SYS_TICKHOOK         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:45
+$0060      SYS_DISK_INFO        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:46
+$0061      SYS_DISK_IO          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:47
+$0062      SYS_SYSINFO          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:48
+$0063      SYS_SHUTDOWN         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:49
+$0070      SYS_SESS_INFO        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:50
+$0071      SYS_SESS_NEW         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:51
+$0072      SYS_SESS_SWITCH      D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:52
+$0073      SYS_SESS_KILL        D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:53
+$007F      SYS_PREEMPT          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:54
+$0080      HLEN                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:460
+$0080      NSYS                 D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:55
+$00C8      MBLEN                D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:187
+$00CC      MAXENT               D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:17
+$00FA      CMDMAX               D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:428
+$0100      Panel.n              D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0102      Panel.cur            D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0104      Panel.top            D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0106      Panel.nmark          D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0108      Panel.over           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$010A      Panel.free           D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$010C      Panel.ro             D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$010E      Panel.marksz         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0112      Panel.nfiles         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0114      Panel.filesz         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0118      Panel.sizeof         D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:36
+$0800      VBUF                 D:/Radio/Projects/CPU/u16/monitor/user/fm/view.b16:6
+$0E00      CBUF                 D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:10
+$1000      A_SYSTEM             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:114
+$1000      POOL                 D:/Radio/Projects/CPU/u16/monitor/user/fm/ops.b16:12
+$2000      A_HIDDEN             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:113
+$4000      A_RDONLY             D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:112
+$8000      A_DIR                D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:111
+$8001      EXIT_BREAK           D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:155
+$8008      EXIT_BADINSN         D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:156
+$8009      EXIT_KILLED          D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:157
+$A000      EWIN                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:12
+$A000      ents                 D:/Radio/Projects/CPU/u16/monitor/user/fm/fm.b16:54
+$FF20      CON_DATA             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:4
+$FF22      CON_CTRL             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:5
+$FF23      CON_ATTR             D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:6
+$FF24      CON_COL              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:7
+$FF25      CON_ROW              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:8
+$FF26      CON_CMD              D:/Radio/Projects/CPU/u16/monitor/user/fm/scr.b16:9
+$FFFF      SAME                 D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:90
+$FFFF      XM_OWN               D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:127
+134217727  SIZE_MASK            D:/Radio/Projects/CPU/u16/monitor/kernel/abi.b16:115

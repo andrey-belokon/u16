@@ -1,0 +1,2 @@
+tests/diag/target.b16:2: error: main must be fn main() or fn main(argc: uint, argv: ptr ptr byte), optionally with result int
+rc 1

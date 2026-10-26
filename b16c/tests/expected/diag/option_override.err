@@ -1,0 +1,3 @@
+tests/diag/option_override.b16:5: warning: --max-top $F000 overrides option max_top = $A000
+tests/diag/option_override.b16: warning: --max-top $F000 is above $E000; the monitor limits it to $E000
+rc 0

@@ -1,0 +1,97 @@
+// goto, include, removal of unused functions, the library
+include "../lib/console.b16"
+include "../lib/string.b16"
+include "../lib/math.b16"
+include "../lib/console.b16"        // a repeated include is ignored
+
+var fails: uint
+fn check(id: uint, got, want: int) {
+    if got != want { fails++; puts("FAIL "); putu(id); puts(": "); puti(got); puts(" != "); puti(want); putnl() }
+}
+
+var grid: [3][5]int
+
+fn find(v: int): int, int {
+    var i, j: uint
+    i = 0
+    while i < 3 {
+        j = 0
+        while j < 5 {
+            if grid[i][j] == v { goto found }
+            j++
+        }
+        i++
+    }
+    return -1, -1
+found:
+    return int(i), int(j)
+}
+
+fn nested_atomic(): int {
+    var n = 0
+    atomic {
+        n = 1
+        atomic {
+            n = 2
+            goto out
+        }
+        n = 99
+    }
+    n = 98
+out:
+    return n
+}
+
+// goto out of atomic: FLAGS is popped from the stack, IF is restored
+fn leave_atomic(): uint {
+    atomic { goto x }
+x:  var f: uint
+    asm {
+        LD    R0, FLAGS
+    }
+    return f & 8        // in a leaf function the result is already in R0
+}
+
+fn back(n: uint): uint {
+    var s: uint = 0
+again:
+    s += n
+    n--
+    if n != 0 { goto again }
+    return s
+}
+
+fn retry(): uint {
+    var tries: uint = 0
+    loop {
+        tries++
+        if tries == 3 { goto done }
+        continue
+    }
+done:
+    return tries
+}
+
+fn never_called(): uint { return 12345 }
+
+fn main() {
+    grid[1][3] = 42
+    var r, c: int
+    r, c = find(42)
+    check(1, r * 10 + c, 13)
+    r, c = find(7)
+    check(2, r, -1)
+    check(3, nested_atomic(), 2)
+    ei()
+    check(10, int(leave_atomic()), 8)
+    di()
+    check(11, int(leave_atomic()), 0)
+    check(4, int(back(10)), 55)
+    check(5, int(retry()), 3)
+    check(6, int(strlen("абв")), 3)
+    check(7, int(toupper('ж')), int('Ж'))
+    check(8, int(gcd(48, 36)), 12)
+    var big: ulong = $12345678
+    check(9, int(big % 1000), 896)
+    if fails == 0 { puts("ALL OK\n") }
+}

@@ -1,0 +1,113 @@
+// ktypes.b16 - kernel tables: process descriptors and open files
+// ("CPU16 Monitor: Kernel Internals", sect. 4.1, 6.5).
+
+const MAXPROC = 16
+const NFD = 16
+const NOFILE = 32
+const FD_NONE = $FF
+
+const PS_FREE = 0               // PS_RUN, PS_WAIT, PS_SUSP - abi.b16 (ProcInfo.state)
+const NONE = $FF                // no process, session
+
+// ---- nodes and the current directory (sect. 6.5, 6.6) ------------------------------------
+const MAXDEPTH = 16
+
+struct EAddr { clu, idx: uint }
+
+// A directory as a chain of entry addresses from the root; depth = 0 - the root.
+struct Chain {
+    drv: byte
+    depth: byte
+    ent: [MAXDEPTH]EAddr
+}
+
+// A directory entry in memory. The entry address (FS16, sect. 7): the directory cluster and the entry number
+// in it; eclu = 0 - the ROOT entry in the superblock.
+struct Node {
+    drv: byte
+    refs: byte                  // open files that refer to the node (in the nodes table)
+    eclu, eidx: uint
+    size: ulong                 // size without flags
+    flags: uint                 // flags, bits 11-15 of word +34
+    mtime: ulong
+    addr: [12]uint
+}
+
+const NNODE = 32
+var nodes: [NNODE]Node
+
+// The position of an open file. lk, lc - the last computed address: cluster lk - 1 of the file
+// lies in cluster lc (lk = 0 - none).
+struct File {
+    n: ptr Node
+    pos: ulong
+    mode: uint                  // FM_READ, FM_WRITE (= O_READ, O_WRITE)
+    lk, lc: uint
+}
+const FM_READ = 1
+const FM_WRITE = 2
+
+struct Proc {
+    state: byte
+    nfr: byte                   // memory frames: top / $2000
+    fr: [7]byte                 // own frames of pages 0 .. nfr - 1
+    map: [7]byte                // the page map 0..6 while the process is not current (for the current one it is RES.cmap)
+    nx: byte                    // extended-memory frames
+    dctrl, dattr: byte          // the display CTRL and ATTR at child launch
+    sess: byte                  // session
+    parent: byte                // the parent descriptor number; NONE - the session root
+    raw: byte                   // ctx - the exact frame (the process was frozen from a tick, sect. 3.8)
+    fd: [NFD]byte               // descriptors: an open file number or FD_NONE
+    cwd: Chain                  // the current directory
+    top: uint
+    hook: uint                  // TICKHOOK or 0
+    brkh, badh: uint            // ONEVENT handlers or 0
+    conmode: uint               // console mode (CM_...)
+    ctx: [16]uint               // frame KF while the process is not current; the initial frame of a new one
+}
+
+var procs: [MAXPROC]Proc
+var cur: uint = NONE            // the current process: the top process of the current session
+
+// ---- sessions (sect. 4.7) ------------------------------------------------------------------
+// A session is a chain of processes from the root (parent = NONE) to the top one, with its own screen and console line.
+// The screen and line of an inactive session and the process names are in the session frame (SessSave).
+struct Sess {
+    used: byte
+    frame: byte                 // the SessSave frame
+    top: byte                   // the top process of the chain
+    pad: byte
+}
+var sess: [MAXSESS]Sess
+var cursess: uint               // the current session
+var sw_to: uint = NONE          // a switch into a session on leaving the kernel (SESS_SWITCH, SESS_NEW)
+
+const OWN_SESS = $FD            // the owner of session frames (owner, mm.b16)
+const NAMELEN = PI_CMDLEN
+
+struct SessSave {
+    scr: [2000]uint             // the screen: character | attribute << 8
+    ctrl, attr, col, row: byte
+    ln_len, ln_pos, ln_ready, ln_eof: uint
+    ln: [256]byte               // the console line (console.b16)
+    names: [MAXPROC][NAMELEN]byte   // the command lines of the session's processes, by descriptor number
+}
+assert sizeof(SessSave) <= $2000, "SessSave does not fit a frame"
+
+// An open file: a device, a file or a directory.
+struct OFile {
+    kind: byte                  // H_... (abi.b16)
+    refs: byte                  // descriptors that refer to the entry; 0 - free
+    mode: uint                  // O_READ | O_WRITE | O_APPEND
+    f: File                     // file and directory: the node and the position
+}
+
+var ofiles: [NOFILE]OFile
+
+fn curp(): ptr Proc { return &procs[cur] }
+
+// assembly functions (klib.asm)
+extern fn kcopy(dst: ptr, src: ptr, n: uint)    // n bytes; by words if all are even
+extern fn kzero(dst: ptr, n: uint)              // dst and n are even
+extern fn scr_save(dst: ptr)                    // the screen as 2000 words: character | attribute << 8
+extern fn scr_restore(src: ptr)                 // the screen from 2000 words; CTRL = 0, position (0, 0)

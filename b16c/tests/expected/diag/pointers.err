@@ -1,0 +1,19 @@
+tests/diag/pointers.b16:3: warning: parameter p is not used
+tests/diag/pointers.b16:13: error: assignment: incompatible pointer types (ptr byte given, ptr int expected)
+tests/diag/pointers.b16:14: error: assignment: incompatible pointer types (ptr byte given, ptr char expected)
+tests/diag/pointers.b16:15: error: assignment: a pointer cannot be assigned to an integer: use an explicit cast uint(...) (ptr int given, uint expected)
+tests/diag/pointers.b16:16: error: assignment: an integer cannot be assigned to a pointer: use an explicit cast ptr T(...) (int given, ptr int expected)
+tests/diag/pointers.b16:17: error: ++/-- on ptr: the element size is unknown
+tests/diag/pointers.b16:18: error: dereferencing an untyped pointer
+tests/diag/pointers.b16:19: error: argument 1: incompatible pointer types (ptr char given, ptr byte expected)
+tests/diag/pointers.b16:20: error: initialization: incompatible pointer types (ptr fn(): int, uint given, ptr fn(): int expected)
+tests/diag/pointers.b16:21: error: comparison of incompatible pointer types (ptr int and ptr byte)
+tests/diag/pointers.b16:22: error: comparison of a pointer with an integer: only the constant 0 is allowed (or cast explicitly)
+tests/diag/pointers.b16:23: error: assignment: incompatible pointer types (ptr [4]int given, ptr int expected)
+tests/diag/pointers.b16:24: error: a pointer can be cast only to uint, int or a pointer type
+tests/diag/pointers.b16:25: error: initialization: incompatible pointer types (ptr interrupt fn() given, ptr fn() expected)
+tests/diag/pointers.b16:27: error: an interrupt handler cannot be called
+tests/diag/pointers.b16:20: warning: variable g is not used
+tests/diag/pointers.b16:25: warning: variable h is not used
+tests/diag/pointers.b16:28: warning: variable n is not used
+rc 1

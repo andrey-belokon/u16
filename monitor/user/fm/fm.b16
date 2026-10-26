@@ -1,0 +1,957 @@
+// fm.b16 - a full-screen file manager for the CPU16 monitor in the spirit of Norton Commander.
+//
+// Two panels with directory contents, a command line, keys F1-F10.
+// The screen is direct output to the display in coordinate mode ("System Calls", sect. 6.4),
+// the keyboard is raw mode with NOBREAK and CON_GETEV.
+include "ulib.b16"
+include "scr.b16"
+
+// ---- process memory ------------------------------------------------------------------------
+// Own memory ends at EWIN, so pages 5 and 6 are free for extended-memory windows;
+// 4 KB for the stack (sect. 6 of cpu16_fm_en.md).
+const EWIN = $A000
+option max_top = EWIN
+option min_free = 4096
+
+// ---- screen layout -----------------------------------------------------------------------
+const MAXENT = 204              // entries in a panel, including ".."
+const PW = 40                   // panel width
+const LTOP = 2                  // the first list row
+const LROWS = 18                // list rows
+const RSEP = 20                 // the separator above the information row
+const RINFO = 21
+const RBOT = 22
+const RCMD = 23
+const RKEYS = 24
+// columns inside a panel (from its left edge)
+const CNAME = 1
+const WNAME = 20
+const CSEP1 = 21
+const CSIZE = 22
+const WSIZE = 8
+const CSEP2 = 30
+const CDATE = 31
+const WDATE = 8
+
+struct Panel {
+    path: [256]byte             // the directory in GETCWD form: N:/a/b
+    n: uint                     // entries
+    cur: uint                   // the cursor position in display order
+    top: uint                   // the first visible position
+    nmark: uint                 // marked
+    over: uint                  // the directory did not fit in MAXENT
+    free: uint                  // free clusters of the volume, $FFFF - unknown
+    ro: uint                    // the volume is read-only
+    marksz: ulong               // the total size of the marked files
+    nfiles: uint                // files in the directory (without directories)
+    filesz: ulong               // their total size
+}
+
+var pn: [2]Panel
+// The panel entries in reading order are in two extended-memory frames put into
+// pages 5 and 6 (XALLOC, XMAP; "System Calls", sect. 7.6). The process's own memory
+// ends at EWIN (option max_top is above), so pages 5 and 6 are free.
+var ents at EWIN: [2][MAXENT]Stat
+assert 2 * MAXENT * sizeof(Stat) <= $4000, "ents: two pages"
+var ord: [2][MAXENT]byte        // display order: indexes into ents (less than MAXENT)
+assert MAXENT <= 256, "ord: byte indices"
+var mark: [2][MAXENT]byte       // marks by index into ents
+var act: uint                   // the active panel
+var quit: uint
+var vi: VolInfo
+var nbuf: [33]byte              // the entry name with a terminating zero
+
+include "view.b16"
+include "ops.b16"
+
+// ---- entries ---------------------------------------------------------------------------------
+fn entp(p: uint, pos: uint): ptr Stat { return &ents[p][ord[p][pos]] }
+
+fn eflags(s: ptr Stat): uint { return uint(s.size >> 16) }
+
+fn edir(s: ptr Stat): uint { return eflags(s) & A_DIR }
+
+// The entry name into buf (33 bytes).
+fn ename(s: ptr Stat, buf: ptr byte): ptr byte {
+    var j: uint = 0
+    while j < 32 { buf[j] = s.name[j]; j++ }
+    buf[32] = 0
+    return buf
+}
+
+fn is_up(s: ptr Stat): uint { return s.name[0] == '.' && s.name[1] == '.' && s.name[2] == 0 }
+
+// What Enter launches: 0 - nothing, EX_CX - a .cx program, EX_BS - a BScript .bs script
+// (A:/bin/bs.cx), EX_BSC - a compiled .bsc script (A:/bin/bsvm.cx).
+const EX_CX = 1
+const EX_BS = 2
+const EX_BSC = 3
+
+fn ext_is(s: ptr Stat, n: uint, e: ptr byte): uint {
+    var k: uint = strlen(e)
+    if n <= k || s.name[n - k - 1] != '.' { return 0 }
+    var i: uint = 0
+    while i < k {
+        if lower(s.name[n - k + i]) != e[i] { return 0 }
+        i++
+    }
+    return 1
+}
+
+fn is_exec(s: ptr Stat): uint {
+    if edir(s) != 0 { return 0 }
+    var n: uint = 0
+    while n < 32 && s.name[n] != 0 { n++ }
+    if ext_is(s, n, "cx") != 0 { return EX_CX }
+    if ext_is(s, n, "bs") != 0 { return EX_BS }
+    if ext_is(s, n, "bsc") != 0 { return EX_BSC }
+    return 0
+}
+
+fn is_root(path: ptr byte): uint { return path[1] == ':' && path[2] == '/' && path[3] == 0 }
+
+// Directories first, then names ignoring case.
+fn less(a: ptr Stat, b: ptr Stat): uint {
+    var da: uint = edir(a)
+    var db: uint = edir(b)
+    if da != db { return da != 0 }
+    var i: uint = 0
+    while i < 32 {
+        var ca: uint = lower(a.name[i])
+        var cb: uint = lower(b.name[i])
+        if ca != cb { return ca < cb }
+        if ca == 0 { return 0 }
+        i++
+    }
+    return 0
+}
+
+// Shell sort of positions [from, n).
+fn sort(p: uint, from: uint, n: uint) {
+    var o: ptr byte = &ord[p][0]
+    var gap: uint = (n - from) / 2
+    while gap != 0 {
+        var i: uint = from + gap
+        while i < n {
+            var v: uint = o[i]
+            var j: uint = i
+            while j >= from + gap && less(&ents[p][v], &ents[p][o[j - gap]]) != 0 {
+                o[j] = o[j - gap]
+                j -= gap
+            }
+            o[j] = byte(v)
+            i++
+        }
+        gap /= 2
+    }
+}
+
+// Cut off the last name of a path: N:/a/b -> N:/a, N:/a -> N:/.
+fn path_up(path: ptr byte) {
+    var n: uint = strlen(path)
+    while n > 3 && path[n - 1] != '/' { n-- }
+    if n > 3 { n-- }
+    path[n] = 0
+}
+
+fn fix_top(p: uint) {
+    var P = &pn[p]
+    if P.cur >= P.n && P.n != 0 { P.cur = P.n - 1 }
+    if P.cur < P.top { P.top = P.cur }
+    if P.cur >= P.top + LROWS { P.top = P.cur - LROWS + 1 }
+    if P.n <= LROWS { P.top = 0 } else if P.top + LROWS > P.n { P.top = P.n - LROWS }
+}
+
+// Read the panel's directory. keep is the name to put the cursor on (0 - keep the position).
+// If the directory no longer exists, the panel climbs to the nearest existing one.
+fn load(p: uint, keep: ptr byte) {
+    var P = &pn[p]
+    var e, h, got: uint
+    var tries: uint = 0
+    loop {
+        e, h = sys_open(&P.path[0], O_READ, 0)
+        if e == OK { break }
+        tries++
+        if is_root(&P.path[0]) == 0 && tries < 20 { path_up(&P.path[0]) }
+        else if tries < 21 { strcpy(&P.path[0], "A:/") }
+        else { P.n = 0; P.cur = 0; P.top = 0; P.nmark = 0; return }
+    }
+    var n: uint = 0
+    if is_root(&P.path[0]) == 0 {
+        var u = &ents[p][0]
+        var j: uint = 0
+        while j < 32 { u.name[j] = 0; j++ }
+        u.name[0] = '.'
+        u.name[1] = '.'
+        u.size = ulong(A_DIR) << 16
+        u.mtime = 0
+        n = 1
+    }
+    var first: uint = n
+    P.over = 0
+    loop {
+        if n == MAXENT { P.over = 1; break }
+        e, got = sys_readdir(h, &ents[p][n])
+        if e != OK || got == 0 { break }
+        n++
+    }
+    sys_close(h)
+    var i: uint = 0
+    while i < n { ord[p][i] = byte(i); mark[p][i] = 0; i++ }
+    sort(p, first, n)
+    P.n = n
+    P.nmark = 0
+    P.marksz = 0
+    P.nfiles = 0
+    P.filesz = 0
+    i = first
+    while i < n {
+        if edir(&ents[p][i]) == 0 { P.nfiles++; P.filesz += ents[p][i].size & SIZE_MASK }
+        i++
+    }
+    if keep != 0 {
+        i = 0
+        while i < n {
+            if strieq(ename(entp(p, i), &nbuf[0]), keep) != 0 { P.cur = i; break }
+            i++
+        }
+    }
+    fix_top(p)
+    P.free = $FFFF
+    P.ro = 0
+    if sys_volinfo(P.path[0] - 'A', &vi) == OK {      // the panel path is from GETCWD: the letter
+        P.free = vi.free
+        if vi.flags != 0 { P.ro = 1 }
+    }
+}
+
+// Reread both panels keeping the cursor on the same entry.
+fn reload_all() {
+    var keep: [33]byte
+    var p: uint = 0
+    while p < 2 {
+        if pn[p].n != 0 { ename(entp(p, pn[p].cur), &keep[0]) } else { keep[0] = 0 }
+        load(p, &keep[0])
+        p++
+    }
+    sys_chdir(&pn[act].path[0])
+}
+
+// ---- drawing --------------------------------------------------------------------------------
+// "DD.MM.YY" or dashes.
+fn fmt_date(t: ulong, buf: ptr byte) {
+    if t == 0 { strcpy(buf, "--.--.--"); return }
+    var dt: uint = uint(t >> 16)
+    var y: uint = ((dt >> 10) + 2025) % 100
+    var mo: uint = (dt >> 6) & 15
+    var d: uint = (dt >> 1) & 31
+    buf[0] = byte('0' + d / 10); buf[1] = byte('0' + d % 10); buf[2] = '.'
+    buf[3] = byte('0' + mo / 10); buf[4] = byte('0' + mo % 10); buf[5] = '.'
+    buf[6] = byte('0' + y / 10); buf[7] = byte('0' + y % 10); buf[8] = 0
+}
+
+// "HH:MM" or dashes.
+fn fmt_time(t: ulong, buf: ptr byte) {
+    if t == 0 { strcpy(buf, "--:--"); return }
+    var dt: uint = uint(t >> 16)
+    var tm: uint = uint(t)
+    var hh: uint = (tm >> 12) + 12 * (dt & 1)
+    var mi: uint = (tm >> 6) & 63
+    buf[0] = byte('0' + hh / 10); buf[1] = byte('0' + hh % 10); buf[2] = ':'
+    buf[3] = byte('0' + mi / 10); buf[4] = byte('0' + mi % 10); buf[5] = 0
+}
+
+// A size in a field of WSIZE characters, right-aligned; large ones in KB.
+fn fmt_size(v: ulong, buf: ptr byte) {
+    var t: [12]byte
+    var n: uint
+    if v > 99999999 {
+        n = ultoa(&t[0], (v + 1023) / 1024)
+        t[n] = 'K'
+        n++
+        t[n] = 0
+    } else {
+        n = ultoa(&t[0], v)
+    }
+    var k: uint = 0
+    while k + n < WSIZE { buf[k] = ' '; k++ }
+    strcpy(&buf[k], &t[0])
+}
+
+// The frame, the title with the path, the column header.
+fn draw_frame(p: uint) {
+    var x0: uint = p * PW
+    fill(x0, 0, 1, '╔', A_FRAME)
+    fill(x0 + 1, 0, PW - 2, '═', A_FRAME)
+    fill(x0 + PW - 1, 0, 1, '╗', A_FRAME)
+    fill(x0 + CSEP1, 0, 1, '╤', A_FRAME)
+    fill(x0 + CSEP2, 0, 1, '╤', A_FRAME)
+    var r: uint = 1
+    while r < RSEP {
+        fill(x0, r, 1, '║', A_FRAME)
+        fill(x0 + CSEP1, r, 1, '│', A_FRAME)
+        fill(x0 + CSEP2, r, 1, '│', A_FRAME)
+        fill(x0 + PW - 1, r, 1, '║', A_FRAME)
+        r++
+    }
+    fill(x0 + CNAME, 1, WNAME, ' ', A_HEAD)
+    putsc(x0 + CNAME, 1, WNAME, A_HEAD, "Name")
+    fill(x0 + CSIZE, 1, WSIZE, ' ', A_HEAD)
+    putsc(x0 + CSIZE, 1, WSIZE, A_HEAD, "Size")
+    fill(x0 + CDATE, 1, WDATE, ' ', A_HEAD)
+    putsc(x0 + CDATE, 1, WDATE, A_HEAD, "Date")
+    fill(x0, RSEP, 1, '╟', A_FRAME)
+    fill(x0 + 1, RSEP, PW - 2, '─', A_FRAME)
+    fill(x0 + CSEP1, RSEP, 1, '┴', A_FRAME)
+    fill(x0 + CSEP2, RSEP, 1, '┴', A_FRAME)
+    fill(x0 + PW - 1, RSEP, 1, '╢', A_FRAME)
+    fill(x0, RINFO, 1, '║', A_FRAME)
+    fill(x0 + PW - 1, RINFO, 1, '║', A_FRAME)
+    fill(x0, RBOT, 1, '╚', A_FRAME)
+    fill(x0 + 1, RBOT, PW - 2, '═', A_FRAME)
+    fill(x0 + PW - 1, RBOT, 1, '╝', A_FRAME)
+    // the path: " N:/a/b ", a long one as a tail with "..."
+    var t: [48]byte
+    var path = &pn[p].path[0]
+    var n: uint = strlen(path)
+    t[0] = ' '
+    if n > PW - 4 {
+        strcpy(&t[1], "...")
+        strcpy(&t[4], path + (n - (PW - 7)))
+    } else {
+        strcpy(&t[1], path)
+    }
+    strcat(&t[0], " ")
+    var a: uint = A_FRAME
+    if p == act { a = A_TITLE }
+    putsc(x0 + 1, 0, PW - 2, a, &t[0])
+}
+
+// List row r (0 .. LROWS-1).
+fn draw_row(p: uint, r: uint) {
+    var P = &pn[p]
+    var x0: uint = p * PW
+    var y: uint = LTOP + r
+    var pos: uint = P.top + r
+    if pos >= P.n {
+        fill(x0 + CNAME, y, WNAME, ' ', A_FILE)
+        fill(x0 + CSEP1, y, 1, '│', A_FRAME)
+        fill(x0 + CSIZE, y, WSIZE, ' ', A_FILE)
+        fill(x0 + CSEP2, y, 1, '│', A_FRAME)
+        fill(x0 + CDATE, y, WDATE, ' ', A_FILE)
+        return
+    }
+    var s = entp(p, pos)
+    var fl: uint = eflags(s)
+    var a: uint = A_FILE
+    if fl & A_DIR != 0 { a = A_DIRN } else if is_exec(s) != 0 { a = A_EXEC }
+    if fl & (A_HIDDEN | A_SYSTEM) != 0 { a = A_HID }
+    var mk: uint = mark[p][ord[p][pos]]
+    if mk != 0 { a = A_MARK }
+    var sa: uint = A_FRAME
+    if p == act && pos == P.cur {
+        if mk != 0 { a = A_CURMARK } else { a = A_CUR }
+        sa = a
+    }
+    var nm = ename(s, &nbuf[0])
+    if strlen(nm) > WNAME {
+        putsn(x0 + CNAME, y, a, nm, WNAME - 1)
+        putch('}')
+    } else {
+        putsn(x0 + CNAME, y, a, nm, WNAME)
+    }
+    fill(x0 + CSEP1, y, 1, '│', sa)
+    var f: [16]byte
+    if is_up(s) != 0 { strcpy(&f[0], "      Up") }
+    else if fl & A_DIR != 0 { strcpy(&f[0], "  Folder") }
+    else { fmt_size(s.size & SIZE_MASK, &f[0]) }
+    putsn(x0 + CSIZE, y, a, &f[0], WSIZE)
+    fill(x0 + CSEP2, y, 1, '│', sa)
+    if is_up(s) != 0 { f[0] = 0 } else { fmt_date(s.mtime, &f[0]) }
+    putsn(x0 + CDATE, y, a, &f[0], WDATE)
+}
+
+fn draw_list(p: uint) {
+    var r: uint = 0
+    while r < LROWS { draw_row(p, r); r++ }
+}
+
+// The information row about the entry under the cursor and the total in the bottom frame.
+fn draw_info(p: uint) {
+    var P = &pn[p]
+    var x0: uint = p * PW
+    fill(x0 + 1, RINFO, PW - 2, ' ', A_FILE)
+    if P.n != 0 {
+        var s = entp(p, P.cur)
+        putsn(x0 + 1, RINFO, A_FILE, ename(s, &nbuf[0]), 32)
+        if is_up(s) == 0 {
+            var t: [8]byte
+            fmt_time(s.mtime, &t[0])
+            putsa(x0 + PW - 6, RINFO, A_FILE, &t[0])
+        }
+    }
+    fill(x0 + 1, RBOT, PW - 2, '═', A_FRAME)
+    mb_clear()
+    mb_c(' ')
+    if P.nmark != 0 {
+        mb_ul(ulong(P.nmark))
+        mb_s(" marked, ")
+        mb_ul(P.marksz)
+        mb_s(" bytes")
+    } else {
+        // all files of the directory and the volume's free space
+        if P.filesz >= 10000000 { mb_ul((P.filesz + 1023) / 1024); mb_c('K') } else { mb_ul(P.filesz) }
+        mb_s(" in ")
+        mb_ul(ulong(P.nfiles))
+        if P.nfiles == 1 { mb_s(" file") } else { mb_s(" files") }
+        if P.free != $FFFF {
+            mb_s(", ")
+            mb_ul(ulong(P.free) * 2)
+            mb_s("K free")
+            if P.ro != 0 { mb_s(" (ro)") }
+        }
+    }
+    if P.over != 0 { mb_s(" (list truncated)") }
+    mb_c(' ')
+    var a: uint = A_FRAME
+    if P.nmark != 0 { a = A_HEAD }
+    if mbn > 2 { putsc(x0 + 1, RBOT, PW - 2, a, &mb[0]) }
+}
+
+fn draw_panel(p: uint) {
+    draw_frame(p)
+    draw_list(p)
+    draw_info(p)
+}
+
+// ---- the command line ---------------------------------------------------------------------
+const CMDMAX = 250
+var cmd: [CMDMAX + 2]byte
+var cmdn: uint
+
+fn draw_cmd() {
+    var pr = &pn[act].path[0]
+    var pl: uint = strlen(pr) + 2
+    var total: uint = pl + cmdn
+    var skip: uint = 0
+    if total > COLS - 1 { skip = total - (COLS - 1) }
+    gotoxy(0, RCMD)
+    CON_ATTR = A_CMD
+    var i: uint = skip
+    var col: uint = 0
+    while i < total {
+        var c: uint
+        if i + 2 < pl { c = pr[i] } else if i + 1 < pl { c = '>' } else if i < pl { c = ' ' } else { c = cmd[i - pl] }
+        CON_DATA = byte(c)
+        col++
+        i++
+    }
+    while col < COLS { CON_DATA = ' '; col++ }
+    cursor_at(total - skip, RCMD)
+}
+
+fn cmd_add(s: ptr byte) {
+    while *s != 0 && cmdn < CMDMAX { cmd[cmdn] = *s; cmdn++; s++ }
+    cmd[cmdn] = 0
+}
+
+// The command line history: Ctrl+E - previous, Ctrl+X - next.
+const HMAX = 8
+const HLEN = 128
+var hist: [HMAX][HLEN]byte
+var hn: uint
+var hpos: uint
+
+fn hist_add(s: ptr byte) {
+    if strlen(s) >= HLEN { return }
+    if hn != 0 && streq(&hist[hn - 1][0], s) != 0 { hpos = hn; return }
+    if hn == HMAX {
+        var k: uint = 1
+        while k < HMAX { strcpy(&hist[k - 1][0], &hist[k][0]); k++ }
+        hn--
+    }
+    strcpy(&hist[hn][0], s)
+    hn++
+    hpos = hn
+}
+
+fn hist_set(k: uint) {
+    hpos = k
+    cmdn = 0
+    cmd[0] = 0
+    if k < hn { cmd_add(&hist[k][0]) }
+}
+
+// ---- the key row and the whole screen ----------------------------------------------------------
+var keylab: [10]ptr byte = { "Help", "Drive", "View", "Edit", "Copy", "RenMov", "Mkdir", "Delete", "Attr", "Quit" }
+
+fn draw_keys_with(lab: ptr ptr byte) {
+    var i: uint = 0
+    while i < 10 {
+        var x: uint = i * 8
+        gotoxy(x, RKEYS)
+        CON_ATTR = A_KEYN
+        if i == 9 { CON_DATA = '1'; CON_DATA = '0' } else { CON_DATA = byte('1' + i) }
+        var lx: uint = x + 1
+        if i == 9 { lx = x + 2 }
+        putsn(lx, RKEYS, A_KEYL, lab[i], 6)
+        if i < 9 { CON_ATTR = A_KEYN; CON_DATA = ' ' }
+        i++
+    }
+}
+
+fn draw_keys() { draw_keys_with(&keylab[0]) }
+
+fn redraw() {
+    cursor_off()
+    draw_panel(0)
+    draw_panel(1)
+    draw_keys()
+    draw_cmd()
+}
+
+// ---- movement and marks ------------------------------------------------------------------
+fn moveto(pos: uint) {
+    var P = &pn[act]
+    if P.n == 0 { return }
+    if pos >= P.n { pos = P.n - 1 }
+    P.cur = pos
+    fix_top(act)
+    draw_list(act)
+    draw_info(act)
+}
+
+fn move_by(d: int) {
+    var P = &pn[act]
+    var c: int = int(P.cur) + d
+    if c < 0 { c = 0 }
+    moveto(uint(c))
+}
+
+// Marking the entry at position pos: v = 0 clear, 1 set, 2 toggle.
+fn set_mark(p: uint, pos: uint, v: uint) {
+    var P = &pn[p]
+    var s = entp(p, pos)
+    if is_up(s) != 0 { return }
+    var i: uint = ord[p][pos]
+    var old: uint = mark[p][i]
+    var nw: uint = v
+    if v == 2 { nw = old ^ 1 }
+    if old == nw { return }
+    mark[p][i] = byte(nw)
+    var sz: ulong = 0
+    if edir(s) == 0 { sz = s.size & SIZE_MASK }
+    if nw != 0 { P.nmark++; P.marksz += sz } else { P.nmark--; P.marksz -= sz }
+}
+
+// All entries: '+' mark files, '-' clear, '*' invert.
+fn mark_all(c: uint) {
+    var P = &pn[act]
+    var i: uint = 0
+    while i < P.n {
+        if c == '+' { if edir(entp(act, i)) == 0 { set_mark(act, i, 1) } }
+        else if c == '-' { set_mark(act, i, 0) }
+        else { set_mark(act, i, 2) }
+        i++
+    }
+    draw_list(act)
+    draw_info(act)
+}
+
+// ---- directory changes and launching ---------------------------------------------------------
+var cwdbuf: [256]byte
+
+// Change the active panel's directory to path (relative to its directory).
+fn panel_cd(path: ptr byte, keep: ptr byte): uint {
+    var P = &pn[act]
+    var e: uint = sys_chdir(&P.path[0])
+    if e == OK { e = sys_chdir(path) }
+    if e == OK {
+        var n: uint
+        e, n = sys_getcwd(&cwdbuf[0], 256)
+        if e == OK { strcpy(&P.path[0], &cwdbuf[0]); P.cur = 0; P.top = 0 }
+    }
+    if e != OK {
+        mb_clear()
+        mb_err(e)
+        dlg_msg("Error", path, &mb[0], 1)
+        sys_chdir(&P.path[0])
+        redraw()
+        return e
+    }
+    load(act, keep)
+    draw_panel(act)
+    draw_cmd()
+    return OK
+}
+
+fn enter_dir(s: ptr Stat) {
+    var keep: [33]byte
+    keep[0] = 0
+    var nm: [33]byte
+    ename(s, &nm[0])
+    if is_up(s) != 0 { strcpy(&keep[0], basename(&pn[act].path[0])) }
+    panel_cd(&nm[0], &keep[0])
+}
+
+// Launching a program: the screen is the ordinary console, afterwards a key wait. full - the program is
+// full-screen (the editor): no command line and no wait if it started.
+fn exec_child(cl: ptr byte, show: ptr byte, full: uint) {
+    sys_chdir(&pn[act].path[0])
+    scr_tty()
+    if full == 0 {
+        puts(&pn[act].path[0])
+        puts("> ")
+        puts(show)
+        putnl()
+    }
+    var e, code: uint
+    e, code = sys_spawn(cl, SAME, SAME, SAME)
+    if e != OK {
+        prog = "fm"
+        fail(show, e)
+        full = 0
+    }
+    if full == 0 {
+        puts("\n--- fm: press any key ---")
+        sys_con_flush()
+        getkey()
+    }
+    scr_coord()
+    reload_all()
+    redraw()
+}
+
+var clbuf: [276]byte               // the editor (14), a space, a path of up to 255 in quotes, NUL
+
+// A word into the command line clbuf, in quotes if it contains spaces.
+fn cl_word(s: ptr byte) {
+    var q: uint = 0
+    var p = s
+    while *p != 0 { if *p == ' ' || *p == 9 || *p == ';' || *p == '|' || *p == '<' || *p == '>' || *p == '#' { q = 1 }; p++ }
+    if q != 0 { strcat(&clbuf[0], "\"") }
+    strcat(&clbuf[0], s)
+    if q != 0 { strcat(&clbuf[0], "\"") }
+}
+
+// Enter on .cx - launch, on .bs and .bsc - launch a BScript script (A:/bin/bs.cx, A:/bin/bsvm.cx);
+// F4 (ed = 1) - the file into the editor A:/bin/edit.cx, a separate program: it has its own memory, and
+// the text does not share it with the fm panels. Shift+F4 - the editor without a file.
+var editor = "A:/bin/edit.cx"
+
+fn run_entry(s: ptr Stat, ed: uint) {
+    var kind = is_exec(s)
+    var nm: [33]byte
+    ename(s, &nm[0])
+    var path: [300]byte
+    strcpy(&path[0], &pn[act].path[0])
+    if pjoin(&path[0], &nm[0]) == $FFFF { return }
+    var show = &nm[0]
+    clbuf[0] = 0
+    if ed != 0 {
+        show = &editor[0]
+        strcpy(&clbuf[0], show)
+        strcat(&clbuf[0], " ")
+    } else if kind == EX_BS {
+        strcpy(&clbuf[0], "A:/bin/bs.cx ")
+    } else if kind == EX_BSC {
+        strcpy(&clbuf[0], "A:/bin/bsvm.cx ")
+    }
+    cl_word(&path[0])
+    if ed == 0 && kind == EX_BSC { strcat(&clbuf[0], " --") }   // bsvm: the script path is from the .bsc
+    exec_child(&clbuf[0], show, ed)
+}
+
+var tmpcmd = "A:/tmp/.fmcmd"
+
+// The command line: cd, X:, exit - by itself; everything else - as a shell script (A:/sys/shell.cx file),
+// so that redirections, pipelines and built-in commands work.
+fn run_cmdline() {
+    var line: [CMDMAX + 2]byte
+    var s = &cmd[0]
+    while *s == ' ' { s++ }
+    strcpy(&line[0], s)
+    var n: uint = strlen(&line[0])
+    while n != 0 && line[n - 1] == ' ' { n--; line[n] = 0 }
+    cmdn = 0
+    cmd[0] = 0
+    if n == 0 { draw_cmd(); return }
+    hist_add(&line[0])
+    if line[0] == 'c' && line[1] == 'd' && (line[2] == ' ' || line[2] == 0) {
+        var to = &line[2]
+        while *to == ' ' { to++ }
+        if *to == 0 { to = "A:/" }
+        panel_cd(to, 0)
+        return
+    }
+    if n == 2 && line[1] == ':' && drv_key(line[0]) < 8 {
+        panel_cd(&line[0], 0)
+        return
+    }
+    if streq(&line[0], "exit") != 0 { quit = 1; return }
+    var e, h, w: uint
+    e, h = sys_open(&tmpcmd[0], O_WRITE | O_CREATE | O_TRUNC, 0)
+    if e == OK {
+        e, w = sys_write(h, &line[0], n)
+        if e == OK { e, w = sys_write(h, "\n", 1) }
+        sys_close(h)
+    }
+    if e == OK {
+        exec_child("A:/sys/shell.cx A:/tmp/.fmcmd", &line[0], 0)
+        sys_delete(&tmpcmd[0])
+    } else {
+        exec_child(&line[0], &line[0], 0)
+    }
+}
+
+// The volume number by letter A-H (either case) or digit 0-7; otherwise 8 or more.
+fn drv_key(c: uint): uint {
+    if c - '0' < 8 { return c - '0' }
+    return (c | $20) - 'a'
+}
+
+// ---- volume selection ----------------------------------------------------------------------------
+fn pick_drive() {
+    var drv: [8]uint
+    var nd: uint = 0
+    var sel: uint = 0
+    var d: uint = 0
+    while d < 8 {
+        if sys_volinfo(d, &vi) == OK {
+            if pn[act].path[0] == 'A' + d { sel = nd }
+            drv[nd] = d
+            nd++
+        }
+        d++
+    }
+    if nd == 0 { return }
+    var x: uint = act * PW + 6
+    var y: uint = 5
+    var w: uint = 28
+    box(x, y, w, nd + 2, A_DLG)
+    putsc(x, y, w, A_DLG, " Drive ")
+    loop {
+        var i: uint = 0
+        while i < nd {
+            var a: uint = A_DLG
+            if i == sel { a = A_CUR }
+            ign = sys_volinfo(drv[i], &vi)
+            mb_clear()
+            mb_c(' ')
+            mb_c('A' + drv[i])
+            mb_s(":  ")
+            var j: uint = 0
+            while j < 16 && vi.label[j] != 0 { mb_c(vi.label[j]); j++ }
+            while j < 12 { mb_c(' '); j++ }
+            mb_c(' ')
+            mb_ul(ulong(vi.free) * 2)
+            mb_s("K")
+            putsn(x + 1, y + 1 + i, a, &mb[0], w - 2)
+            i++
+        }
+        cursor_off()
+        var ev: uint = getkey()
+        var c: uint = ev & $FF
+        var sc: uint = ev >> 8
+        if c == C_ESC { redraw(); return }
+        if c == C_ENTER { break }
+        if c == 0 && sc == K_UP && sel > 0 { sel-- }
+        if c == 0 && sc == K_DOWN && sel + 1 < nd { sel++ }
+        var kd: uint = drv_key(c)            // a volume letter (or digit 0-7) - an immediate choice
+        if kd < 8 {
+            i = 0
+            while i < nd { if drv[i] == kd { sel = i }; i++ }
+            if drv[sel] == kd { break }
+        }
+    }
+    var p: [4]byte
+    p[0] = byte('A' + drv[sel])
+    p[1] = ':'
+    p[2] = '/'
+    p[3] = 0
+    redraw()
+    panel_cd(&p[0], 0)
+}
+
+// ---- help ------------------------------------------------------------------------------
+var helptext: [20]ptr byte = {
+    "Up Down PgUp PgDn Home End  move the cursor",
+    "Tab         other panel",
+    "Enter       enter a directory, run a .cx program or a",
+    "            .bs/.bsc script, run the command line",
+    "Ins         mark a file;  + - *  mark all, unmark, invert",
+    "F2          choose the volume of the panel",
+    "F3          view a file (F4 in the viewer - hex); directory size",
+    "F4          edit a file (A:/bin/edit.cx); Shift+F4  new text",
+    "F5 / F6     copy / rename or move (to the other panel)",
+    "F7          make a directory",
+    "F8          delete (directories with contents)",
+    "F9          attributes: read-only, hidden, system",
+    "F10         quit",
+    "Ctrl+R      reread the panels",
+    "Ctrl+Enter  put the name under the cursor into the command line",
+    "Ctrl+E/X    previous / next command",
+    "Esc         clear the command line",
+    "Commands: cd PATH, X:, exit; others run with A:/sys/shell.cx.",
+    "Esc during copying, moving and deleting - abort.",
+    ""
+}
+
+fn help() {
+    var x: uint = 4
+    var y: uint = 1
+    box(x, y, 72, 21, A_DLG)
+    putsc(x, y, 72, A_DLG, " fm - file manager ")
+    var i: uint = 0
+    while i < 19 {
+        putsa(x + 3, y + 1 + i, A_DLG, helptext[i])
+        i++
+    }
+    cursor_off()
+    getkey()
+    redraw()
+}
+
+// ---- the main loop -------------------------------------------------------------------------------
+// Ctrl+Enter: the name under the cursor goes into the command line.
+fn name_to_cmd() {
+    var P = &pn[act]
+    if P.n == 0 { return }
+    var s = entp(act, P.cur)
+    if is_up(s) != 0 { return }
+    clbuf[0] = 0
+    cl_word(ename(s, &nbuf[0]))
+    cmd_add(&clbuf[0])
+    cmd_add(" ")
+    draw_cmd()
+}
+
+fn key(ev: uint) {
+    var c: uint = ev & $FF
+    var sc: uint = ev >> 8
+    var P = &pn[act]
+    if c == 0 {
+        if sc == K_UP { move_by(-1) }
+        else if sc == K_DOWN { move_by(1) }
+        else if sc == K_PGUP { move_by(-(LROWS - 1)) }
+        else if sc == K_PGDN { move_by(LROWS - 1) }
+        else if sc == K_HOME { moveto(0) }
+        else if sc == K_END { moveto($FFFF) }
+        else if sc == K_INS {
+            if P.n != 0 { set_mark(act, P.cur, 2); move_by(1) }
+        }
+        else if sc == K_ENTER { name_to_cmd() }     // Ctrl+Enter: character 0, the Enter scancode
+        else if sc == K_F1 { help() }
+        else if sc == K_F2 { pick_drive() }
+        else if sc == K_F3 {
+            if P.n != 0 {
+                var s3 = entp(act, P.cur)
+                if edir(s3) == 0 { view_entry(s3) } else if is_up(s3) == 0 { do_dirinfo(s3) }
+            }
+        }
+        else if sc == K_F4 {
+            if kmods & KM_SHIFT != 0 { exec_child(&editor[0], &editor[0], 1) }      // Shift+F4: new text
+            else if P.n != 0 && edir(entp(act, P.cur)) == 0 { run_entry(entp(act, P.cur), 1) }
+        }
+        else if sc == K_F5 { do_copy(0) }
+        else if sc == K_F6 { do_copy(1) }
+        else if sc == K_F7 { do_mkdir() }
+        else if sc == K_F8 { do_delete() }
+        else if sc == K_F9 { do_attr() }
+        else if sc == K_F10 {
+            if dlg_ask("Quit", "Do you want to quit fm?", 0, "[Y]es   [N]o", "yn", 0) == 'y' { quit = 1 } else { redraw() }
+        }
+        return
+    }
+    if c == C_TAB {
+        act ^= 1
+        sys_chdir(&pn[act].path[0])
+        draw_panel(0)
+        draw_panel(1)
+        draw_cmd()
+        return
+    }
+    if c == C_ENTER {
+        if cmdn != 0 { run_cmdline(); return }
+        if P.n == 0 { return }
+        var s = entp(act, P.cur)
+        if edir(s) != 0 { enter_dir(s) }
+        else if is_exec(s) != 0 { run_entry(s, 0) }      // other files: nothing (viewing is F3)
+        return
+    }
+    if c == C_ESC { cmdn = 0; cmd[0] = 0; draw_cmd(); return }
+    if c == C_BS {
+        if cmdn != 0 { cmdn--; cmd[cmdn] = 0; draw_cmd() }
+        return
+    }
+    if c == $15 { cmdn = 0; cmd[0] = 0; draw_cmd(); return }      // Ctrl+U
+    if c == $12 { reload_all(); redraw(); return }                 // Ctrl+R
+    if c == $05 {                                                  // Ctrl+E
+        if hpos > 0 { hist_set(hpos - 1); draw_cmd() }
+        return
+    }
+    if c == $18 {                                                  // Ctrl+X
+        if hpos < hn { hist_set(hpos + 1); draw_cmd() }
+        return
+    }
+    if c >= $20 {
+        if cmdn == 0 && (c == '+' || c == '-' || c == '*') { mark_all(c); draw_cmd(); return }
+        if cmdn < CMDMAX {
+            cmd[cmdn] = byte(c)
+            cmdn++
+            cmd[cmdn] = 0
+            draw_cmd()
+        }
+    }
+}
+
+// Extended-memory frames for the panel entries: 1 - ready.
+fn map_ents(): uint {
+    var top, fr, xf: uint
+    var e: uint
+    e, top, fr, xf = sys_meminfo()
+    if e != OK || top > EWIN { return 0 }
+    var pg: uint = EWIN / $2000
+    while pg < EWIN / $2000 + 2 {
+        var f, old: uint
+        e, f = sys_xalloc()
+        if e != OK { return 0 }
+        e, old = sys_xmap(pg, f)
+        if e != OK { return 0 }
+        pg++
+    }
+    return 1
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "fm"
+    var e, old, n: uint
+    if map_ents() == 0 {
+        eputs("fm: not enough memory\n")
+        return 1
+    }
+    e, old = sys_con_mode(CM_RAW | CM_NOBREAK)
+    e, n = sys_getcwd(&cwdbuf[0], 256)
+    if e != OK { strcpy(&cwdbuf[0], "A:/") }
+    strcpy(&pn[0].path[0], &cwdbuf[0])
+    strcpy(&pn[1].path[0], &cwdbuf[0])
+    if argc >= 2 {
+        if sys_chdir(argv[1]) == OK {
+            e, n = sys_getcwd(&cwdbuf[0], 256)
+            if e == OK { strcpy(&pn[1].path[0], &cwdbuf[0]) }
+        }
+        sys_chdir(&pn[0].path[0])
+    }
+    load(0, 0)
+    load(1, 0)
+    scr_coord()
+    CON_CMD = 1
+    redraw()
+    while quit == 0 {
+        key(getkey())
+        if quit == 0 { draw_cmd() }
+    }
+    scr_tty()
+    sys_chdir(&pn[act].path[0])
+    return 0
+}

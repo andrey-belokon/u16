@@ -1,0 +1,68 @@
+// ov_common.b16 - common functions of the fs and proc overlays: path arguments, opening with a retry
+// after garbage collection, reading a whole file. It is included in each of these overlays.
+
+// path argument k into a buffer (a C string); 0 - too long (the BADPATH error is already set)
+fn cpath(k: uint, buf: ptr byte): uint {
+    var h = arg_str(k)
+    if slen(h) > 255 || slen(h) == 0 { ign = fail_code(E_BADPATH, h); return 0 }
+    ign = uint(cstr(h, buf, 256))
+    return 1
+}
+
+// OPEN with a retry after garbage collection on MFILE (sect. 12.7)
+fn open_gc(p: ptr byte, mode: uint): (uint, uint) {
+    var e, h: uint
+    e, h = sys_open(p, mode, 0)
+    if e == E_MFILE { gc(); e, h = sys_open(p, mode, 0) }
+    return e, h
+}
+
+fn is_dir_h(h: uint): uint {
+    var e, kind, m: uint
+    e, kind, m = sys_hinfo(h)
+    return uint(kind == H_DIR)
+}
+
+// read an open descriptor completely: 0 - success (rl_h), otherwise a code
+fn read_fd(h: uint): uint {
+    var tmp: [256]byte
+    bld_start()
+    loop {
+        var e, r: uint
+        e, r = sys_read(h, &tmp[0], 256)
+        if e == E_INTR { do_exit(EXIT_BREAK) }
+        if e != OK { bld_h = 0; return e }
+        if r == 0 { break }
+        if bld_put(&tmp[0], r) != 0 { bld_h = 0; return E_TOOBIG }
+    }
+    rl_h = bld_done()
+    return 0
+}
+
+fn read_file(p: ptr byte, obj: uint): uint {
+    var e, h: uint
+    e, h = open_gc(p, O_READ)
+    if e != OK { return fail_code(e, obj) }
+    if is_dir_h(h) != 0 { ign = sys_close(h); return fail_code(E_ISDIR, obj) }
+    e = read_fd(h)
+    ign = sys_close(h)
+    if e != 0 { return fail_code(e, obj) }
+    return 0
+}
+
+fn c_basename(p: ptr byte): ptr byte {
+    var b = p
+    while *p != 0 { if *p == '/' || *p == ':' { b = p + 1 }; p++ }
+    return b
+}
+
+// ---- path (sect. 10.6) ---------------------------------------------------------------------------
+var pb: [300]byte
+
+var pb2: [300]byte
+
+fn arg_cbuf(k: uint, buf: ptr byte): ptr byte {
+    var h = arg_str(k)
+    if slen(h) > 290 { rt_err("path too long") }
+    return cstr(h, buf, 300)
+}

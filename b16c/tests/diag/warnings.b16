@@ -1,0 +1,15 @@
+// Warnings (sect. 12.2); -Werror turns them into errors.
+fn f(n: uint, unused: int, _quiet: int): int {
+    var x: int
+    var y: int
+    var z: int
+    var u: uint = 5
+    if n > 3 { x = 1 }
+    y = x
+    if u < -1 { y = 2 }
+    y + 1
+skip:
+    return y
+}
+fn proto(a: int)
+fn main() { f(1, 2, 3) }

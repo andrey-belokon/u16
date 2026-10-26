@@ -1,0 +1,3 @@
+// run: bs /t/cache.bs ; mv /bin/bsc.cx /bin/bsc.x ; bs /t/cache.bs ; date 2031-01-01 00:00:00 ; echo println(`v2`) > /t/inc/dep.bs ; bs /t/cache.bs ; mv /bin/bsc.x /bin/bsc.cx ; bs /t/cache.bs ; echo junk > /t/cache.bsc ; bs /t/cache.bs
+// The .bsc cache (sect. 11.4): a valid cache is not compiled again, a changed source is
+include "inc/dep.bs"

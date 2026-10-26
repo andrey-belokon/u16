@@ -1,0 +1,29 @@
+// t16: function results with and without parentheses (sect. 4.5, 5.5): in a declaration, in a pointer type, with long
+include "console.b16"
+
+fn plain(a, b: uint): uint, uint { return a / b, a % b }
+fn parens(a, b: uint): (uint, uint) { return a / b, a % b }
+fn single(a: int): (int) { return a + 1 }
+fn wide(a: uint): (long, uint, uint) { return long(a) - 100000, a ^ 1, a + 1 }
+export fn exported(a: uint): (uint, uint) { return a, a + 1 }
+static fn local(a: uint): (uint) { return a * 2 }
+
+var f1: ptr fn(uint, uint): uint, uint = plain
+var f2: ptr fn(uint, uint): (uint, uint) = parens
+var f3: ptr fn(ptr fn(): (int), uint): (int, uint)
+
+fn main() {
+    var q, r: uint
+    q, r = plain(17, 5); putu(q); putc(' '); putu(r); putc(' ')
+    q, r = parens(17, 5); putu(q); putc(' '); putu(r); putc(' ')
+    q, r = f1(100, 7); putu(q); putc(' '); putu(r); putc(' ')
+    q, r = f2(100, 7); putu(q); putc(' '); putu(r); putnl()
+    putl(single(41)); putc(' ')
+    var a: long
+    var b, c: uint
+    a, b, c = wide(3); putl(a); putc(' '); putu(b); putc(' '); putu(c); putc(' ')
+    q, r = exported(9); putu(q); putc(' '); putu(r); putc(' ')
+    putu(local(21)); putnl()
+    if f3 == 0 { puts("f3 empty") }
+    putnl()
+}

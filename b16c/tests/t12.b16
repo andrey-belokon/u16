@@ -1,0 +1,45 @@
+// t12: the long and ulong library: putul, putl, puthexl, atoul, ultoa, labs, lmin, lmax, ulmin, ulmax, lgcd, ulsqrt, mul16x16
+include "console.b16"
+include "string.b16"
+include "math.b16"
+
+var U: [13]ulong = {$0, $1, $9, $A, $63, $FF, $FFFF, $10000, $BC614E, $7FFFFFFF, $80000000, $FFFFFFFF, $EE6B2800}
+var S: [10]long = {0, 1, -1, 12345, -12345, 65536, -65536, 2147483647, -2147483648, -100000}
+
+fn main() {
+    var i: uint = 0
+    while i < 13 {
+        putul(U[i]); putc(' ')
+        puthexl(U[i], 8); putc(' '); puthexl(U[i], 5); putc(' '); puthexl(U[i], 3); putc(' ')
+        putu(ulsqrt(U[i])); putc(' ')
+        var buf: [12]byte
+        var p = ultoa(U[i], buf)
+        puts(p); putc(' ')
+        var v: ulong
+        var rest: ptr byte
+        v, rest = atoul(p)
+        putul(v); putc(' ')
+        putu(uint(*rest)); putc(' ')
+        var j: uint = 0
+        while j < 4 {
+            putul(lgcd(U[i], U[(i + j * 3) % 13])); putc(',')
+            putul(ulmin(U[i], U[j])); putc(',')
+            putul(ulmax(U[i], U[j])); putc(' ')
+            j++
+        }
+        putnl()
+        i++
+    }
+    i = 0
+    while i < 10 {
+        putl(S[i]); putc(' '); putl(labs(S[i])); putc(' ')
+        putl(lmin(S[i], S[(i + 1) % 10])); putc(' '); putl(lmax(S[i], S[(i + 1) % 10])); putnl()
+        i++
+    }
+    putul(mul16x16(65535, 65535)); putc(' '); putul(mul16x16(1000, 1000)); putc(' ')
+    var s: ptr byte = "4294967295x"
+    var w: ulong
+    var r2: ptr byte
+    w, r2 = atoul(s)
+    putul(w); putc(' '); putc(*r2); putnl()
+}

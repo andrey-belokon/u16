@@ -1,0 +1,44 @@
+# the fm script: the file manager (user/fm). Waiting is by text on the screen (screen),
+# screen snapshots (dump) are checked by run_tests.py.
+after "A:/> " steps 2000 type "cd /data\n"
+after "A:/data> " steps 2000 type "fm 1:\n"
+screen "10Quit" steps 2000 key 00 50
+screen "hello.txt                        --:--" steps 2000 key 00 1C
+screen "A:/data> hello.txt" steps 2000 key 15 16
+after "" steps 2000 key 00 3F
+screen " to:" steps 2000 type "\n"
+screen "║║hello.txt" steps 200000 dump
+after "" steps 10 key 00 41
+screen "Create the directory" steps 2000 type "newdir\n"
+screen "║newdir              │  Folder" steps 200000 dump
+after "" steps 10 key 00 41
+screen "Create the directory" steps 2000 type "NEWDIR\n"
+screen "already exists" steps 200000 dump
+after "" steps 10 key 0A 1C
+after "" steps 10 key 00 42
+screen "with all their contents" steps 2000 type "y"
+after "" steps 2000 key 00 47
+after "" steps 2000 key 00 50
+screen "║hello.txt                        --:--║║" steps 2000 key 00 40
+screen "Rename or move" steps 2000 type "\x15moved.txt\n"
+screen "moved.txt                        --:--" steps 200000 dump
+after "" steps 10 key 00 40
+screen "Rename or move" steps 2000 type "\x15Moved.txt\n"
+screen "Moved.txt                        --:--" steps 200000 dump
+after "" steps 10 key 00 3F
+screen " to:" steps 2000 type "\x15MOVED.TXT\n"
+screen "same file" steps 200000 dump
+after "" steps 10 key 1B 01
+after "" steps 10 key 00 3D
+screen "00000000: " steps 200000 dump
+after "" steps 10 key 1B 01
+screen "10Quit" steps 2000 type "ls\n"
+screen "press any key" steps 2000 type " "
+# F2: the volume list by letters; choosing a volume by letter (lower case works too)
+screen "10Quit" steps 2000 key 00 3C
+screen " Drive " steps 300000 dump
+after "" steps 10 type "a"
+screen "═ A:/ ═" steps 300000 dump
+screen "10Quit" steps 2000 key 00 44
+screen "quit fm" steps 2000 type "y"
+after "A:/data> " steps 2000 type "exit\n"

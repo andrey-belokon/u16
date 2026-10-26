@@ -1,0 +1,6 @@
+tests/diag/uninit_maybe.b16:5: warning: variable a is used before it is assigned
+tests/diag/uninit_maybe.b16:10: warning: variable t may be used before it is assigned
+tests/diag/uninit_maybe.b16:18: warning: variable prev may be used before it is assigned
+tests/diag/uninit_maybe.b16:26: warning: variable x may be used before it is assigned
+tests/diag/uninit_maybe.b16:32: warning: variable k is used before it is assigned
+rc 0

@@ -1,0 +1,18 @@
+3 2
+6 2
+1
+5040
+late const
+3 1
+11 null
+null -3: negative 1000 negative -3
+true
+zero: no such file or directory
+A:/t/fn.bs:27
+custom true null
+null /nonexistent: no such file or directory
+/nonexistent2: no such file or directory
+too large
+null
+fn: -1: negative
+exit code 1

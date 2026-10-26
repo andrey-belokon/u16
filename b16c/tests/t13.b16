@@ -1,0 +1,77 @@
+// t13: arguments on entry to the first asm block (sect. 10.2): R0-R3 hold the arguments per the
+// convention of sect. 9.3, the prologue does not change them even if the parameter is unused in B16.
+// test: also -a
+// test: also -n
+// test: also -s
+// test: also -fcopy-params
+include "console.b16"
+
+var saved_sp: uint
+var g, g2, g3, g4: uint
+var gl: long
+var gu: ulong
+var stack2: [64]uint        // second stack
+
+fn bump() { g += 1 }
+
+// Calling a function on another stack: f and top are not used in B16, only the block needs them.
+fn call_on_stack(f: ptr fn(), top: ptr) {
+    asm {
+        ST      [saved_sp], SP
+        LD      SP, R1              ; top is the second argument
+        CALL    R0                  ; f is the first argument
+        LD      SP, [saved_sp]
+    }
+}
+
+fn p1(x: uint) { asm { ST [g], R0 } }
+fn p2(x, y: uint) { asm { ST [g], R0
+                          ST [g2], R1 } }
+fn p3(x, y, z: uint) { asm { ADD R0, R1
+                             ADD R0, R2
+                             ST [g], R0 } }
+fn p4(a, b, c, d: uint) { asm { ST [g], R0
+                                ST [g2], R1
+                                ST [g3], R2
+                                ST [g4], R3 } }
+// long and ulong take two slots each: R0:R1 and R2:R3
+fn pw(a: long, b: ulong) { asm { ST [gl], R0
+                                 ST [gl+2], R1
+                                 ST [gu], R2
+                                 ST [gu+2], R3 } }
+// a block with CALL makes the function non-leaf: the prologue saves LR and R4+, but does not touch R0-R3
+fn p2c(x, y: uint) { asm { ST [g2], R0
+                           ST [g3], R1
+                           CALL bump } }
+fn p4c(a, b, c, d: uint) { asm { ST [g], R0
+                                 ST [g2], R1
+                                 ST [g3], R2
+                                 ST [g4], R3
+                                 CALL bump } }
+// the parameter is also used in B16 code after the block: the prologue copies it to R4+, but R0 stays
+fn p1u(x: uint): uint {
+    asm { ST [g3], R0 }
+    var t = x + 1
+    return t
+}
+fn pwu(a: long, k: uint): long {
+    asm { ST [gl], R0
+          ST [gl+2], R1
+          ST [g4], R2 }
+    return a + k
+}
+
+fn main() {
+    call_on_stack(bump, ptr(uint(&stack2[0]) + 128))
+    putu(g); putc(' ')
+    p1(11); putu(g); putnl()
+    p2(21, 22); putu(g); putc(' '); putu(g2); putnl()
+    p3(1, 2, 3); putu(g); putnl()
+    p4(41, 42, 43, 44); putu(g); putc(' '); putu(g2); putc(' '); putu(g3); putc(' '); putu(g4); putnl()
+    pw(-100000, $DEADBEEF); putl(gl); putc(' '); putul(gu); putnl()
+    g = 0
+    p2c(5, 6); putu(g); putc(' '); putu(g2); putc(' '); putu(g3); putnl()
+    p4c(7, 8, 9, 10); putu(g); putc(' '); putu(g2); putc(' '); putu(g3); putc(' '); putu(g4); putnl()
+    putu(p1u(99)); putc(' '); putu(g3); putnl()
+    putl(pwu(70000, 5)); putc(' '); putl(gl); putc(' '); putu(g4); putnl()
+}

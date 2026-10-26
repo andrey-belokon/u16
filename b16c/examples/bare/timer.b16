@@ -1,0 +1,25 @@
+// test: bare-only (its own vector table and interrupts)
+// A 50 Hz timer on IRQ0: wait for 10 ticks, printing a dot on each.
+var CONSOLE at $FF20: byte
+var TIMER   at $FF29: byte
+var VEC     at $FF00: [16]ptr interrupt fn()
+
+var ticks: uint
+
+interrupt fn on_tick() { ticks++ }
+
+fn putc(c: byte) { CONSOLE = c }
+
+fn main() {
+    VEC[0] = on_tick            // first the vector,
+    TIMER = 1                   // then the timer,
+    ei()                        // then STI
+    var seen: uint = 0
+    while seen < 10 {
+        wfi()                   // sleep until an interrupt
+        if ticks != seen { seen = ticks; putc('.') }
+    }
+    TIMER = 0
+    di()
+    putc('Ж'); putc(10)
+}

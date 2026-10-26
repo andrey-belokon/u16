@@ -1,0 +1,11 @@
+tests/diag/wide_ops.b16:9: error: signed and unsigned operands mixed: use an explicit int(...), uint(...), long(...) or ulong(...) cast
+tests/diag/wide_ops.b16:10: error: signed and unsigned operands mixed: use an explicit int(...), uint(...), long(...) or ulong(...) cast
+tests/diag/wide_ops.b16:12: error: signed and unsigned operands mixed: use an explicit int(...), uint(...), long(...) or ulong(...) cast
+tests/diag/wide_ops.b16:13: error: signed and unsigned operands mixed: use an explicit int(...), uint(...), long(...) or ulong(...) cast
+tests/diag/wide_ops.b16:14: error: signed and unsigned operands mixed: use an explicit int(...), uint(...), long(...) or ulong(...) cast
+tests/diag/wide_ops.b16:15: error: compound assignment: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, uint expected)
+tests/diag/wide_ops.b16:16: error: assignment: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, uint expected)
+tests/diag/wide_ops.b16:17: error: pointer arithmetic with a 32-bit value: use uint(...)
+tests/diag/wide_ops.b16:18: error: pointer arithmetic with a 32-bit value: use uint(...)
+tests/diag/wide_ops.b16:19: error: a pointer in a 32-bit operation: use uint(p)
+rc 1

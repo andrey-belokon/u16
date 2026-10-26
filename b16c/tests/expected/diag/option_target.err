@@ -1,0 +1,4 @@
+tests/diag/option_target.b16:4: warning: --data $9000 overrides option data = $8000
+tests/diag/option_target.b16:5: error: option min_free applies only to target std
+tests/diag/option_target.b16:6: error: option max_top applies only to target std
+rc 1

@@ -1,0 +1,3 @@
+echo nested
+exit 5
+echo not reached

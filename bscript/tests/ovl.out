@@ -1,0 +1,7 @@
+abc A:/x/0 4 true
+abc A:/x/1 4 true
+abc A:/x/2 4 true
+ovl ABC
+1
+bsvm: A:/t/ovl.bs:14: in function bad: fs.open: bad mode
+exit code 125

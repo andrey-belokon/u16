@@ -1,0 +1,21 @@
+// Unclosed files are closed by the garbage collector (sect. 10.5, 12.7)
+var i = 0
+while i < 30 {
+    var f = fs.open("/t/data/in.txt", "r")
+    var l = f.read_line()
+    i++
+}
+println(i)
+var w = fs.open("/t/gcw.txt", "w")
+w.write("kept")
+w = null
+var keep = []
+i = 0
+while i < 20 {
+    var f, err = fs.open("/t/data/in.txt", "r")
+    if err != null { println($"{|i|}: {|err|}"); break }
+    keep.push(f)
+    i++
+}
+keep.clear()
+println(fs.read_text("/t/gcw.txt"))

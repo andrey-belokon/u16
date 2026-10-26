@@ -1,0 +1,2 @@
+// An included file cannot set image parameters (sect. 3.6).
+option min_free = 1024

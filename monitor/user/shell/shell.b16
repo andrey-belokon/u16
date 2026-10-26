@@ -1,0 +1,747 @@
+// shell.b16 - the shell ("CPU16 Monitor: Shell and Utilities", revision 1).
+include "ulib.b16"
+
+// ---- tokens (sect. 3.2) ---------------------------------------------------------------
+const T_WORD = 0
+const T_SEMI = 1
+const T_PIPE = 2
+const T_LT = 3
+const T_GT = 4
+const T_GTGT = 5
+const T_ERR2 = 6
+
+const MAXTOK = 64
+var tkind: [MAXTOK]byte
+var tqu: [MAXTOK]byte           // the word was in quotes (an empty word "" is also a word)
+var toff: [MAXTOK]uint          // the offset of the word's text in tbuf
+var ntok: uint
+var tbuf: [512]byte
+
+var line: [258]byte
+var last: uint                  // the code of the last command
+var quit: uint                  // 1 - exit was executed
+var quit_code: uint
+var outfd: uint = STDOUT        // output of the built-in commands
+var CON_CMD at $FF26: byte      // a display command: direct output is allowed ("System Calls", 2.2)
+
+fn special(c: uint): uint {
+    if c == ';' || c == '|' || c == '<' || c == '>' { return 1 }
+    return 0
+}
+
+fn tok_add(k: uint, off: uint): uint {
+    if ntok == MAXTOK { return 0 }
+    tkind[ntok] = byte(k)
+    toff[ntok] = off
+    tqu[ntok] = 0
+    ntok++
+    return 1
+}
+
+fn serr(s: ptr byte) {
+    eputs("shell: ")
+    eputs(s)
+    eputs("\n")
+}
+
+// Splitting a line into tokens: 1 - success.
+fn lex(): uint {
+    var i: uint = 0
+    var out: uint = 0
+    ntok = 0
+    loop {
+        while line[i] == ' ' || line[i] == 9 { i++ }
+        var c: uint = line[i]
+        if c == 0 || c == $0A || c == '#' { break }
+        var k: uint = $FF
+        if c == ';' { k = T_SEMI; i++ }
+        else if c == '|' { k = T_PIPE; i++ }
+        else if c == '<' { k = T_LT; i++ }
+        else if c == '>' {
+            if line[i + 1] == '>' { k = T_GTGT; i += 2 } else { k = T_GT; i++ }
+        } else if c == '2' && line[i + 1] == '>' { k = T_ERR2; i += 2 }
+        if k != $FF {
+            if tok_add(k, 0) == 0 { serr("command too long"); return 0 }
+            continue
+        }
+        if tok_add(T_WORD, out) == 0 { serr("command too long"); return 0 }
+        var inq: uint = 0
+        loop {
+            c = line[i]
+            if c == 0 || c == $0A { break }
+            if c == '"' { inq ^= 1; tqu[ntok - 1] = 1; i++; continue }
+            if inq == 0 && (c == ' ' || c == 9 || special(c) != 0) { break }
+            tbuf[out] = byte(c)
+            out++
+            i++
+        }
+        if inq != 0 { serr("unclosed quote"); return 0 }
+        tbuf[out] = 0
+        out++
+    }
+    return 1
+}
+
+fn word(t: uint): ptr byte { return &tbuf[toff[t]] }
+
+// ---- built-in commands (sect. 5) ------------------------------------------------------------
+var cwdbuf: [600]byte
+
+fn b_pwd(): uint {
+    var e, n: uint
+    e, n = sys_getcwd(&cwdbuf[0], 600)
+    if e != OK { prog = "pwd"; fail(0, e); return 1 }
+    fputs(outfd, &cwdbuf[0])
+    fputs(outfd, "\n")
+    return 0
+}
+
+var dst: Stat
+
+// The name ends with ".cx" (letter case does not matter, as in file names).
+fn has_cx(s: ptr byte): uint {
+    var n: uint = strlen(s)
+    return n > 3 && s[n - 3] == '.' && chfold(s[n - 2]) == 'c' && chfold(s[n - 1]) == 'x'
+}
+
+// The name ends with ".bs": a BScript script ("BScript", sect. 11.4).
+fn has_bs(s: ptr byte): uint {
+    var n: uint = strlen(s)
+    return n > 3 && s[n - 3] == '.' && chfold(s[n - 2]) == 'b' && chfold(s[n - 1]) == 's'
+}
+
+// The name ends with ".bsc": a compiled BScript script, run by A:/bin/bsvm.cx.
+fn has_bsc(s: ptr byte): uint {
+    var n: uint = strlen(s)
+    return n > 4 && s[n - 4] == '.' && chfold(s[n - 3]) == 'b' && chfold(s[n - 2]) == 's' && chfold(s[n - 1]) == 'c'
+}
+
+fn b_help(): uint {
+    fputs(outfd, "built-in commands: cd pwd echo exit cls help session\nutilities in A:/bin:")
+    var e, h, got: uint
+    e, h = sys_open("A:/bin", O_READ, 0)
+    if e == OK {
+        loop {
+            e, got = sys_readdir(h, &dst)
+            if e != OK || got == 0 { break }
+            if uint(dst.size >> 16) & (A_DIR | A_HIDDEN) == 0 {
+                fputs(outfd, " ")
+                var nm: [33]byte
+                var j: uint = 0
+                while j < 32 { nm[j] = dst.name[j]; j++ }
+                nm[32] = 0
+                var n: uint = strlen(&nm[0])
+                if has_cx(&nm[0]) != 0 { nm[n - 3] = 0 }
+                fputs(outfd, &nm[0])
+            }
+        }
+        e = sys_close(h)
+    }
+    fputs(outfd, "\n")
+    return 0
+}
+
+
+// A built-in command args[0..n): the code, or $FFFF if it is not a built-in command.
+fn builtin(args: ptr uint, n: uint): uint {
+    var name = word(args[0])
+    var e: uint
+    if strieq(name, "cd") != 0 {
+        if n > 2 { prog = "cd"; return uint(usage("[path]")) }
+        var to: ptr byte = "A:/"
+        if n == 2 { to = word(args[1]) }
+        e = sys_chdir(to)
+        if e != OK { prog = "cd"; fail(to, e); return 1 }
+        return 0
+    }
+    if strieq(name, "pwd") != 0 { return b_pwd() }
+    if strieq(name, "echo") != 0 {
+        var i: uint = 1
+        while i < n {
+            if i > 1 { fputs(outfd, " ") }
+            fputs(outfd, word(args[i]))
+            i++
+        }
+        fputs(outfd, "\n")
+        return 0
+    }
+    if strieq(name, "exit") != 0 {
+        var code: uint = 0
+        if n > 1 {
+            var ok: uint
+            code, ok = atou(word(args[1]))
+            if ok == 0 || n > 2 { prog = "exit"; return uint(usage("[code]")) }
+        }
+        quit = 1
+        quit_code = code
+        return code
+    }
+    if strieq(name, "cls") != 0 {
+        CON_CMD = 1
+        return 0
+    }
+    if strieq(name, "help") != 0 { return b_help() }
+    if strieq(name, "session") != 0 { return b_session(args, n) }
+    return $FFFF
+}
+
+// ---- sessions (sect. 5.1) ------------------------------------------------------------------------------
+var spi: ProcInfo
+
+// The session list: * marks the current one, the number, process memory, the chain of processes from the root.
+fn sess_list(): uint {
+    var s: uint = 0
+    while s < MAXSESS {
+        var e, fl, np, num: uint
+        e, fl, np, num = sys_sess_info(s, 0, ptr ProcInfo(0))
+        if e == OK {
+            var fr: uint = 0
+            var k: uint = 0
+            while k < np {
+                e, _, _, _ = sys_sess_info(s, k, &spi)
+                if e == OK { fr += spi.frames }
+                k++
+            }
+            if fl & SF_CUR != 0 { fputs(outfd, "* ") } else { fputs(outfd, "  ") }
+            fputul(outfd, ulong(s), 0)
+            fputul(outfd, ulong(fr) * 8, 6)
+            fputs(outfd, "K  ")
+            k = 0
+            while k < np {
+                e, _, _, _ = sys_sess_info(s, k, &spi)
+                if k != 0 { fputs(outfd, " > ") }
+                if e == OK { fputs(outfd, &spi.cmd[0]) } else { fputs(outfd, "?") }
+                k++
+            }
+            fputs(outfd, "\n")
+        }
+        s++
+    }
+    return 0
+}
+
+// The prompt (sect. 3): the number of its own session "[N] ", if there is more than one session.
+fn prompt_sess() {
+    var s: uint = 0
+    var e, fl, np, num: uint
+    var me: uint = 0
+    var cnt: uint = 0
+    while s < MAXSESS {
+        e, fl, np, num = sys_sess_info(s, 0, ptr ProcInfo(0))
+        if e == OK { cnt++; if fl & SF_CUR != 0 { me = s } }
+        s++
+    }
+    if cnt > 1 { puts("["); fputul(STDOUT, ulong(me), 0); puts("] ") }
+}
+
+// The shell is the system's only session: 1.
+fn sess_alone(): uint {
+    var s: uint = 0
+    var e, fl, np, num: uint
+    while s < MAXSESS {
+        e, fl, np, num = sys_sess_info(s, 0, ptr ProcInfo(0))
+        if e == OK && fl & SF_CUR == 0 { return 0 }
+        s++
+    }
+    return 1
+}
+
+fn sess_num(w: ptr byte): uint {
+    var v, ok: uint
+    v, ok = atou(w)
+    if ok == 0 { return $FFFF }
+    return v
+}
+
+// session [N | new [-b] [command ...] | kill [-f] [N]] ("Shell and Utilities", sect. 5.1)
+fn b_session(args: ptr uint, n: uint): uint {
+    prog = "session"
+    var e, s: uint
+    if n == 1 { return sess_list() }
+    var sub = word(args[1])
+    if strieq(sub, "new") != 0 {
+        var i: uint = 2
+        var fl: uint = 0
+        if i < n && streq(word(args[i]), "-b") != 0 { fl = SN_BACK; i++ }
+        var cmd: ptr byte = ptr byte(0)
+        if i < n {
+            if build_cmd(&args[i], n - i) == 0 { return 1 }
+            cmd = &cmdline[0]
+        }
+        e, s = sys_sess_new(cmd, fl)
+        if e != OK { fail(0, e); return 1 }
+        if fl != 0 { fputs(outfd, "session "); fputul(outfd, ulong(s), 0); fputs(outfd, " started\n") }
+        return 0
+    }
+    if strieq(sub, "kill") != 0 {
+        var i: uint = 2
+        var fl: uint = 0
+        if i < n && streq(word(args[i]), "-f") != 0 { fl = SK_FORCE; i++ }
+        s = SAME
+        if i < n {
+            s = sess_num(word(args[i]))
+            if s == $FFFF { return sess_usage() }
+            i++
+        }
+        if i != n { return sess_usage() }
+        e = sys_sess_kill(s, fl)
+        if e == E_BUSY {
+            var np: uint
+            e, _, np, _ = sys_sess_info(s, 0, ptr ProcInfo(0))
+            if np > 1 { eputs("session: the session runs several programs; use kill -f\n") }
+            else { eputs("session: the only session; use exit\n") }
+            return 1
+        }
+        return sess_err(s, e)
+    }
+    s = sess_num(sub)
+    if s == $FFFF || n > 2 { return sess_usage() }
+    return sess_err(s, sys_sess_switch(s))
+}
+
+fn sess_usage(): uint { return uint(usage("[N | new [-b] [command ...] | kill [-f] [N]]")) }
+
+fn sess_err(s: uint, e: uint): uint {
+    if e == OK { return 0 }
+    if e == E_NOENT || e == E_INVAL {
+        eputs("session: ")
+        fputul(STDERR, ulong(s), 0)
+        eputs(": no such session\n")
+        return 1
+    }
+    fail(0, e)
+    return 1
+}
+
+// ---- programs (sect. 4) ---------------------------------------------------------------------------
+var pathbuf: [300]byte
+var cmdline: [300]byte
+
+fn try_path(p: ptr byte): uint {
+    if sys_stat(p, &dst) != OK { return 0 }
+    if uint(dst.size >> 16) & A_DIR != 0 { return 0 }
+    return 1
+}
+
+// Looking for program name in pathbuf: 1 - found. Names are compared by the monitor, ignoring letter
+// case: LS finds ls.cx. A name that already ends in .cx does not get .cx a second time.
+// After name.cx, name.bs is checked - a BScript script, it is run by A:/bin/bs.cx (sect. 4.1).
+fn find_prog(name: ptr byte): uint {
+    var c: uint = 0
+    var direct: uint = 0
+    var s = name
+    while *s != 0 { if *s == '/' || *s == ':' { direct = 1 }; s++ }
+    if strlen(name) > 250 { return 0 }
+    while c < 2 {
+        if direct == 0 && c == 1 { strcpy(&pathbuf[0], "A:/bin/") } else { pathbuf[0] = 0 }
+        if direct != 0 && c == 1 { break }
+        strcat(&pathbuf[0], name)
+        if try_path(&pathbuf[0]) != 0 { return 1 }
+        if has_cx(name) == 0 {
+            var k: uint = strlen(&pathbuf[0])
+            strcat(&pathbuf[0], ".cx")
+            if try_path(&pathbuf[0]) != 0 { return 1 }
+            pathbuf[k] = 0
+            strcat(&pathbuf[0], ".bs")
+            if try_path(&pathbuf[0]) != 0 { return 1 }
+        }
+        c++
+    }
+    return 0
+}
+
+fn needs_quotes(w: ptr byte): uint {
+    if *w == 0 { return 1 }
+    while *w != 0 {
+        if *w == ' ' || *w == 9 || special(*w) != 0 || *w == '#' { return 1 }
+        w++
+    }
+    return 0
+}
+
+fn cl_add(len: uint, s: ptr byte, q: uint): uint {
+    if q != 0 {
+        if len >= 255 { return $FFFF }
+        cmdline[len] = '"'
+        len++
+    }
+    while *s != 0 {
+        if len >= 255 { return $FFFF }
+        cmdline[len] = *s
+        len++
+        s++
+    }
+    if q != 0 {
+        if len >= 255 { return $FFFF }
+        cmdline[len] = '"'
+        len++
+    }
+    cmdline[len] = 0
+    return len
+}
+
+// The program's exit code (sect. 4.2).
+fn report(code: uint) {
+    if code == 0 || code == EXIT_BREAK || code == EXIT_BADINSN || code == EXIT_KILLED { return }
+    if code < $8000 {
+        eputs("exit code ")
+        fputul(STDERR, ulong(code), 0)
+    } else {
+        eputs("exit code $")
+        var hb: [5]byte
+        var i: uint = 0
+        while i < 4 {
+            var d: uint = (code >> (12 - 4 * i)) & 15
+            if d < 10 { hb[i] = byte('0' + d) } else { hb[i] = byte('A' + d - 10) }
+            i++
+        }
+        hb[4] = 0
+        eputs(&hb[0])
+    }
+    eputs("\n")
+}
+
+// The launch command line args[0..n) in cmdline (program search, BScript scripts): 1 - ready,
+// 0 - an error (the message is printed).
+fn build_cmd(args: ptr uint, n: uint): uint {
+    var name = word(args[0])
+    if find_prog(name) == 0 {
+        eputs(name)
+        eputs(": command not found\n")
+        return 0
+    }
+    var len: uint = 0
+    var bsc = has_bsc(&pathbuf[0])
+    if has_bs(&pathbuf[0]) != 0 { len = cl_add(0, "A:/bin/bs.cx ", 0) }
+    else if bsc != 0 { len = cl_add(0, "A:/bin/bsvm.cx ", 0) }
+    len = cl_add(len, &pathbuf[0], 0)
+    if bsc != 0 && len != $FFFF { len = cl_add(len, " --", 0) }   // bsvm: the script path is from the .bsc
+    var i: uint = 1
+    while i < n && len != $FFFF {
+        len = cl_add(len, " ", 0)
+        if len != $FFFF { len = cl_add(len, word(args[i]), needs_quotes(word(args[i]))) }
+        i++
+    }
+    if len == $FFFF { serr("command too long"); return 0 }
+    return 1
+}
+
+fn run_prog(args: ptr uint, n: uint, fin: uint, fout: uint, ferr: uint): uint {
+    var name = word(args[0])
+    if build_cmd(args, n) == 0 { return 1 }
+    var e, code: uint
+    e, code = sys_spawn(&cmdline[0], fin, fout, ferr)
+    if e != OK {
+        prog = name
+        fail(0, e)
+        return 1
+    }
+    report(code)
+    return code
+}
+
+// ---- a command and a pipeline (sect. 3.3-3.5) -------------------------------------------------------------
+var tmpname: [16]byte
+
+fn tmp_path(k: uint): ptr byte {
+    strcpy(&tmpname[0], "A:/tmp/.pipe")
+    tmpname[12] = byte('0' + k / 10)
+    tmpname[13] = byte('0' + k % 10)
+    tmpname[14] = 0
+    return &tmpname[0]
+}
+
+// A pipeline stage: tokens [a, b). k is the stage number, nst the number of stages.
+fn run_stage(a: uint, b: uint, k: uint, nst: uint): uint {
+    var args: [MAXTOK]uint
+    var n: uint = 0
+    var fin, fout, ferr: uint
+    fin = SAME
+    fout = SAME
+    ferr = SAME
+    var own: [3]uint
+    own[0] = $FFFF
+    own[1] = $FFFF
+    own[2] = $FFFF
+    var e, h: uint
+    var code: uint = 1
+    if k > 0 {
+        e, h = sys_open(tmp_path(k - 1), O_READ, 0)
+        if e != OK { prog = "shell"; fail(tmp_path(k - 1), e); return 1 }
+        fin = h
+        own[0] = h
+    }
+    if k + 1 < nst {
+        e, h = sys_open(tmp_path(k), O_WRITE | O_CREATE | O_TRUNC, 0)
+        if e != OK { prog = "shell"; fail(tmp_path(k), e); goto done }
+        fout = h
+        own[1] = h
+    }
+    var t: uint = a
+    while t < b {
+        var kd: uint = tkind[t]
+        if kd == T_WORD { args[n] = t; n++; t++; continue }
+        if t + 1 >= b || tkind[t + 1] != T_WORD { serr("file name expected after redirection"); goto done }
+        var fname = word(t + 1)
+        var slot: uint = 1
+        var mode: uint = O_WRITE | O_CREATE | O_TRUNC
+        if kd == T_LT { slot = 0; mode = O_READ }
+        if kd == T_GTGT { mode = O_WRITE | O_CREATE | O_APPEND }
+        if kd == T_ERR2 { slot = 2 }
+        e, h = sys_open(fname, mode, 0)
+        if e != OK { prog = "shell"; fail(fname, e); goto done }
+        if own[slot] != $FFFF { e = sys_close(own[slot]) }
+        own[slot] = h
+        if slot == 0 { fin = h } else if slot == 1 { fout = h } else { ferr = h }
+        t += 2
+    }
+    if n == 0 { serr("missing command"); goto done }
+    if fout != SAME { outfd = fout }
+    code = builtin(&args[0], n)
+    outfd = STDOUT
+    if code == $FFFF { code = run_prog(&args[0], n, fin, fout, ferr) }
+done:
+    var i: uint = 0
+    while i < 3 { if own[i] != $FFFF { e = sys_close(own[i]) }; i++ }
+    return code
+}
+
+// A command - tokens [a, b) without ';'.
+fn run_cmd(a: uint, b: uint): uint {
+    if a == b { return last }
+    var st: [16]uint            // stage starts
+    var nst: uint = 1
+    st[0] = a
+    var t: uint = a
+    while t < b {
+        if tkind[t] == T_PIPE {
+            if nst == 16 { serr("pipeline too long"); return 1 }
+            st[nst] = t + 1
+            nst++
+        }
+        t++
+    }
+    var k: uint = 0
+    var code: uint = 0
+    while k < nst {
+        var e: uint = st[k]
+        var f: uint = b
+        if k + 1 < nst { f = st[k + 1] - 1 }
+        if e == f { serr("empty command in pipeline"); code = 1; break }
+        code = run_stage(e, f, k, nst)
+        if code == EXIT_BREAK || quit != 0 { break }
+        k++
+    }
+    k = 0
+    while k + 1 < nst { ign = sys_delete(tmp_path(k)); k++ }
+    return code
+}
+
+// A line in line: all commands separated by ';'. 0 - continue executing, 1 - stop (Ctrl+C, exit).
+fn run_line(): uint {
+    if lex() == 0 { last = 1; return 0 }
+    var a: uint = 0
+    var t: uint = 0
+    while t <= ntok {
+        if t == ntok || tkind[t] == T_SEMI {
+            last = run_cmd(a, t)
+            if quit != 0 || last == EXIT_BREAK { return 1 }
+            a = t + 1
+        }
+        t++
+    }
+    return 0
+}
+
+// ---- a script (sect. 3.6) ------------------------------------------------------------------------------
+var sbuf: [512]byte
+var spos, slen: uint
+
+// The next line of file h into line: 0 - end of file.
+fn next_line(h: uint): uint {
+    var n: uint = 0
+    loop {
+        if spos == slen {
+            var e: uint
+            e, slen = sys_read(h, &sbuf[0], 512)
+            spos = 0
+            if e != OK || slen == 0 {
+                slen = 0
+                line[n] = 0
+                if n != 0 { return 1 }
+                return 0
+            }
+        }
+        var c: uint = sbuf[spos]
+        spos++
+        if c == $0A { line[n] = 0; return 1 }
+        if n < 255 { line[n] = byte(c); n++ }
+    }
+}
+
+fn run_script(path: ptr byte): uint {
+    var e, h: uint
+    e, h = sys_open(path, O_READ, 0)
+    if e != OK { prog = "shell"; fail(path, e); return 1 }
+    spos = 0
+    slen = 0
+    while next_line(h) != 0 {
+        if run_line() != 0 { break }
+    }
+    e = sys_close(h)
+    return last
+}
+
+// ---- volume check at startup ("Shell and Utilities", sect. 2) --------------------------------------
+var cvi: VolInfo
+var fsckcmd = "A:/bin/fsck.cx A"
+
+// Volumes mounted read-only because of DIRTY: fsck and remounting for writing.
+fn check_volumes() {
+    var d: uint = 0
+    while d < 8 {
+        if sys_volinfo(d, &cvi) == OK && cvi.flags & MNT_DIRTY != 0 {
+            eputs("shell: volume ")
+            fputdrv(STDERR, d)
+            eputs(" was not unmounted cleanly, running fsck\n")
+            fsckcmd[15] = byte('A' + d)
+            var e, code, m: uint
+            e, code = sys_spawn(&fsckcmd[0], SAME, SAME, SAME)
+            if e != OK {
+                prog = "shell"
+                fail(&fsckcmd[0], e)
+            } else if code == 0 {
+                e, m = sys_mount(d, MOUNT_REMOUNT)
+                if e != OK {
+                    prog = "shell"
+                    fail("remount", e)
+                } else if m == 0 {
+                    eputs("shell: volume ")
+                    fputdrv(STDERR, d)
+                    eputs(" mounted read-write\n")
+                }
+            }
+        }
+        d++
+    }
+}
+
+// ---- line input with history ("Shell and Utilities", sect. 3.1) -------------------------------------
+// The console in raw mode with NOBREAK: the shell assembles the line itself from keyboard events.
+const HMAX = 16
+const SC_UP = $48
+const SC_DOWN = $50
+var hist: [HMAX][256]byte
+var hn: uint                    // lines in the history; hist[hn - 1] is the last
+var draft: [256]byte            // the typed line while browsing the history
+
+fn echo_c(c: uint) { fputc(STDOUT, c) }
+
+fn erase(n: uint) {
+    while n != 0 { echo_c(8); echo_c(' '); echo_c(8); n-- }
+}
+
+// Replace the typed line (n characters on the screen) with string s.
+fn replace_line(n: uint, s: ptr byte): uint {
+    erase(n)
+    var k: uint = 0
+    while s[k] != 0 && k < 255 { line[k] = s[k]; echo_c(s[k]); k++ }
+    return k
+}
+
+fn hist_add(n: uint) {
+    var blank: uint = 1
+    var i: uint = 0
+    while i < n { if line[i] != ' ' && line[i] != 9 { blank = 0 }; i++ }
+    if blank != 0 { return }
+    if hn != 0 && streq(&hist[hn - 1][0], &line[0]) != 0 { return }
+    if hn == HMAX {
+        var k: uint = 1
+        while k < HMAX { strcpy(&hist[k - 1][0], &hist[k][0]); k++ }
+        hn--
+    }
+    strcpy(&hist[hn][0], &line[0])
+    hn++
+}
+
+// A line from the console into line: 1 - a line, 2 - cancelled by Ctrl+C, 0 - end of input.
+fn read_line(): uint {
+    var n: uint = 0
+    var hi: uint = hn           // hn is a new line, otherwise hist[hi] is being browsed
+    loop {
+        var e, ev: uint
+        e, ev = sys_con_getev(0)
+        if e != OK { return 0 }
+        var c: uint = ev & $FF
+        var sc: uint = ev >> 8
+        if c == $0A {
+            echo_c($0A)
+            line[n] = 0
+            hist_add(n)
+            return 1
+        } else if c == 8 {
+            if n != 0 { n--; erase(1) }
+        } else if c == $15 {
+            erase(n)
+            n = 0
+        } else if c == 3 {
+            puts("^C\n")
+            return 2
+        } else if c == $1A {
+            if n == 0 { echo_c($0A); return 0 }
+        } else if c >= $20 || c == 9 {
+            if n < 255 { line[n] = byte(c); n++; echo_c(c) }
+        } else if c == 0 && sc == SC_UP {
+            if hi > 0 {
+                if hi == hn { line[n] = 0; strcpy(&draft[0], &line[0]) }
+                hi--
+                n = replace_line(n, &hist[hi][0])
+            }
+        } else if c == 0 && sc == SC_DOWN {
+            if hi < hn {
+                hi++
+                if hi == hn { n = replace_line(n, &draft[0]) } else { n = replace_line(n, &hist[hi][0]) }
+            }
+        }
+    }
+}
+
+// ---- the main loop -------------------------------------------------------------------------------------
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "shell"
+    if argc >= 2 { return int(run_script(argv[1])) }
+    var e, n, m: uint
+    if sess_alone() != 0 {      // system startup, not a new session (sect. 2)
+        check_volumes()
+        e = sys_mkdir("A:/tmp")
+        if try_path("A:/sys/startup") != 0 {
+            e = run_script("A:/sys/startup")
+            if quit != 0 { return int(quit_code) }
+        }
+    }
+    // input from the console - its own editor with history; redirected input - line by line through READ
+    var k0, m0: uint
+    e, k0, m0 = sys_hinfo(STDIN)
+    var cons: uint = 0
+    if e == OK && k0 == H_CON { cons = 1 }
+    if cons != 0 { e, m = sys_con_mode(CM_RAW | CM_NOBREAK) } else { e, m = sys_con_mode(CM_NOBREAK) }
+    spos = 0
+    slen = 0
+    loop {
+        prompt_sess()
+        e, n = sys_getcwd(&cwdbuf[0], 600)
+        if e == OK { puts(&cwdbuf[0]) }
+        puts("> ")
+        if cons != 0 {
+            var r: uint = read_line()
+            if r == 2 { continue }
+            if r == 0 { break }
+        } else {
+            if next_line(STDIN) == 0 { break }
+        }
+        e = run_line()
+        if quit != 0 { return int(quit_code) }
+    }
+    puts("\n")
+    return 0
+}

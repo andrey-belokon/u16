@@ -1,0 +1,80 @@
+# the edit script: the edit.cx editor (user/edit) from the shell and by F4 from fm. Waiting is by text
+# on the screen (screen); the file contents after writing are checked by cat.
+after "A:/> " steps 2000 type "cd /data\n"
+# \r\n: editing and writing with the same line endings
+after "A:/data> " steps 2000 type "edit crlf.txt\n"
+screen "CRLF" steps 2000 key 00 4F
+after "" steps 2000 type "1"
+after "" steps 2000 key 00 50
+after "" steps 2000 key 00 47
+after "" steps 2000 type "X"
+after "" steps 2000 key 05 12
+after "" steps 2000 type "four"
+after "" steps 2000 key 00 3C
+screen "saved" steps 2000 dump
+after "" steps 10 key 1B 01
+after "A:/data> " steps 2000 type "cat crlf.txt\n"
+# selection by Shift+arrows, cut and paste, deleting the selection (Del), replacement (Ins), Del,
+# undo (Ctrl+Z), writing with Ctrl+S
+after "A:/data> " steps 2000 type "edit t.txt\n"
+screen "Ln 1/5" steps 2000 key 00 50 1
+after "" steps 2000 key 18 2D 2
+after "" steps 2000 key 00 4F 2
+after "" steps 2000 key 16 2F 2
+screen "Ln 5/5" steps 2000 dump
+after "" steps 10 key 00 47 2
+after "" steps 2000 key 00 50
+after "" steps 2000 key 00 50 1
+after "" steps 2000 key 00 53
+screen "Ln 2/4" steps 2000 key 00 52
+after "" steps 2000 type "D"
+after "" steps 2000 key 00 52
+after "" steps 2000 key 00 53
+after "" steps 2000 type "zz"
+screen "Ins  18" steps 2000 key 1A 2C 2
+screen "Ins  16" steps 2000 key 13 1F
+screen "saved" steps 2000 dump
+after "" steps 10 key 1B 01
+after "A:/data> " steps 2000 type "cat t.txt\n"
+# a new file, a long line (horizontal shift), search (F7, F3, Ctrl+L), go to line,
+# exit with writing
+after "A:/data> " steps 2000 type "edit new.txt\n"
+screen "new file" steps 2000 type "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\nsecond\nthird"
+screen "Ln 3/3  Col 6" steps 2000 key 00 47 2
+after "" steps 2000 key 00 41
+screen "Search for" steps 2000 type "345\n"
+screen "Ln 1/3  Col 7" steps 2000 key 00 3D
+screen "Ln 1/3  Col 17" steps 2000 key 0C 26
+screen "Ln 1/3  Col 27" steps 2000 key 00 4F
+screen "Col 101" steps 2000 dump
+after "" steps 10 key 00 43
+screen "Line number" steps 2000 type "2\n"
+screen "Ln 2/3" steps 2000 key 1B 01
+screen "Save it?" steps 2000 dump
+after "" steps 10 type "y"
+after "A:/data> " steps 2000 type "cat new.txt\n"
+# F4 in fm: the editor and a return to the panels without waiting for a key; Shift+F4: text without a name,
+# F2 - "Save As" in the panel's directory; Shift+F2 - into a subdirectory; F12 - overwrite
+after "A:/data> " steps 2000 type "fm\n"
+screen "10Quit" steps 2000 key 00 4F
+screen "t.txt" steps 2000 key 00 3E
+screen "Ln 1/4" steps 2000 dump
+after "" steps 10 key 1B 01
+screen "4Edit" steps 2000 key 00 3E 1
+screen "untitled" steps 2000 type "made in fm"
+after "" steps 2000 key 00 3C
+screen "Name:" steps 2000 type "made.txt\n"
+screen " saved" steps 2000 key 00 3C 1
+screen "Name: made.txt" steps 2000 key 00 50
+after "" steps 2000 type "\n"
+screen "A:/data/sub" steps 2000 type "\t\n"
+screen " saved" steps 2000 key 00 58
+screen "Name: made.txt" steps 2000 type "\n"
+screen "Overwrite" steps 2000 dump
+after "" steps 10 type "y"
+screen " saved" steps 2000 key 1B 01
+screen "4Edit" steps 2000 dump
+after "" steps 10 key 00 44
+screen "quit fm" steps 2000 type "y"
+after "A:/data> " steps 2000 type "cat made.txt sub/made.txt\n"
+after "A:/data> " steps 2000 type "exit\n"

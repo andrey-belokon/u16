@@ -1,0 +1,138 @@
+// ovl.b16 - bsvm overlays: rare and long library code in extended-memory frames.
+//
+// The window is page 6 (OV_BASE). Normally the window holds the module frame: the function table, the bytecode
+// and the call frame table - what only the interpreter needs. A call of an overlay function
+// puts the overlay frame in the window (on the first call a frame is allocated and the image is read from
+// the file bsvm.ovl next to bsvm.cx), on return - the module frame again. Overlay code calls
+// functions of the resident part but not functions of other overlays; a resident function called from
+// an overlay puts another frame in the window only if it does not return (rt_err2).
+//
+// Overlay image: a 16-byte header (word 0 - "OV", word 1 - the address of the entry table ov_table),
+// then code and data built for address OV_BASE + 16 (tools/mkovl.py).
+
+var mod_frame: uint             // the module frame (the module is in one frame)
+
+// The module code is larger than one frame (cf_multi): the code frames are cf_frame, the window holds cf_cur. The function
+// and call frame tables are then in near memory. A command does not cross a frame boundary:
+// before the boundary the compiler puts a jump to the start of the next frame.
+const CF_MAX = 4
+var cf_multi: uint
+var cf_frame: [CF_MAX]uint
+var cf_cur: uint
+
+// the address in the window of byte off of the module code; puts the needed code frame into the window
+fn code_at(off: uint): ptr byte {
+    if cf_multi == 0 { return code + off }
+    var f = off >> 13
+    if f != cf_cur || ov_cur != NOV {
+        xmap6(cf_frame[f])
+        cf_cur = f
+        ov_cur = NOV
+    }
+    return ptr byte(OV_BASE + (off & $1FFF))
+}
+
+// the offset in the module code of address p in the window
+fn code_off(p: ptr byte): uint {
+    if cf_multi == 0 { return uint(p) - uint(code) }
+    return (cf_cur << 13) + (uint(p) - OV_BASE)
+}
+var ov_frame: [NOV]uint         // overlay frames, 0 - not loaded
+var ov_cur: uint                // what is in the window: an overlay number or NOV - the module
+var ovl_path: [PATHMAX]byte
+
+fn xmap6(f: uint) {
+    var e, old: uint
+    e, old = sys_xmap(OV_PAGE, f)
+    if e != OK { rt_err("internal: window") }
+}
+
+fn mod_map() {
+    if ov_cur == NOV { return }
+    if cf_multi != 0 { xmap6(cf_frame[cf_cur]) } else { xmap6(mod_frame) }
+    ov_cur = NOV
+}
+
+// the overlay could not be loaded: a message without the error overlay
+fn ov_fail(msg: ptr byte) {
+    eputs("bsvm: ")
+    eputs(&ovl_path[0])
+    eputs(": ")
+    eputs(msg)
+    eputs("\n")
+    do_exit(126)
+}
+
+// read image k of the file bsvm.ovl to address base (the frame is already in the window)
+fn ov_read(k: uint, base: uint) {
+    var e, h: uint
+    e, h = sys_open(&ovl_path[0], O_READ, 0)
+    if e != OK { ov_fail("cannot open") }
+    // the file header: "BS", the number of images, then (offset, length) of each
+    var hd: [2 + 2 * (NOV + 1)]uint
+    var r: uint
+    e, r = sys_read(h, ptr byte(&hd[0]), 4 + 4 * (NOV + 1))
+    if e != OK || r != 4 + 4 * (NOV + 1) || hd[0] != ('B' | 'S' << 8) || hd[1] != NOV + 1 { ov_fail("bad overlay file") }
+    var p: ulong
+    e, p = sys_seek(h, long(ulong(hd[2 + 2 * k])), SEEK_SET)
+    e, r = sys_read(h, ptr byte(base), hd[3 + 2 * k])
+    ign = sys_close(h)
+    if e != OK || r != hd[3 + 2 * k] || *ptr uint(base) != ('O' | 'V' << 8) { ov_fail("bad overlay file") }
+}
+
+fn ov_load(k: uint) {
+    var e, f: uint
+    e, f = sys_xalloc()
+    if e != OK { ov_fail("not enough memory") }
+    xmap6(f)
+    ov_cur = k
+    ov_read(k, OV_BASE)
+    ov_frame[k] = f
+}
+
+// The module loader (ov_init.b16): temporarily on page 5, the frame is freed afterwards.
+fn init_run() {
+    var e, f, old: uint
+    e, f = sys_xalloc()
+    if e != OK { ov_fail("not enough memory") }
+    e, old = sys_xmap(W5_PAGE, f)
+    ov_read(OV_INIT, W5_BASE)
+    var tab: ptr uint = ptr uint(*ptr uint(W5_BASE + 2))
+    var fn0: ptr fn(): uint = ptr fn(): uint(tab[0])
+    ign = fn0()
+    e, old = sys_xmap(W5_PAGE, XM_OWN)
+    ign = sys_xfree(f)
+}
+
+// A call of function i of overlay k. A nested call (from a function of another overlay, for example collection
+// on allocation in fs.read_text) returns the previous overlay to the window.
+fn ov_call(k: uint, i: uint): uint {
+    var prev = ov_cur
+    if ov_cur != k {
+        if ov_frame[k] == 0 { ov_load(k) } else { xmap6(ov_frame[k]); ov_cur = k }
+    }
+    var tab: ptr uint = ptr uint(*ptr uint(OV_BASE + 2))
+    var f: ptr fn(): uint = ptr fn(): uint(tab[i])
+    var r = f()
+    if prev == NOV { mod_map() } else if ov_cur != prev { xmap6(ov_frame[prev]); ov_cur = prev }
+    return r
+}
+
+// the path of bsvm.ovl: argv[0] with the extension .ovl instead of .cx
+fn ovl_init(argv0: ptr byte) {
+    // a relative program path is from the current directory (usually the path is full: A:/bin/bsvm.cx)
+    var n: uint = 0
+    if strlen(argv0) > 200 { argv0 = "A:/bin/bsvm.cx" }
+    if has_drive(argv0) == 0 {
+        var e: uint
+        e, n = sys_getcwd(&ovl_path[0], PATHMAX - 210)
+        if e != OK { n = 0 }
+        n = strlen(&ovl_path[0])
+        if argv0[0] == '/' { n = 2 } else if n > 0 && ovl_path[n - 1] != '/' { ovl_path[n] = '/'; n++ }
+    }
+    strcpy(&ovl_path[n], argv0)
+    n = strlen(&ovl_path[0])
+    if n >= 3 && ovl_path[n - 3] == '.' { n -= 3 }
+    strcpy(&ovl_path[n], ".ovl")
+    ov_cur = NOV
+}

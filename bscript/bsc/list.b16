@@ -1,0 +1,77 @@
+// list.b16 - the bytecode listing (bsc -l): functions and commands.
+
+// command name and operand format: n - none, b - u8, s - s8, w - u16, j - jump s16,
+// c - function u16 and mode, B - three u8, F - slot u8 and jump s16
+var op_names: [OP_LAST + 1]ptr byte = {
+    "?", "null", "true", "false", "int8 s", "int16 w", "str w", "ldl b", "stl b", "ldg w",
+    "stg w", "pop", "dup", "dup2", "popn b", "chkt b", "?", "?", "?", "?",
+    "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+    "?", "?", "eq", "ne", "lt", "le", "gt", "ge", "in", "?",
+    "jmp j", "jf j", "jt j", "jfk j", "jtk j", "jnn j", "chkb", "?", "call c", "callb B",
+    "callm B", "ret b", "fail b", "errc b", "?", "?", "getidx", "setidx", "setidxd b", "arr w",
+    "map w", "concat b", "forinit b", "fornext1 F", "fornext2 F" }
+var arith_names: [15]ptr byte = { "add", "sub", "mul", "div", "mod", "and", "or", "xor", "shl", "shr",
+    "ushr", "neg", "not", "bnot", "pos" }
+
+fn hex4(v: uint) {
+    var b: [5]byte
+    var i: uint = 0
+    while i < 4 {
+        var d = (v >> (12 - 4 * i)) & 15
+        if d < 10 { b[i] = byte('0' + d) } else { b[i] = byte('A' + d - 10) }
+        i++
+    }
+    b[4] = 0
+    fputs(STDOUT, &b[0])
+}
+
+fn list_code() {
+    var f: uint = 0
+    while f < nfn {
+        fputs(STDOUT, "fn ")
+        sused = 0
+        var nm = kfetch(fn_name[f])
+        fputn(STDOUT, nm, klen(fn_name[f]))
+        fputs(STDOUT, " params ")
+        fputu(STDOUT, uint(fn_np[f]))
+        fputs(STDOUT, " locals ")
+        fputu(STDOUT, uint(fn_nl[f]))
+        fputs(STDOUT, " results ")
+        fputu(STDOUT, uint(fn_nr[f]))
+        fputs(STDOUT, " at ")
+        hex4(fn_code[f])
+        fputs(STDOUT, "\n")
+        f++
+    }
+    var pc: uint = 0
+    while pc < cpos {
+        var o = cget(pc)
+        hex4(pc)
+        fputs(STDOUT, "  ")
+        var name: ptr byte = "?"
+        if o <= OP_LAST { name = op_names[o] }
+        if o >= OP_ADD && o <= OP_POS { name = arith_names[o - OP_ADD] }
+        var fmt: uint = 'n'
+        var p = name
+        while *p != 0 && *p != ' ' { p++ }
+        fputn(STDOUT, name, uint(p) - uint(name))
+        if *p == ' ' { fmt = uint(p[1]) }
+        pc++
+        if fmt == 'b' || fmt == 's' {
+            fputs(STDOUT, " "); fputu(STDOUT, cget(pc)); pc++
+        } else if fmt == 'w' {
+            fputs(STDOUT, " "); fputu(STDOUT, getw(pc)); pc += 2
+        } else if fmt == 'j' {
+            fputs(STDOUT, " "); hex4(pc + 2 + getw(pc)); pc += 2
+        } else if fmt == 'c' {
+            fputs(STDOUT, " "); fputu(STDOUT, getw(pc)); fputs(STDOUT, " mode "); hex4(cget(pc + 2)); pc += 3
+        } else if fmt == 'B' {
+            fputs(STDOUT, " "); fputu(STDOUT, cget(pc)); fputs(STDOUT, " args ")
+            fputu(STDOUT, cget(pc + 1)); fputs(STDOUT, " mode "); hex4(cget(pc + 2)); pc += 3
+        } else if fmt == 'F' {
+            fputs(STDOUT, " "); fputu(STDOUT, cget(pc)); fputs(STDOUT, " exit ")
+            hex4(pc + 3 + getw(pc + 1)); pc += 3
+        }
+        fputs(STDOUT, "\n")
+    }
+}

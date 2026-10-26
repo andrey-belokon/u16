@@ -1,0 +1,61 @@
+// t8: long and ulong in parameters and results: slots R0-R3, stack, several results, function pointers
+var OUT at $FF20: byte
+struct R { a: long; b: uint }
+fn putc(c: byte) { OUT = c }
+fn hex(v: uint) { var i = 0; while i < 4 { var d = (v >> 12) & 15; if d < 10 { putc(byte(d + 48)) } else { putc(byte(d + 55)) }; v <<= 4; i++ } }
+fn show(v: ulong) { var pw: ptr uint = ptr uint(&v); hex(pw[1]); hex(pw[0]); putc(' ') }
+fn nl() { putc(10) }
+
+fn id(a: long): long { return a }
+fn second(_a: uint, b: long, _c: uint): ulong { return b }                      // b: R1 and R2
+fn third(_a: ulong, _b: long, c: long): ulong { return c }                      // c does not fit in registers
+fn mixed(_a: int, _b: long, c: ulong, _d: uint): long { return c }               // c and d on the stack
+fn mixed2(_a: int, _b: long, _c: ulong, d: uint): uint { return d }
+fn dsel(_a: uint, _b: uint, _c: uint, d: long, _e: uint): long { return d }       // d and e on the stack
+fn esel(_a: uint, _b: uint, _c: uint, _d: long, e: uint): uint { return e }
+fn swap2(a, b: long): long, long { return b, a }
+fn mr(a: uint, b: long, c: ulong): long, uint, uint { return long(c), uint(b), a }
+fn four(a: ulong, b: ulong): ulong, ulong { return b, a }
+fn modify(a: ulong): ulong { var p: ptr uint = ptr uint(&a); p[0] = 1; return a }
+fn stk(_a: uint, _b: uint, _c: uint, d: long): ulong { var p: ptr long = &d; *p = 5; return d }
+fn constant(): long { return -2 }
+fn nest(a: long): long { return id(id(a)) }
+fn widen(a: int, b: uint): long, ulong { return a, b }
+fn pick(_a: byte, b: char): long { return b }
+fn rec(n: uint, acc: long): long { if n == 0 { return acc } return rec(n - 1, acc) }
+
+fn main() {
+    var x: long = -100000
+    var y: ulong = $DEADBEEF
+    show(id(x)); show(id(7)); show(id(-1)); nl()
+    show(second(1, x, 2)); show(second(1, 100000, 2)); nl()
+    show(third(y, x, $12345678)); show(third(1, 2, -3)); nl()
+    show(mixed(-1, 2, y, 3)); show(mixed2(-1, 2, y, 3)); show(mixed(5, x, $11112222, 6)); nl()
+    show(dsel(1, 2, 3, x, 4)); show(esel(1, 2, 3, x, 4)); show(dsel(1, 2, 3, $7FFFFFFF, 9)); nl()
+    var p: long
+    var q: long
+    p, q = swap2(x, 5)
+    show(p); show(q); nl()
+    var r: long
+    var u: uint
+    var v: uint
+    r, u, v = mr(65535, x, y)
+    show(r); show(u); show(v); nl()
+    var s: ulong
+    var t: ulong
+    s, t = four(y, 3)
+    show(s); show(t); nl()
+    show(modify(y)); show(y); nl()
+    show(stk(1, 2, 3, x)); nl()
+    show(constant()); show(nest(x)); nl()
+    var w: long
+    var z: ulong
+    w, z = widen(-3, 65535)
+    show(w); show(z); nl()
+    var e: ulong
+    e, _ = four(3, y)
+    show(e)
+    show(pick(200, -5)); show(rec(3, x)); nl()
+    var fp: ptr fn(uint, long, uint): ulong = second
+    show(fp(7, x, 8)); nl()
+}

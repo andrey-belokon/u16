@@ -1,0 +1,176 @@
+// fsk.b16 - the link between the FS16 module and the kernel: shared nodes, opening files and directories,
+// busy checks ("CPU16 Monitor: Kernel Internals", sect. 6.4, 6.5).
+
+// A node for entry tn: the same node if the entry is already open, otherwise a new one. The error code, the node.
+fn node_get(tn: ptr Node): (uint, ptr Node) {
+    var i: uint = 0
+    var fr: uint = NNODE
+    while i < NNODE {
+        var n = &nodes[i]
+        if n.refs != 0 {
+            if n.drv == tn.drv && n.eclu == tn.eclu && n.eidx == tn.eidx {
+                n.refs++
+                return OK, n
+            }
+        } else if fr == NNODE {
+            fr = i
+        }
+        i++
+    }
+    if fr == NNODE { return E_MFILE, 0 }
+    var n = &nodes[fr]
+    kcopy(n, tn, sizeof(Node))
+    n.refs = 1
+    return OK, n
+}
+
+fn node_put(n: ptr Node) {
+    if n.refs != 0 { n.refs-- }
+}
+
+// Whether an object with the entry address (drv, clu, idx) is open, or lies on the path of
+// any process's current directory (of any session) ("System Calls", sect. 4.3, 5.2).
+fn ent_busy(drv: uint, clu: uint, idx: uint): uint {
+    var i: uint = 0
+    while i < NNODE {
+        var n = &nodes[i]
+        if n.refs != 0 && n.drv == drv && n.eclu == clu && n.eidx == idx { return 1 }
+        i++
+    }
+    var p: uint = 0
+    while p < MAXPROC {
+        var c = &procs[p].cwd
+        if procs[p].state != PS_FREE && c.drv == drv {
+            var k: uint = 0
+            while k < c.depth {
+                if c.ent[k].clu == clu && c.ent[k].idx == idx { return 1 }
+                k++
+            }
+        }
+        p++
+    }
+    return 0
+}
+
+// Whether the volume has open objects or the current directory of a process in the chain.
+fn vol_busy(drv: uint): uint {
+    var i: uint = 0
+    while i < NNODE {
+        if nodes[i].refs != 0 && nodes[i].drv == drv { return 1 }
+        i++
+    }
+    var p: uint = 0
+    while p < MAXPROC {
+        if procs[p].cwd.drv == drv && procs[p].state != PS_FREE { return 1 }
+        p++
+    }
+    return 0
+}
+
+// Opening a file or directory by a path (in a kernel buffer) into File (sect. 9.3 of the calls, OPEN).
+// Result: the error code, the kind (H_FILE or H_DIR).
+fn fs_open_k(path: ptr byte, mode: uint, attr: uint, f: ptr File): (uint, uint) {
+    var tn: Node
+    var e: uint
+    e, _ = path_walk(path, &tn, 0)
+    if e == E_NOENT && mode & O_CREATE != 0 {
+        e = dir_create(path, attr & (F_RDONLY | F_HIDDEN | F_SYSTEM), &tn)
+        if e != OK { return e, 0 }
+        // a new file with RDONLY stays open for writing (sect. 9.3 of the calls)
+    } else {
+        if e != OK { return e, 0 }
+        if mode & (O_CREATE | O_EXCL) == O_CREATE | O_EXCL { return E_EXIST, 0 }
+        if tn.flags & F_DIR != 0 {
+            if mode & ~uint(O_READ) != 0 { return E_ISDIR, 0 }
+        } else if mode & O_WRITE != 0 {
+            var v: ptr Vol
+            v, e = vol_get(tn.drv)
+            if e != OK { return e, 0 }
+            if v.fl & V_RW == 0 { return E_RDONLY, 0 }
+            if tn.flags & F_RDONLY != 0 { return E_RDONLY, 0 }
+        }
+    }
+    var n: ptr Node
+    e, n = node_get(&tn)
+    if e != OK { return e, 0 }
+    f.n = n
+    f.pos = 0
+    f.mode = mode & (FM_READ | FM_WRITE)
+    f.lk = 0
+    if mode & O_TRUNC != 0 && n.size != 0 {
+        e = fs_truncate(f, 0)
+        if e != OK { node_put(n); return e, 0 }
+    }
+    if n.flags & F_DIR != 0 { return OK, H_DIR }
+    return OK, H_FILE
+}
+
+// The first 40 bytes of an object's directory entry (name, size with flags, MTIME) into st.
+fn node_stat(n: ptr Node, st: ptr Stat): uint {
+    var d: ptr DirEnt
+    var b: ptr byte
+    var e: uint
+    d, b, e = ent_get(n.drv, n.eclu, n.eidx)
+    if e != OK { return e }
+    kcopy(st, d, sizeof(Stat))
+    if n.eclu == 0 { kzero(&st.name[0], 32) }
+    return OK
+}
+
+// Increasing a file's size (SETSIZE, sect. 9.3 of the calls). zero != 0 - the added bytes are zeros.
+// The room is checked in advance: if there is not enough, nothing changes.
+fn fs_extend(f: ptr File, size: ulong, zero: uint): uint {
+    var n = f.n
+    var v: ptr Vol
+    var e: uint
+    v, e = vol_get(n.drv)
+    if e != OK { return e }
+    if size > $07FFFFFF { return E_NOSPC }
+    var cc: uint = nclus(n)
+    var ct: uint = uint((size + 2047) >> 11)
+    // the needed clusters: data and new index ones
+    var need: uint = ct - cc
+    if cc <= 10 && ct > 10 { need++ }
+    if cc <= 1034 && ct > 1034 { need++ }
+    var k: uint = cc
+    while k < ct {
+        if k >= 1034 && (k - 1034) & 1023 == 0 { need++ }
+        k++
+    }
+    if need > v.free { return E_NOSPC }
+    // the tail of the last previous cluster
+    if zero != 0 && uint(n.size) & 2047 != 0 {
+        var pos: ulong = n.size
+        var c: uint
+        c, e = bmap(n, uint(pos >> 11))
+        if e != OK { return e }
+        while uint(pos) & 2047 != 0 && pos < size {
+            var off: uint = uint(pos) & 511
+            var b: ptr byte
+            b, e = cache_get(n.drv, ulong(c) << 2 | (uint(pos >> 9) & 3))
+            if e != OK { return e }
+            var zs: uint = off
+            if zs & 1 != 0 { b[zs] = 0; zs++ }
+            if zs < SECSIZE { kzero(b + zs, SECSIZE - zs) }
+            e = cache_write(b)
+            if e != OK { return e }
+            pos = (pos | 511) + 1
+        }
+    }
+    k = cc
+    while k < ct {
+        e = node_alloc(v, k)
+        if e != OK { return e }
+        if zero != 0 {
+            e = clu_init(n.drv, nal.c, 0)
+            if e != OK { return e }
+        }
+        e = node_link(n, k)
+        if e != OK { return e }
+        k++
+    }
+    n.size = size
+    n.mtime = now()
+    f.lk = 0
+    return node_store(n)
+}

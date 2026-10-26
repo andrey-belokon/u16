@@ -1,0 +1,17 @@
+// mount X [-r] - mount volume X: A-H (or number 0-7; -r - read-only).
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "mount"
+    var ro: uint = 0
+    if argc == 3 && streq(argv[2], "-r") != 0 { ro = 1 } else if argc != 2 { return usage("A-H [-r]") }
+    var d: uint = drive_arg(argv[1])
+    if d == $FFFF { return usage("A-H [-r]") }
+    var e, m: uint
+    e, m = sys_mount(d, ro)
+    if e != OK { fail(argv[1], e); return 1 }
+    if m & MNT_DIRTY != 0 { puts("volume was not unmounted cleanly: mounted read-only\n") }
+    else if m & MNT_PROTECT != 0 { puts("disk is write-protected: mounted read-only\n") }
+    return 0
+}

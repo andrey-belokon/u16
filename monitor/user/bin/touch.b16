@@ -1,0 +1,34 @@
+// touch [-t YYYY-MM-DD HH:MM:SS] file ... - create the file if it does not exist, and set the modification
+// time: the current or a given one (SETMTIME).
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "touch"
+    var i: uint = 1
+    var e: uint
+    var t: ulong
+    var given: uint = 0
+    if argc > 1 && streq(argv[1], "-t") != 0 {
+        if argc < 5 { return usage("[-t YYYY-MM-DD HH:MM:SS] file ...") }
+        var ok: uint
+        ok, t = parse_time(argv[2], argv[3])
+        if ok == 0 { return usage("[-t YYYY-MM-DD HH:MM:SS] file ...") }
+        given = 1
+        i = 4
+    }
+    if i == argc { return usage("[-t YYYY-MM-DD HH:MM:SS] file ...") }
+    var bad: uint = 0
+    while i < argc {
+        var h: uint
+        e, h = sys_open(argv[i], O_WRITE | O_CREATE, 0)
+        if e == E_ISDIR || e == E_RDONLY { e = OK } else if e == OK { e = sys_close(h) }
+        if e == OK {
+            if given == 0 { e, t = sys_time_get() }
+            if e == OK { e = sys_setmtime(argv[i], t) }
+        }
+        if e != OK { fail(argv[i], e); bad = 1 }
+        i++
+    }
+    return int(bad)
+}

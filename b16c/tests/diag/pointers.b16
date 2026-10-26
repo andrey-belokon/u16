@@ -1,0 +1,32 @@
+// Strict pointer types (sect. 4.2): each erroneous line is a separate message.
+struct Node { next: ptr Node; key: int }
+fn take(p: ptr byte) { }
+fn two(): int, uint { return 1, 2 }
+interrupt fn tick() { }
+fn main() {
+    var a: [4]int
+    var pi: ptr int = a
+    var pb: ptr byte = "x"
+    var pc: ptr char = 0
+    var v: ptr = pi
+    var u: uint = 0
+    pi = pb
+    pc = pb
+    u = pi
+    pi = 5
+    v++
+    u = *v
+    take(pc)
+    var g: ptr fn(): int = two
+    if pi == pb { }
+    if pi == 3 { }
+    pi = &a
+    u = byte(pi)
+    var h: ptr fn() = tick
+    var vec: ptr interrupt fn() = tick
+    vec()
+    var n: ptr Node = v
+    pb = v
+    u = uint(pi) & 1 | (u & 1)
+    pi = ptr int(u)
+}

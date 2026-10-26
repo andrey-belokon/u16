@@ -1,0 +1,20 @@
+// rmdir directory ... - delete empty directories.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var st: Stat
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "rmdir"
+    if argc < 2 { return usage("dir ...") }
+    var bad: uint = 0
+    var i: uint = 1
+    while i < argc {
+        var e: uint = sys_stat(argv[i], &st)
+        if e == OK && uint(st.size >> 16) & A_DIR == 0 { e = E_NOTDIR }
+        if e == OK { e = sys_delete(argv[i]) }
+        if e != OK { fail(argv[i], e); bad = 1 }
+        i++
+    }
+    return int(bad)
+}

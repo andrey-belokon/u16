@@ -1,0 +1,1112 @@
+// bigmod.bs - a module larger than one code frame (8 KB): calls and loops across frame boundaries,
+// overlay calls from code in different frames, the error place at the end. Generated, about 20 KB of code.
+fn f0(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b0").len() }
+    return s % 1000
+}
+fn f1(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b1").len() }
+    return s % 1000
+}
+fn f2(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b2").len() }
+    return s % 1000
+}
+fn f3(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b3").len() }
+    return s % 1000
+}
+fn f4(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b4").len() }
+    return s % 1000
+}
+fn f5(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b5").len() }
+    return s % 1000
+}
+fn f6(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b6").len() }
+    return s % 1000
+}
+fn f7(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b7").len() }
+    return s % 1000
+}
+fn f8(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b8").len() }
+    return s % 1000
+}
+fn f9(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b9").len() }
+    return s % 1000
+}
+fn f10(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b10").len() }
+    return s % 1000
+}
+fn f11(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b11").len() }
+    return s % 1000
+}
+fn f12(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b12").len() }
+    return s % 1000
+}
+fn f13(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b13").len() }
+    return s % 1000
+}
+fn f14(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b14").len() }
+    return s % 1000
+}
+fn f15(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b15").len() }
+    return s % 1000
+}
+fn f16(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b16").len() }
+    return s % 1000
+}
+fn f17(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b17").len() }
+    return s % 1000
+}
+fn f18(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b18").len() }
+    return s % 1000
+}
+fn f19(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b19").len() }
+    return s % 1000
+}
+fn f20(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b20").len() }
+    return s % 1000
+}
+fn f21(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b21").len() }
+    return s % 1000
+}
+fn f22(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b22").len() }
+    return s % 1000
+}
+fn f23(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b23").len() }
+    return s % 1000
+}
+fn f24(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b24").len() }
+    return s % 1000
+}
+fn f25(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b25").len() }
+    return s % 1000
+}
+fn f26(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b26").len() }
+    return s % 1000
+}
+fn f27(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b27").len() }
+    return s % 1000
+}
+fn f28(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b28").len() }
+    return s % 1000
+}
+fn f29(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b29").len() }
+    return s % 1000
+}
+fn f30(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b30").len() }
+    return s % 1000
+}
+fn f31(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b31").len() }
+    return s % 1000
+}
+fn f32(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b32").len() }
+    return s % 1000
+}
+fn f33(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b33").len() }
+    return s % 1000
+}
+fn f34(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b34").len() }
+    return s % 1000
+}
+fn f35(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b35").len() }
+    return s % 1000
+}
+fn f36(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b36").len() }
+    return s % 1000
+}
+fn f37(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b37").len() }
+    return s % 1000
+}
+fn f38(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b38").len() }
+    return s % 1000
+}
+fn f39(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b39").len() }
+    return s % 1000
+}
+fn f40(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b40").len() }
+    return s % 1000
+}
+fn f41(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b41").len() }
+    return s % 1000
+}
+fn f42(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b42").len() }
+    return s % 1000
+}
+fn f43(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b43").len() }
+    return s % 1000
+}
+fn f44(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b44").len() }
+    return s % 1000
+}
+fn f45(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b45").len() }
+    return s % 1000
+}
+fn f46(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b46").len() }
+    return s % 1000
+}
+fn f47(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b47").len() }
+    return s % 1000
+}
+fn f48(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b48").len() }
+    return s % 1000
+}
+fn f49(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b49").len() }
+    return s % 1000
+}
+fn f50(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b50").len() }
+    return s % 1000
+}
+fn f51(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b51").len() }
+    return s % 1000
+}
+fn f52(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b52").len() }
+    return s % 1000
+}
+fn f53(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b53").len() }
+    return s % 1000
+}
+fn f54(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b54").len() }
+    return s % 1000
+}
+fn f55(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b55").len() }
+    return s % 1000
+}
+fn f56(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b56").len() }
+    return s % 1000
+}
+fn f57(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b57").len() }
+    return s % 1000
+}
+fn f58(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b58").len() }
+    return s % 1000
+}
+fn f59(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b59").len() }
+    return s % 1000
+}
+fn f60(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b60").len() }
+    return s % 1000
+}
+fn f61(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b61").len() }
+    return s % 1000
+}
+fn f62(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b62").len() }
+    return s % 1000
+}
+fn f63(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b63").len() }
+    return s % 1000
+}
+fn f64(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b64").len() }
+    return s % 1000
+}
+fn f65(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b65").len() }
+    return s % 1000
+}
+fn f66(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b66").len() }
+    return s % 1000
+}
+fn f67(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b67").len() }
+    return s % 1000
+}
+fn f68(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b68").len() }
+    return s % 1000
+}
+fn f69(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b69").len() }
+    return s % 1000
+}
+fn f70(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b70").len() }
+    return s % 1000
+}
+fn f71(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b71").len() }
+    return s % 1000
+}
+fn f72(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b72").len() }
+    return s % 1000
+}
+fn f73(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b73").len() }
+    return s % 1000
+}
+fn f74(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b74").len() }
+    return s % 1000
+}
+fn f75(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b75").len() }
+    return s % 1000
+}
+fn f76(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b76").len() }
+    return s % 1000
+}
+fn f77(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b77").len() }
+    return s % 1000
+}
+fn f78(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b78").len() }
+    return s % 1000
+}
+fn f79(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b79").len() }
+    return s % 1000
+}
+fn f80(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b80").len() }
+    return s % 1000
+}
+fn f81(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b81").len() }
+    return s % 1000
+}
+fn f82(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b82").len() }
+    return s % 1000
+}
+fn f83(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b83").len() }
+    return s % 1000
+}
+fn f84(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b84").len() }
+    return s % 1000
+}
+fn f85(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b85").len() }
+    return s % 1000
+}
+fn f86(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b86").len() }
+    return s % 1000
+}
+fn f87(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b87").len() }
+    return s % 1000
+}
+fn f88(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b88").len() }
+    return s % 1000
+}
+fn f89(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b89").len() }
+    return s % 1000
+}
+fn f90(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b90").len() }
+    return s % 1000
+}
+fn f91(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b91").len() }
+    return s % 1000
+}
+fn f92(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b92").len() }
+    return s % 1000
+}
+fn f93(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b93").len() }
+    return s % 1000
+}
+fn f94(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b94").len() }
+    return s % 1000
+}
+fn f95(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b95").len() }
+    return s % 1000
+}
+fn f96(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b96").len() }
+    return s % 1000
+}
+fn f97(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b97").len() }
+    return s % 1000
+}
+fn f98(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b98").len() }
+    return s % 1000
+}
+fn f99(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b99").len() }
+    return s % 1000
+}
+fn f100(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b100").len() }
+    return s % 1000
+}
+fn f101(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b101").len() }
+    return s % 1000
+}
+fn f102(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b102").len() }
+    return s % 1000
+}
+fn f103(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b103").len() }
+    return s % 1000
+}
+fn f104(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b104").len() }
+    return s % 1000
+}
+fn f105(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b105").len() }
+    return s % 1000
+}
+fn f106(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b106").len() }
+    return s % 1000
+}
+fn f107(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b107").len() }
+    return s % 1000
+}
+fn f108(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b108").len() }
+    return s % 1000
+}
+fn f109(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b109").len() }
+    return s % 1000
+}
+fn f110(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b110").len() }
+    return s % 1000
+}
+fn f111(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b111").len() }
+    return s % 1000
+}
+fn f112(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b112").len() }
+    return s % 1000
+}
+fn f113(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b113").len() }
+    return s % 1000
+}
+fn f114(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b114").len() }
+    return s % 1000
+}
+fn f115(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b115").len() }
+    return s % 1000
+}
+fn f116(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b116").len() }
+    return s % 1000
+}
+fn f117(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b117").len() }
+    return s % 1000
+}
+fn f118(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b118").len() }
+    return s % 1000
+}
+fn f119(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b119").len() }
+    return s % 1000
+}
+fn f120(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b120").len() }
+    return s % 1000
+}
+fn f121(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b121").len() }
+    return s % 1000
+}
+fn f122(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b122").len() }
+    return s % 1000
+}
+fn f123(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b123").len() }
+    return s % 1000
+}
+fn f124(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b124").len() }
+    return s % 1000
+}
+fn f125(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b125").len() }
+    return s % 1000
+}
+fn f126(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b126").len() }
+    return s % 1000
+}
+fn f127(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b127").len() }
+    return s % 1000
+}
+fn f128(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b128").len() }
+    return s % 1000
+}
+fn f129(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b129").len() }
+    return s % 1000
+}
+fn f130(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b130").len() }
+    return s % 1000
+}
+fn f131(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b131").len() }
+    return s % 1000
+}
+fn f132(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b132").len() }
+    return s % 1000
+}
+fn f133(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b133").len() }
+    return s % 1000
+}
+fn f134(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b134").len() }
+    return s % 1000
+}
+fn f135(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b135").len() }
+    return s % 1000
+}
+fn f136(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b136").len() }
+    return s % 1000
+}
+fn f137(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 7 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b137").len() }
+    return s % 1000
+}
+fn f138(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 8 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b138").len() }
+    return s % 1000
+}
+fn f139(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 9 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b139").len() }
+    return s % 1000
+}
+fn f140(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 10 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b140").len() }
+    return s % 1000
+}
+fn f141(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 11 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b141").len() }
+    return s % 1000
+}
+fn f142(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 12 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b142").len() }
+    return s % 1000
+}
+fn f143(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 0 + i; i++ }
+    if x % 7 == 3 { s += path.basename("A:/a/b143").len() }
+    return s % 1000
+}
+fn f144(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 1 + i; i++ }
+    if x % 7 == 4 { s += path.basename("A:/a/b144").len() }
+    return s % 1000
+}
+fn f145(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 2 + i; i++ }
+    if x % 7 == 5 { s += path.basename("A:/a/b145").len() }
+    return s % 1000
+}
+fn f146(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 3 + i; i++ }
+    if x % 7 == 6 { s += path.basename("A:/a/b146").len() }
+    return s % 1000
+}
+fn f147(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 4 + i; i++ }
+    if x % 7 == 0 { s += path.basename("A:/a/b147").len() }
+    return s % 1000
+}
+fn f148(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 5 + i; i++ }
+    if x % 7 == 1 { s += path.basename("A:/a/b148").len() }
+    return s % 1000
+}
+fn f149(x: int): int {
+    var s = 0
+    var i = 0
+    while i < 3 { s += x * 6 + i; i++ }
+    if x % 7 == 2 { s += path.basename("A:/a/b149").len() }
+    return s % 1000
+}
+var total = 0
+var k = 0
+while k < 2 {
+    total += f0(k + 0)
+    total += f3(k + 3)
+    total += f6(k + 6)
+    total += f9(k + 9)
+    total += f12(k + 12)
+    total += f15(k + 15)
+    total += f18(k + 18)
+    total += f21(k + 21)
+    total += f24(k + 24)
+    total += f27(k + 27)
+    total += f30(k + 30)
+    total += f33(k + 33)
+    total += f36(k + 36)
+    total += f39(k + 39)
+    total += f42(k + 42)
+    total += f45(k + 45)
+    total += f48(k + 48)
+    total += f51(k + 51)
+    total += f54(k + 54)
+    total += f57(k + 57)
+    total += f60(k + 60)
+    total += f63(k + 63)
+    total += f66(k + 66)
+    total += f69(k + 69)
+    total += f72(k + 72)
+    total += f75(k + 75)
+    total += f78(k + 78)
+    total += f81(k + 81)
+    total += f84(k + 84)
+    total += f87(k + 87)
+    total += f90(k + 90)
+    total += f93(k + 93)
+    total += f96(k + 96)
+    total += f99(k + 99)
+    total += f102(k + 102)
+    total += f105(k + 105)
+    total += f108(k + 108)
+    total += f111(k + 111)
+    total += f114(k + 114)
+    total += f117(k + 117)
+    total += f120(k + 120)
+    total += f123(k + 123)
+    total += f126(k + 126)
+    total += f129(k + 129)
+    total += f132(k + 132)
+    total += f135(k + 135)
+    total += f138(k + 138)
+    total += f141(k + 141)
+    total += f144(k + 144)
+    total += f147(k + 147)
+    k++
+}
+for i, v in [f0(1), f75(2), f149(3)] { total += v * (i + 1) }
+println(total)
+println("x".repeat(3))
+var arr = [1, 2]
+println(arr[f1(0)])

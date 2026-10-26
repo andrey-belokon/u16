@@ -1,0 +1,124 @@
+// fd.b16 - open files and descriptors, the devices dev:con and dev:nul, parsing path prefixes
+// ("CPU16 Monitor: Kernel Internals", sect. 6.5; "System Calls", sect. 4.2, 5).
+
+fn of_alloc(kind: uint, mode: uint): (uint, uint) {
+    var i: uint = 0
+    while i < NOFILE {
+        if ofiles[i].refs == 0 {
+            ofiles[i].kind = byte(kind)
+            ofiles[i].refs = 1
+            ofiles[i].mode = mode
+            return OK, i
+        }
+        i++
+    }
+    return E_MFILE, 0
+}
+
+fn of_unref(i: uint) {
+    var o = &ofiles[i]
+    if o.refs == 0 { return }
+    o.refs--
+    if o.refs == 0 && (o.kind == H_FILE || o.kind == H_DIR) { node_put(o.f.n) }
+}
+
+// The open file of descriptor h of the current process.
+fn fd_of(h: uint): (uint, uint) {
+    if h >= NFD { return E_BADF, 0 }
+    var o: uint = curp().fd[h]
+    if o == FD_NONE { return E_BADF, 0 }
+    return OK, o
+}
+
+// The smallest free descriptor of the current process.
+fn fd_free(): (uint, uint) {
+    var p = curp()
+    var h: uint = 0
+    while h < NFD {
+        if p.fd[h] == FD_NONE { return OK, h }
+        h++
+    }
+    return E_MFILE, 0
+}
+
+fn fd_close_all(p: ptr Proc) {
+    var h: uint = 0
+    while h < NFD {
+        if p.fd[h] != FD_NONE { of_unref(p.fd[h]); p.fd[h] = FD_NONE }
+        h++
+    }
+}
+
+fn kstreq(a: ptr byte, b: ptr byte): uint {
+    while *a == *b {
+        if *a == 0 { return 1 }
+        a++
+        b++
+    }
+    return 0
+}
+
+// A device by the name after "dev:": H_CON, H_NUL or E_NOENT.
+fn dev_lookup(name: ptr byte): (uint, uint) {
+    if kstreq(name, "con") != 0 { return OK, H_CON }
+    if kstreq(name, "nul") != 0 { return OK, H_NUL }
+    return E_NOENT, 0
+}
+
+fn has_prefix(s: ptr byte, pre: ptr byte): uint {
+    while *pre != 0 {
+        if *s != *pre { return 0 }
+        s++
+        pre++
+    }
+    return 1
+}
+
+var pbuf: [256]byte             // a path from the process
+var pbuf2: [256]byte            // the second path (RENAME)
+
+// A path from the process into the kernel buffer b (256 bytes): the error code, the length.
+fn upath_to(b: ptr byte, ua: uint): (uint, uint) {
+    var e, n: uint
+    e, n = ustr(b, ua, 255)
+    if e == TOOLONG { return E_BADPATH, 0 }
+    if e != OK { return e, 0 }
+    if n == 0 { return E_BADPATH, 0 }
+    return OK, n
+}
+
+fn upath(ua: uint): (uint, uint) {
+    var e, n: uint
+    e, n = upath_to(&pbuf[0], ua)
+    return e, n
+}
+
+fn has_colon(s: ptr byte): uint {
+    while *s != 0 {
+        if *s == ':' { return 1 }
+        s++
+    }
+    return 0
+}
+
+const P_FS = $FF                // a path on a volume: parsed by the FS16 module
+
+// Parsing a path prefix into pbuf (sect. 4.1 of the calls): a device (H_CON, H_NUL) or P_FS.
+fn path_kind(b: ptr byte): (uint, uint) {
+    if has_prefix(b, "dev:") != 0 {
+        if has_colon(b + 4) != 0 { return E_BADNAME, 0 }
+        var e, k: uint
+        e, k = dev_lookup(b + 4)
+        return e, k
+    }
+    var rest: ptr byte = b
+    if drv_prefix(b) != NONE { rest = b + 2 }
+    if has_colon(rest) != 0 { return E_BADNAME, 0 }
+    return OK, P_FS
+}
+
+fn path_resolve(): (uint, uint) {
+    var e, k: uint
+    e, k = path_kind(&pbuf[0])
+    return e, k
+}

@@ -1,0 +1,3 @@
+var i = 0
+while i < 3000 { var a = [i, "x" + str(i), {"k": i}]; i++ }
+println("done")

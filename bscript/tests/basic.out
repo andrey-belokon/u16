@@ -1,0 +1,45 @@
+7
+-32768
+-32768
+-1
+132
+-3
+-1
+1
+-32768
+0
+-32768
+-4
+15
+0
+-1
+-1
+11
+65
+10
+abc"d
+hello has 5 bytes, 10; true null
+{"json": "hello"}
+esc {| not sub |} 5
+true
+false
+true
+true
+true
+5
+3
+true
+true
+intstringarraymapnullbool
+3
+4
+abcd
+-4
+3
+9
+12false
+true
+true
+true
+no newline
+to stderr

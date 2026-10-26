@@ -1,0 +1,2 @@
+bsvm: A:/t/rt_cond.bs:2: bool expected, got int
+exit code 125

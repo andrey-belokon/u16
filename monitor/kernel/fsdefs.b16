@@ -1,0 +1,17 @@
+// fsdefs.b16 - the names of the FS16 module error codes (from prototype A) mapped to the codes
+// of "System Calls", sect. 8 ("CPU16 Monitor: Kernel Internals", sect. 6.4, item 1), and copying.
+const E_OK = OK
+const E_NODISK = E_NODEV
+const E_RANGE = E_INVAL
+const E_BADADDR = E_FAULT
+const E_READONLY = E_RDONLY
+const E_EXISTS = E_EXIST
+const E_FULL = E_NOSPC
+const E_TOOBIG = E_NOSPC
+const E_ROFS = E_RDONLY
+const E_NOTMNT = E_NODEV
+const E_LOOP = E_INVAL
+const E_NOBUF = E_IO        // all buffers are pinned: a kernel error
+
+fn kmemcpy(d: ptr byte, s: ptr byte, n: uint) { kcopy(d, s, n) }
+fn kmemzero(d: ptr, n: uint) { kzero(d, n) }

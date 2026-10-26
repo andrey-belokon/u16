@@ -1,0 +1,13 @@
+# the con script: lines for tcon
+after "L1\n" steps 2000 type "hello\n"
+after "L2\n" steps 2000 type "abX\bc\n"
+after "L3\n" steps 2000 type "zzz\x15ok\n"
+after "L4\n" steps 2000 type "123456\n"
+after "L5\n" steps 2000 type "\x1Aa\x1Ab\n"
+after "L6\n" steps 2000 type "secret\n"
+after "L7\n" steps 2000 type "xy"
+after "L8\n" steps 2000 ctrlc
+after "L9\n" steps 2000 type "pa"
+after "pa" steps 2000 ctrlc
+after "^C\n" steps 2000 type "after\n"
+after "L10\n" steps 10 type "junk"

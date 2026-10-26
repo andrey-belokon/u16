@@ -1,0 +1,1763 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}</style><style>:root{color-scheme:light dark;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}}:root[data-theme="dark"]{color-scheme:dark;--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}:root[data-theme="light"]{color-scheme:light}@media print{:root,:root[data-theme="dark"]{color-scheme:light;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}}body{background:var(--md-bg);color:var(--md-text);max-width:720px;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:10px;font:14px/1.55 -apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif;overflow-wrap:break-word}body>:first-child{margin-top:0}h1,h2,h3,h4,h5,h6{margin:6px 0 0;line-height:1.25;font-weight:600;text-wrap:balance}h1{font-size:1.35em}h2{font-size:1.15em;color:var(--md-muted)}h3,h4,h5,h6{font-size:1em}p,ul,ol,blockquote,table,pre,hr{margin:0}strong{font-weight:600}a{color:var(--md-link);text-decoration:none}a:hover{text-decoration:underline}ul,ol{display:flex;flex-direction:column;gap:6px;padding-left:22px}ul{list-style:disc}ol{list-style:decimal}:is(li,td,th)>*+:is(p,ul,ol,blockquote){margin-top:6px}blockquote{display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--md-rule);padding-left:10px;color:var(--md-muted)}:not(pre)>code{background:var(--md-fill);padding:1px 3px;border-radius:4px;font:.92em 'SF Mono',ui-monospace,Menlo,Consolas,monospace}a>code{background:none;color:inherit}pre{background:var(--md-fill);padding:10px 12px;border-radius:6px;overflow-x:auto;font:12px/1.5 'SF Mono',ui-monospace,Menlo,Consolas,monospace;margin-block:4px}pre code{background:none;padding:0;font:inherit}table{width:100%;border-collapse:separate;border-spacing:2px;font:inherit}th,td{padding:6px 8px;border-radius:3px;text-align:left;vertical-align:top}th{background:var(--md-fill-strong);font-weight:600}td{background:var(--md-fill)}:is(th,td) :not(pre)>code{background:transparent}hr{border:0;border-top:1px solid var(--md-rule-strong);margin-block:10px}img{max-width:100%;height:auto;border-radius:4px}</style>
+</head><body>
+<h1>Машина CPU16: память и устройства. Ревизия 3</h1>
+<p>Ревизия 3 добавляет менеджер страничной памяти (разд. 7). Изменения по ревизиям собраны в разделе 9.</p>
+<p>Документ описывает машину, построенную на процессоре CPU16: карту памяти и устройства ввода-вывода. Сам процессор описан в спецификации «Архитектура 16-битного процессора» (ревизия 6), язык — в «Справочнике ассемблера». Здесь — то, что лежит снаружи процессора: консоль с дисплеем и клавиатурой, таймер, контроллер дисков, менеджер памяти и кодировка символов.</p>
+<p>Эмулятор командной строки <code>cpu16</code> и веб-отладчик реализуют машину, описанную здесь. Слова «должен», «запрещено» нормативные.</p>
+<h2>1. Карта памяти</h2>
+<p>Адресное пространство процессора — 64 КБ. Устройства отображены на память по адресам <code>$FF20</code> и выше. Адреса в этом разделе логические, то есть те, что видит процессор. Физическая память — до 2 МБ, логические адреса отображаются на неё менеджером памяти (разд. 7). Пока менеджер выключен, физический адрес равен логическому.</p>
+<table>
+<thead>
+<tr>
+<th>Адреса</th>
+<th>Назначение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$0000–$FEFF</code></td>
+<td>память (в эмуляторах — вся ОЗУ)</td>
+</tr>
+<tr>
+<td><code>$FF00–$FF1F</code></td>
+<td>таблица векторов прерываний (обычная память, спецификация процессора, разд. 8)</td>
+</tr>
+<tr>
+<td><code>$FF20–$FF29</code></td>
+<td>консоль, дисплей, клавиатура, таймер (разд. 2–4)</td>
+</tr>
+<tr>
+<td><code>$FF2A–$FF2F</code></td>
+<td>зарезервированы для будущих устройств</td>
+</tr>
+<tr>
+<td><code>$FF30–$FF3F</code></td>
+<td>контроллер дисков (разд. 6)</td>
+</tr>
+<tr>
+<td><code>$FF40–$FF4F</code></td>
+<td>менеджер памяти (разд. 7)</td>
+</tr>
+<tr>
+<td><code>$FF50–$FFFF</code></td>
+<td>зарезервированы для будущих устройств</td>
+</tr>
+</tbody>
+</table>
+<p>После сброса выполнение начинается с адреса <code>$0000</code>, все регистры процессора равны 0, менеджер памяти выключен. Рекомендуемое деление памяти для программ — ПЗУ <code>$0000–$7FFF</code>, ОЗУ <code>$8000–$FEFF</code>, стек вниз от <code>$FF00</code> — описано во «Введении», разд. 6.</p>
+<p>Зарезервированные адреса программы использовать не должны. В текущих эмуляторах они ведут себя как обычная память, но в будущем там могут появиться устройства.</p>
+<p><strong>Порты байтовые.</strong> Каждый регистр устройства занимает один байт, к нему обращаются командами <code>LDZX</code>, <code>LDSX</code>, <code>STB</code>. Обращение словом по чётному адресу A — одно обращение к паре регистров: A даёт младший байт слова, A + 1 — старший. Где словное обращение допустимо:</p>
+<ul>
+<li>консоль: только чтение слова по <code>$FF20</code> (разд. 2.6); событие клавиатуры при нём забирается один раз;</li>
+<li>контроллер дисков: чтение и запись слова по любому чётному адресу его регистров (разд. 6.1);</li>
+<li>менеджер памяти: чтение и запись слова по любому чётному адресу его регистров (разд. 7.2).</li>
+</ul>
+<h2>2. Консоль и дисплей</h2>
+<p>Консоль, дисплей и клавиатура — одно устройство. Вывод идёт на экран 80×25 знакомест, ввод приходит из клавиатуры.</p>
+<h3>2.1. Экран</h3>
+<ul>
+<li>80 столбцов, 25 строк; столбцы и строки нумеруются с 0, позиция (0, 0) — левый верхний угол.</li>
+<li>Каждое знакоместо (ячейка) хранит <strong>символ</strong> (байт в кодировке машины, разд. 5) и <strong>атрибут</strong> (цвет и оформление, разд. 2.4).</li>
+<li><strong>Позиция</strong> — текущая ячейка вывода. Она же — видимый курсор.</li>
+<li>Экранная память находится внутри устройства и в адресное пространство процессора не входит.</li>
+</ul>
+<h3>2.2. Регистры</h3>
+<table>
+<thead>
+<tr>
+<th>Адрес</th>
+<th>Имя</th>
+<th>Чтение</th>
+<th>Запись</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$FF20</code></td>
+<td>DATA</td>
+<td>символ следующего события клавиатуры, 0 если событий нет; слово — символ и сканкод (разд. 2.6)</td>
+<td>вывод символа (разд. 2.3)</td>
+</tr>
+<tr>
+<td><code>$FF21</code></td>
+<td>SCAN</td>
+<td>сканкод следующего события клавиатуры (событие забирается целиком)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>$FF22</code></td>
+<td>CTRL</td>
+<td>режим</td>
+<td>режим</td>
+</tr>
+<tr>
+<td><code>$FF23</code></td>
+<td>ATTR</td>
+<td>текущий атрибут</td>
+<td>текущий атрибут</td>
+</tr>
+<tr>
+<td><code>$FF24</code></td>
+<td>COL</td>
+<td>столбец позиции</td>
+<td>столбец позиции (больше 79 — становится 79)</td>
+</tr>
+<tr>
+<td><code>$FF25</code></td>
+<td>ROW</td>
+<td>строка позиции</td>
+<td>строка позиции (больше 24 — становится 24)</td>
+</tr>
+<tr>
+<td><code>$FF26</code></td>
+<td>CMD</td>
+<td>0</td>
+<td>команда (разд. 2.5)</td>
+</tr>
+<tr>
+<td><code>$FF27</code></td>
+<td>COLS</td>
+<td>ширина экрана: 80</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>$FF28</code></td>
+<td>ROWS</td>
+<td>высота экрана: 25</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Запись в регистры, которые доступны только для чтения, ничего не делает.</p>
+<p><strong>CTRL:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Бит</th>
+<th>Имя</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>TTY</td>
+<td>1 — режим телетайпа, 0 — координатный режим</td>
+</tr>
+<tr>
+<td>1</td>
+<td>CURSOR</td>
+<td>1 — курсор виден</td>
+</tr>
+<tr>
+<td>2</td>
+<td>ATTRMODE</td>
+<td>1 — режим атрибутов</td>
+</tr>
+<tr>
+<td>3–7</td>
+<td>—</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Состояние после сброса:</strong></p>
+<ul>
+<li>CTRL = <code>%011</code>: телетайп, курсор виден;</li>
+<li>ATTR = <code>$07</code>: белый на чёрном;</li>
+<li>позиция (0, 0);</li>
+<li>экран заполнен пробелами с атрибутом <code>$07</code>;</li>
+<li>очередь клавиатуры пуста.</li>
+</ul>
+<h3>2.3. Вывод: запись в DATA</h3>
+<p>Что происходит при записи байта в DATA, зависит от CTRL. Режим атрибутов важнее остальных.</p>
+<p><strong>Режим телетайпа (TTY = 1, ATTRMODE = 0)</strong> — поведение обычной консоли:</p>
+<table>
+<thead>
+<tr>
+<th>Байт</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$0A</code> (<code>\n</code>)</td>
+<td>позиция на начало следующей строки</td>
+</tr>
+<tr>
+<td><code>$0D</code> (<code>\r</code>)</td>
+<td>позиция на начало текущей строки</td>
+</tr>
+<tr>
+<td><code>$08</code> (<code>\b</code>)</td>
+<td>позиция на столбец назад (в столбце 0 ничего не происходит); символ не стирается</td>
+</tr>
+<tr>
+<td><code>$09</code> (<code>\t</code>)</td>
+<td>позиция на следующий столбец, кратный 8; за концом строки — начало следующей</td>
+</tr>
+<tr>
+<td><code>$00</code></td>
+<td>ничего</td>
+</tr>
+<tr>
+<td>остальные</td>
+<td>символ записывается в позицию с атрибутом ATTR, позиция сдвигается на столбец; после столбца 79 — начало следующей строки</td>
+</tr>
+</tbody>
+</table>
+<p>Если переход на следующую строку выводит за строку 24, экран прокручивается вверх на строку (нижняя строка заполняется пробелами с атрибутом ATTR), а позиция остаётся в строке 24.</p>
+<p><strong>Координатный режим (TTY = 0, ATTRMODE = 0):</strong> любой байт, включая <code>$00</code> и управляющие коды, записывается в позицию как символ с атрибутом ATTR. Позиция сдвигается на столбец; после столбца 79 она переходит на начало следующей строки, после последней ячейки экрана — в (0, 0). Прокрутки нет.</p>
+<p><strong>Режим атрибутов (ATTRMODE = 1, TTY не важен):</strong> записанный байт становится <strong>атрибутом</strong> ячейки в позиции, символ не меняется. Позиция сдвигается так же, как в координатном режиме. Так можно выделить цветом или инверсией часть экрана, не перерисовывая текст.</p>
+<h3>2.4. Атрибут и палитра</h3>
+<pre><code class="language-text">   7      6      5    4    3     2    1    0
+| INV  | UNDL | фон (0..7)     | текст (0..7)   |
+</code></pre>
+<ul>
+<li><strong>Текст</strong> и <strong>фон</strong> — номера цветов палитры.</li>
+<li><strong>INV</strong> (инверсия) меняет местами цвета текста и фона.</li>
+<li><strong>UNDL</strong> (подчёркивание) рисует под символом линию цветом текста.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Код</th>
+<th>Цвет</th>
+<th>RGB</th>
+<th>Код</th>
+<th>Цвет</th>
+<th>RGB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>чёрный</td>
+<td><code>#000000</code></td>
+<td>4</td>
+<td>красный</td>
+<td><code>#C50F1F</code></td>
+</tr>
+<tr>
+<td>1</td>
+<td>синий</td>
+<td><code>#0037DA</code></td>
+<td>5</td>
+<td>жёлтый</td>
+<td><code>#C19C00</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>зелёный</td>
+<td><code>#13A10E</code></td>
+<td>6</td>
+<td>серый</td>
+<td><code>#767676</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>голубой</td>
+<td><code>#3A96DD</code></td>
+<td>7</td>
+<td>белый</td>
+<td><code>#CCCCCC</code></td>
+</tr>
+</tbody>
+</table>
+<p>Атрибут удобно собирать выражением <code>ФОН &lt;&lt; 3 | ТЕКСТ</code>. Примеры:</p>
+<table>
+<thead>
+<tr>
+<th>Атрибут</th>
+<th>Выражение</th>
+<th>Вид</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$07</code></td>
+<td><code>0 &lt;&lt; 3 | 7</code></td>
+<td>белый на чёрном</td>
+</tr>
+<tr>
+<td><code>$0F</code></td>
+<td><code>1 &lt;&lt; 3 | 7</code></td>
+<td>белый на синем</td>
+</tr>
+<tr>
+<td><code>$0D</code></td>
+<td><code>1 &lt;&lt; 3 | 5</code></td>
+<td>жёлтый на синем</td>
+</tr>
+<tr>
+<td><code>$87</code></td>
+<td><code>$80 | $07</code></td>
+<td>инверсия: чёрный на белом</td>
+</tr>
+<tr>
+<td><code>$47</code></td>
+<td><code>$40 | $07</code></td>
+<td>белый на чёрном, подчёркнутый</td>
+</tr>
+</tbody>
+</table>
+<h3>2.5. Команды: запись в CMD</h3>
+<table>
+<thead>
+<tr>
+<th>Код</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>очистить экран; позиция в (0, 0)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>очистить от позиции до конца строки</td>
+</tr>
+<tr>
+<td>3</td>
+<td>очистить от позиции до конца экрана</td>
+</tr>
+<tr>
+<td>4</td>
+<td>прокрутка вверх на строку, внизу пустая строка</td>
+</tr>
+<tr>
+<td>5</td>
+<td>прокрутка вниз на строку, вверху пустая строка</td>
+</tr>
+</tbody>
+</table>
+<p>Очищенные и новые ячейки заполняются пробелами с текущим атрибутом ATTR. Команды 2–5 позицию не меняют. Неизвестные коды не делают ничего.</p>
+<h3>2.6. Ввод: клавиатура</h3>
+<p>Клавиатура складывает <strong>события</strong> в очередь. Каждое событие — пара: <strong>символ</strong> (байт в кодировке машины) и <strong>сканкод</strong> (номер клавиши, разд. 2.7). Чтение регистров забирает событие из очереди:</p>
+<table>
+<thead>
+<tr>
+<th>Обращение</th>
+<th>Результат</th>
+<th>Событие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>байт <code>$FF20</code> (<code>LDZX R0, [$FF20]</code>)</td>
+<td>символ</td>
+<td>забирается</td>
+</tr>
+<tr>
+<td>слово <code>$FF20</code> (<code>LD R0, [$FF20]</code>)</td>
+<td>символ в младшем байте, сканкод в старшем</td>
+<td>забирается</td>
+</tr>
+<tr>
+<td>байт <code>$FF21</code> (<code>LDZX R0, [$FF21]</code>)</td>
+<td>сканкод</td>
+<td>забирается, символ теряется</td>
+</tr>
+</tbody>
+</table>
+<p>Если очередь пуста, результат 0. Регистра готовности нет, а ожидание — это опрос в цикле или по прерыванию таймера.</p>
+<ul>
+<li><strong>Символ</strong> зависит от раскладки и Shift: клавиша S даёт <code>s</code>, <code>S</code>, <code>ы</code> или <code>Ы</code>. Сканкод от раскладки не зависит.</li>
+<li>Особые символы:
+<ul>
+<li>Enter — <code>$0A</code> (<code>\n</code>, как в потоке консоли);</li>
+<li>Backspace — <code>$08</code>, Tab — <code>$09</code>, Esc — <code>$1B</code>;</li>
+<li>Ctrl + буква — <code>$01..$1A</code>.</li>
+</ul>
+</li>
+<li>У клавиш без символа (стрелки, F1–F12, Home и т. п.) символ равен 0.</li>
+<li>Если символа клавиши нет в кодировке машины, символ равен 0, а сканкод сохраняется.</li>
+<li>Клавиши-модификаторы (Shift, Ctrl, Alt) отдельных событий не дают. Удержание клавиши повторяет событие, отпускание не сообщается.</li>
+<li>Очередь вмещает 256 событий; лишние отбрасываются.</li>
+<li>Байт 0 в символе неотличим от «событий нет». Программе, которой важны специальные клавиши, надо читать слово.</li>
+</ul>
+<p>Совместимость с прежней консолью полная: запись байта выводит символ (в телетайпе), чтение байта даёт символ или 0.</p>
+<h3>2.7. Сканкоды</h3>
+<p>Сканкоды — стандартные коды нажатия клавиатуры (набор 1).</p>
+<table>
+<thead>
+<tr>
+<th>Клавиша</th>
+<th>Сканкод</th>
+<th>Клавиша</th>
+<th>Сканкод</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Esc</td>
+<td><code>$01</code></td>
+<td>F1..F10</td>
+<td><code>$3B..$44</code></td>
+</tr>
+<tr>
+<td>1..9, 0</td>
+<td><code>$02..$0B</code></td>
+<td>F11, F12</td>
+<td><code>$57</code>, <code>$58</code></td>
+</tr>
+<tr>
+<td><code>-</code> <code>=</code></td>
+<td><code>$0C</code>, <code>$0D</code></td>
+<td>Home</td>
+<td><code>$47</code></td>
+</tr>
+<tr>
+<td>Backspace</td>
+<td><code>$0E</code></td>
+<td>↑</td>
+<td><code>$48</code></td>
+</tr>
+<tr>
+<td>Tab</td>
+<td><code>$0F</code></td>
+<td>PgUp</td>
+<td><code>$49</code></td>
+</tr>
+<tr>
+<td>Q W E R T Y U I O P</td>
+<td><code>$10..$19</code></td>
+<td>←</td>
+<td><code>$4B</code></td>
+</tr>
+<tr>
+<td><code>[</code> <code>]</code></td>
+<td><code>$1A</code>, <code>$1B</code></td>
+<td>→</td>
+<td><code>$4D</code></td>
+</tr>
+<tr>
+<td>Enter</td>
+<td><code>$1C</code></td>
+<td>End</td>
+<td><code>$4F</code></td>
+</tr>
+<tr>
+<td>A S D F G H J K L</td>
+<td><code>$1E..$26</code></td>
+<td>↓</td>
+<td><code>$50</code></td>
+</tr>
+<tr>
+<td><code>;</code> <code>'</code> <code>`</code></td>
+<td><code>$27..$29</code></td>
+<td>PgDn</td>
+<td><code>$51</code></td>
+</tr>
+<tr>
+<td><code>\</code></td>
+<td><code>$2B</code></td>
+<td>Ins</td>
+<td><code>$52</code></td>
+</tr>
+<tr>
+<td>Z X C V B N M</td>
+<td><code>$2C..$32</code></td>
+<td>Del</td>
+<td><code>$53</code></td>
+</tr>
+<tr>
+<td><code>,</code> <code>.</code> <code>/</code></td>
+<td><code>$33..$35</code></td>
+<td>Пробел</td>
+<td><code>$39</code></td>
+</tr>
+</tbody>
+</table>
+<p>Клавиши цифровой клавиатуры дают те же сканкоды, что основные клавиши с тем же действием.</p>
+<h2>3. Таймер</h2>
+<table>
+<thead>
+<tr>
+<th>Адрес</th>
+<th>Имя</th>
+<th>Чтение</th>
+<th>Запись</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$FF29</code></td>
+<td>TIMER</td>
+<td>бит 0 — таймер включён</td>
+<td>бит 0: 1 — включить, 0 — выключить</td>
+</tr>
+</tbody>
+</table>
+<p>После сброса таймер выключен.</p>
+<p>Включённый таймер каждые <strong>20 мс реального времени</strong> (50 Гц) выставляет запрос <strong>IRQ0</strong>. Дальше действуют общие правила прерываний процессора (спецификация, разд. 8): запрос принимается при IF = 1 и будит <code>WFI</code>.</p>
+<ul>
+<li><strong>Время реальное.</strong> Сколько команд процессор выполнит за 20 мс, зависит от скорости эмулятора и хоста. Программа, которой важна скорость событий (анимация, игра), должна считать тики, а не команды.</li>
+<li><strong>Тики не накапливаются.</strong> Запрос IRQ0 — один флаг. Если предыдущий запрос ещё не принят (IF = 0 или обработчик слишком долгий), новый тик сливается с ним.</li>
+<li><strong>Порядок включения:</strong> сначала заполнить вектор IRQ0 (и остальную таблицу), затем включить таймер, затем <code>STI</code>.</li>
+<li><strong><code>WFI</code> при включённом таймере — ожидание, а не остановка:</strong> следующий тик разбудит процессор.</li>
+<li><strong>Остановка программы:</strong> выключить таймер, затем <code>CLI</code> и <code>WFI</code>. Эмулятор считает программу завершённой, когда процессор в <code>WFI</code>, запросов нет, таймер выключен и нет команды диска, которая выставит IRQ1 (BUSY = 1 при IEN = 1, разд. 6.5).</li>
+</ul>
+<pre><code class="language-asm">        .equ    TIMER, $FF29
+        LD      R0, #on_tick
+        ST      [$FF00 + 2*0], R0       ; вектор IRQ0
+        LD      R0, #1
+        STB     [TIMER], R0             ; таймер включён
+        STI
+        ...
+halt:   LD      R0, #0
+        STB     [TIMER], R0             ; таймер выключен
+        CLI
+@stop:  WFI
+        JMP     @stop
+</code></pre>
+<p>Кнопка IRQ 0 в веб-отладчике выставляет тот же запрос, что и таймер.</p>
+<h2>4. Сводка регистров</h2>
+<table>
+<thead>
+<tr>
+<th>Адрес</th>
+<th>Регистр</th>
+<th>Кратко</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$FF20</code></td>
+<td>DATA</td>
+<td>запись — вывод символа; чтение — символ (байт) или символ + сканкод (слово)</td>
+</tr>
+<tr>
+<td><code>$FF21</code></td>
+<td>SCAN</td>
+<td>чтение — сканкод</td>
+</tr>
+<tr>
+<td><code>$FF22</code></td>
+<td>CTRL</td>
+<td>бит 0 телетайп, бит 1 курсор, бит 2 режим атрибутов</td>
+</tr>
+<tr>
+<td><code>$FF23</code></td>
+<td>ATTR</td>
+<td>текущий атрибут</td>
+</tr>
+<tr>
+<td><code>$FF24</code></td>
+<td>COL</td>
+<td>столбец позиции</td>
+</tr>
+<tr>
+<td><code>$FF25</code></td>
+<td>ROW</td>
+<td>строка позиции</td>
+</tr>
+<tr>
+<td><code>$FF26</code></td>
+<td>CMD</td>
+<td>1 очистить экран, 2 до конца строки, 3 до конца экрана, 4 прокрутка вверх, 5 вниз</td>
+</tr>
+<tr>
+<td><code>$FF27</code></td>
+<td>COLS</td>
+<td>80</td>
+</tr>
+<tr>
+<td><code>$FF28</code></td>
+<td>ROWS</td>
+<td>25</td>
+</tr>
+<tr>
+<td><code>$FF29</code></td>
+<td>TIMER</td>
+<td>бит 0 — таймер 50 Гц на IRQ0</td>
+</tr>
+<tr>
+<td><code>$FF30</code></td>
+<td>STATUS / CMD</td>
+<td>чтение — бит 0 BUSY, бит 1 ERR, бит 2 DONE, бит 3 PRESENT, бит 4 RO; запись — 0 ACK, 1 READ, 2 WRITE, 3 INFO, 4 FLUSH</td>
+</tr>
+<tr>
+<td><code>$FF31</code></td>
+<td>ERROR</td>
+<td>код ошибки диска</td>
+</tr>
+<tr>
+<td><code>$FF32</code></td>
+<td>DISK</td>
+<td>номер диска 0..7</td>
+</tr>
+<tr>
+<td><code>$FF33</code></td>
+<td>COUNT</td>
+<td>число секторов</td>
+</tr>
+<tr>
+<td><code>$FF34</code></td>
+<td>ADDR</td>
+<td>адрес буфера (слово)</td>
+</tr>
+<tr>
+<td><code>$FF36</code></td>
+<td>LBA_LO</td>
+<td>номер сектора, младшее слово</td>
+</tr>
+<tr>
+<td><code>$FF38</code></td>
+<td>LBA_HI</td>
+<td>номер сектора, старшее слово</td>
+</tr>
+<tr>
+<td><code>$FF3A</code></td>
+<td>CTRL</td>
+<td>бит 0 — IRQ1 по завершении команды диска</td>
+</tr>
+<tr>
+<td><code>$FF3B</code></td>
+<td>DRIVES</td>
+<td>маска подключённых дисков</td>
+</tr>
+<tr>
+<td><code>$FF40–$FF47</code></td>
+<td>PAGE0..PAGE7</td>
+<td>номер кадра для страницы 0..7</td>
+</tr>
+<tr>
+<td><code>$FF48</code></td>
+<td>MMU_CTRL</td>
+<td>бит 0 — менеджер памяти включён</td>
+</tr>
+</tbody>
+</table>
+<h2>5. Кодировка символов</h2>
+<p>Машина использует однобайтовую кодировку:</p>
+<table>
+<thead>
+<tr>
+<th>Диапазон</th>
+<th>Содержимое</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$00</code></td>
+<td>пустая клетка (в телетайпе не выводится)</td>
+</tr>
+<tr>
+<td><code>$01–$1F</code>, <code>$7F</code></td>
+<td>значки: <code>☺ ♥ ♦ ♣ ♠</code>, стрелки, треугольники, ноты и т. п.</td>
+</tr>
+<tr>
+<td><code>$20–$7E</code></td>
+<td>ASCII</td>
+</tr>
+<tr>
+<td><code>$80–$BF</code></td>
+<td>из КОИ-8R: псевдографика (одинарные и двойные рамки, блоки, штриховка), <code>ё</code> (<code>$A3</code>), <code>Ё</code> (<code>$B3</code>), <code>°</code>, <code>²</code>, <code>·</code>, <code>÷</code>, <code>©</code>, неразрывный пробел</td>
+</tr>
+<tr>
+<td><code>$C0–$FF</code></td>
+<td>из CP1251: <code>А–Я</code>, <code>а–я</code> по порядку</td>
+</tr>
+</tbody>
+</table>
+<p>Буквы <code>А–я</code> идут по алфавиту и отличаются регистром в бите 5 (<code>$20</code>), как латинские.</p>
+<p>В координатном режиме значки <code>$01–$1F</code> выводятся всегда. В телетайпе <code>$08</code>, <code>$09</code>, <code>$0A</code>, <code>$0D</code> управляют позицией, <code>$00</code> пропускается, остальные выводятся значками.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>x0</th>
+<th>x1</th>
+<th>x2</th>
+<th>x3</th>
+<th>x4</th>
+<th>x5</th>
+<th>x6</th>
+<th>x7</th>
+<th>x8</th>
+<th>x9</th>
+<th>xA</th>
+<th>xB</th>
+<th>xC</th>
+<th>xD</th>
+<th>xE</th>
+<th>xF</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0x</strong></td>
+<td>—</td>
+<td>☺</td>
+<td>☻</td>
+<td>♥</td>
+<td>♦</td>
+<td>♣</td>
+<td>♠</td>
+<td>•</td>
+<td>◘</td>
+<td>○</td>
+<td>◙</td>
+<td>♂</td>
+<td>♀</td>
+<td>♪</td>
+<td>♫</td>
+<td>☼</td>
+</tr>
+<tr>
+<td><strong>1x</strong></td>
+<td>►</td>
+<td>◄</td>
+<td>↕</td>
+<td>‼</td>
+<td>¶</td>
+<td>§</td>
+<td>▬</td>
+<td>↨</td>
+<td>↑</td>
+<td>↓</td>
+<td>→</td>
+<td>←</td>
+<td>∟</td>
+<td>↔</td>
+<td>▲</td>
+<td>▼</td>
+</tr>
+<tr>
+<td><strong>2x</strong></td>
+<td>SP</td>
+<td>!</td>
+<td>&quot;</td>
+<td>#</td>
+<td>$</td>
+<td>%</td>
+<td>&amp;</td>
+<td>'</td>
+<td>(</td>
+<td>)</td>
+<td>*</td>
+<td>+</td>
+<td>,</td>
+<td>-</td>
+<td>.</td>
+<td>/</td>
+</tr>
+<tr>
+<td><strong>3x</strong></td>
+<td>0</td>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+<td>4</td>
+<td>5</td>
+<td>6</td>
+<td>7</td>
+<td>8</td>
+<td>9</td>
+<td>:</td>
+<td>;</td>
+<td>&lt;</td>
+<td>=</td>
+<td>&gt;</td>
+<td>?</td>
+</tr>
+<tr>
+<td><strong>4x</strong></td>
+<td>@</td>
+<td>A</td>
+<td>B</td>
+<td>C</td>
+<td>D</td>
+<td>E</td>
+<td>F</td>
+<td>G</td>
+<td>H</td>
+<td>I</td>
+<td>J</td>
+<td>K</td>
+<td>L</td>
+<td>M</td>
+<td>N</td>
+<td>O</td>
+</tr>
+<tr>
+<td><strong>5x</strong></td>
+<td>P</td>
+<td>Q</td>
+<td>R</td>
+<td>S</td>
+<td>T</td>
+<td>U</td>
+<td>V</td>
+<td>W</td>
+<td>X</td>
+<td>Y</td>
+<td>Z</td>
+<td>[</td>
+<td>\</td>
+<td>]</td>
+<td>^</td>
+<td>_</td>
+</tr>
+<tr>
+<td><strong>6x</strong></td>
+<td>`</td>
+<td>a</td>
+<td>b</td>
+<td>c</td>
+<td>d</td>
+<td>e</td>
+<td>f</td>
+<td>g</td>
+<td>h</td>
+<td>i</td>
+<td>j</td>
+<td>k</td>
+<td>l</td>
+<td>m</td>
+<td>n</td>
+<td>o</td>
+</tr>
+<tr>
+<td><strong>7x</strong></td>
+<td>p</td>
+<td>q</td>
+<td>r</td>
+<td>s</td>
+<td>t</td>
+<td>u</td>
+<td>v</td>
+<td>w</td>
+<td>x</td>
+<td>y</td>
+<td>z</td>
+<td>{</td>
+<td>|</td>
+<td>}</td>
+<td>~</td>
+<td>⌂</td>
+</tr>
+<tr>
+<td><strong>8x</strong></td>
+<td>─</td>
+<td>│</td>
+<td>┌</td>
+<td>┐</td>
+<td>└</td>
+<td>┘</td>
+<td>├</td>
+<td>┤</td>
+<td>┬</td>
+<td>┴</td>
+<td>┼</td>
+<td>▀</td>
+<td>▄</td>
+<td>█</td>
+<td>▌</td>
+<td>▐</td>
+</tr>
+<tr>
+<td><strong>9x</strong></td>
+<td>░</td>
+<td>▒</td>
+<td>▓</td>
+<td>⌠</td>
+<td>■</td>
+<td>∙</td>
+<td>√</td>
+<td>≈</td>
+<td>≤</td>
+<td>≥</td>
+<td>NBSP</td>
+<td>⌡</td>
+<td>°</td>
+<td>²</td>
+<td>·</td>
+<td>÷</td>
+</tr>
+<tr>
+<td><strong>Ax</strong></td>
+<td>═</td>
+<td>║</td>
+<td>╒</td>
+<td>ё</td>
+<td>╓</td>
+<td>╔</td>
+<td>╕</td>
+<td>╖</td>
+<td>╗</td>
+<td>╘</td>
+<td>╙</td>
+<td>╚</td>
+<td>╛</td>
+<td>╜</td>
+<td>╝</td>
+<td>╞</td>
+</tr>
+<tr>
+<td><strong>Bx</strong></td>
+<td>╟</td>
+<td>╠</td>
+<td>╡</td>
+<td>Ё</td>
+<td>╢</td>
+<td>╣</td>
+<td>╤</td>
+<td>╥</td>
+<td>╦</td>
+<td>╧</td>
+<td>╨</td>
+<td>╩</td>
+<td>╪</td>
+<td>╫</td>
+<td>╬</td>
+<td>©</td>
+</tr>
+<tr>
+<td><strong>Cx</strong></td>
+<td>А</td>
+<td>Б</td>
+<td>В</td>
+<td>Г</td>
+<td>Д</td>
+<td>Е</td>
+<td>Ж</td>
+<td>З</td>
+<td>И</td>
+<td>Й</td>
+<td>К</td>
+<td>Л</td>
+<td>М</td>
+<td>Н</td>
+<td>О</td>
+<td>П</td>
+</tr>
+<tr>
+<td><strong>Dx</strong></td>
+<td>Р</td>
+<td>С</td>
+<td>Т</td>
+<td>У</td>
+<td>Ф</td>
+<td>Х</td>
+<td>Ц</td>
+<td>Ч</td>
+<td>Ш</td>
+<td>Щ</td>
+<td>Ъ</td>
+<td>Ы</td>
+<td>Ь</td>
+<td>Э</td>
+<td>Ю</td>
+<td>Я</td>
+</tr>
+<tr>
+<td><strong>Ex</strong></td>
+<td>а</td>
+<td>б</td>
+<td>в</td>
+<td>г</td>
+<td>д</td>
+<td>е</td>
+<td>ж</td>
+<td>з</td>
+<td>и</td>
+<td>й</td>
+<td>к</td>
+<td>л</td>
+<td>м</td>
+<td>н</td>
+<td>о</td>
+<td>п</td>
+</tr>
+<tr>
+<td><strong>Fx</strong></td>
+<td>р</td>
+<td>с</td>
+<td>т</td>
+<td>у</td>
+<td>ф</td>
+<td>х</td>
+<td>ц</td>
+<td>ч</td>
+<td>ш</td>
+<td>щ</td>
+<td>ъ</td>
+<td>ы</td>
+<td>ь</td>
+<td>э</td>
+<td>ю</td>
+<td>я</td>
+</tr>
+</tbody>
+</table>
+<p>Знаки, которых нет в этой кодировке (в отличие от CP1251): кавычки <code>« »</code>, <code>„ “ ”</code>, тире <code>– —</code>, <code>№</code>, <code>€</code>, <code>™</code> и буквы украинского, белорусского и сербского алфавитов.</p>
+<h3>5.1. Строки в исходниках</h3>
+<p>Исходники пишутся в UTF-8. Ассемблер перекодирует строковые (<code>.ascii</code>, <code>.asciz</code>) и символьные (<code>'Ё'</code>) литералы в кодировку машины. Символ, которого в ней нет, — ошибка ассемблирования. Escape-последовательности (<code>\n</code>, <code>\x41</code>) задают байт напрямую, без перекодировки.</p>
+<h3>5.2. Кодировка в эмуляторе командной строки</h3>
+<ul>
+<li>Байты, выводимые в телетайпе, эмулятор переводит в UTF-8 для терминала, включая псевдографику и значки.</li>
+<li>Ввод из stdin в UTF-8 переводится в кодировку машины. Символы, которых нет в таблице, отбрасываются.</li>
+<li>Последовательности клавиш терминала (стрелки, Home, End, Del, F1–F12) эмулятор распознаёт и превращает в события со сканкодом и символом 0.</li>
+</ul>
+<h2>6. Контроллер дисков</h2>
+<p>Контроллер обслуживает до 8 дисков с номерами 0..7. Диск — последовательность секторов по <strong>512 байт</strong>. Номер сектора (LBA) 32-битный, так что диск может содержать до 2^32 секторов.</p>
+<p>Диски размером не более 2^16 секторов называются <strong>маленькими</strong>: номера их секторов умещаются в 16 бит. Структура данных на диске — дело программ (файловой системы). Сам контроллер маленькие и большие диски не различает, для него различие сводится к значениям старшего слова LBA.</p>
+<p>Обмен идёт <strong>прямым доступом к памяти (DMA)</strong>: контроллер сам копирует секторы между диском и памятью. Процессор задаёт параметры, запускает команду и ждёт её завершения.</p>
+<h3>6.1. Регистры</h3>
+<table>
+<thead>
+<tr>
+<th>Адрес</th>
+<th>Имя</th>
+<th>Чтение</th>
+<th>Запись</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$FF30</code></td>
+<td>STATUS / CMD</td>
+<td>состояние</td>
+<td>команда (разд. 6.3)</td>
+</tr>
+<tr>
+<td><code>$FF31</code></td>
+<td>ERROR</td>
+<td>код ошибки последней команды (разд. 6.4)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>$FF32</code></td>
+<td>DISK</td>
+<td>номер выбранного диска</td>
+<td>номер диска; учитываются биты 0–2</td>
+</tr>
+<tr>
+<td><code>$FF33</code></td>
+<td>COUNT</td>
+<td>оставшееся число секторов</td>
+<td>число секторов 0..255</td>
+</tr>
+<tr>
+<td><code>$FF34–$FF35</code></td>
+<td>ADDR</td>
+<td>текущий адрес в памяти</td>
+<td>адрес буфера</td>
+</tr>
+<tr>
+<td><code>$FF36–$FF37</code></td>
+<td>LBA_LO</td>
+<td>текущий сектор, младшее слово</td>
+<td>номер сектора, младшее слово</td>
+</tr>
+<tr>
+<td><code>$FF38–$FF39</code></td>
+<td>LBA_HI</td>
+<td>текущий сектор, старшее слово</td>
+<td>номер сектора, старшее слово</td>
+</tr>
+<tr>
+<td><code>$FF3A</code></td>
+<td>CTRL</td>
+<td>режим</td>
+<td>режим</td>
+</tr>
+<tr>
+<td><code>$FF3B</code></td>
+<td>DRIVES</td>
+<td>маска подключённых дисков: бит n — диск n</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>$FF3C–$FF3F</code></td>
+<td>—</td>
+<td>зарезервированы</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Словное обращение.</strong> Все регистры контроллера можно читать и писать словом по чётному адресу: младший байт слова соответствует регистру по этому адресу, старший — регистру по следующему. Так ADDR, LBA_LO и LBA_HI задаются одной командой <code>ST</code>, а пара DISK и COUNT — одним словом:</p>
+<pre><code class="language-asm">        LD      R0, #4 &lt;&lt; 8 | 1          ; COUNT = 4, DISK = 1
+        ST      [$FF32], R0
+</code></pre>
+<p>Чтение регистров контроллера побочных эффектов не имеет. Чтение слова по <code>$FF30</code> даёт STATUS в младшем байте и ERROR в старшем. При записи слова по <code>$FF30</code> младший байт выполняется как команда, а старший (ERROR, только чтение) игнорируется.</p>
+<p><strong>CTRL:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Бит</th>
+<th>Имя</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>IEN</td>
+<td>1 — запрос IRQ1 по завершении команды (разд. 6.5)</td>
+</tr>
+<tr>
+<td>1–7</td>
+<td>—</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>STATUS:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Бит</th>
+<th>Имя</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>BUSY</td>
+<td>команда выполняется</td>
+</tr>
+<tr>
+<td>1</td>
+<td>ERR</td>
+<td>последняя команда завершилась с ошибкой (ERROR ≠ 0)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>DONE</td>
+<td>команда завершена и не подтверждена (разд. 6.5)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>PRESENT</td>
+<td>диск, выбранный в DISK, подключён</td>
+</tr>
+<tr>
+<td>4</td>
+<td>RO</td>
+<td>диск, выбранный в DISK, защищён от записи</td>
+</tr>
+<tr>
+<td>5–7</td>
+<td>—</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>BUSY и ERR стоят в младших битах, чтобы их проверка помещалась в короткую константу: <code>TEST R0, #1</code>.</p>
+<p><strong>Состояние после сброса:</strong></p>
+<ul>
+<li>все регистры, кроме DRIVES, равны 0;</li>
+<li>команда не выполняется, IEN = 0;</li>
+<li>DRIVES отражает подключённые диски.</li>
+</ul>
+<p>Сброс машины диски не отключает.</p>
+<h3>6.2. Выполнение команды</h3>
+<ol>
+<li>Программа заполняет регистры параметров и пишет код команды в CMD.</li>
+<li>Контроллер выставляет BUSY = 1, сбрасывает DONE и обнуляет ERROR, затем проверяет параметры. Если проверка не прошла, команда сразу завершается с ошибкой и данные не передаются.</li>
+<li>Секторы передаются по одному. После каждого сектора LBA (32 бита) увеличивается на 1, ADDR — на 512, COUNT уменьшается на 1.</li>
+<li>По завершении BUSY = 0 и DONE = 1. Если команда завершилась с ошибкой, ERR = 1, а код ошибки — в ERROR.</li>
+</ol>
+<p><strong>Регистры продвигаются по ходу обмена.</strong> Чтобы прочитать следующие секторы, достаточно снова задать COUNT и повторить команду: LBA и ADDR уже указывают дальше. Если ошибка ввода-вывода прервала обмен, COUNT показывает, сколько секторов не передано. Если после успешной команды нужно снова прочитать тот же сектор, LBA надо записать заново.</p>
+<p><strong>Время выполнения</strong> зависит от реализации. Эмулятор может выполнить команду мгновенно, отладчик — с задержкой. Программа обязана дождаться BUSY = 0, опросом STATUS или по IRQ1. Обмен происходит между командами процессора.</p>
+<p><strong>Пока BUSY = 1:</strong></p>
+<ul>
+<li>запись в CMD и в регистры параметров (DISK, COUNT, ADDR, LBA) игнорируется;</li>
+<li>чтение регистров показывает ход обмена;</li>
+<li>программа не должна обращаться к буферу: его содержимое не определено.</li>
+</ul>
+<p><strong>Буфер</strong> занимает логические адреса от ADDR до ADDR + 512·COUNT − 1 и должен целиком лежать в <code>$0000–$FF1F</code>. Таблицу векторов можно читать и писать через диск, регистры устройств — нельзя.</p>
+<p><strong>Буфер и менеджер памяти.</strong> Адрес буфера логический. При включённом менеджере (разд. 7) каждое обращение DMA преобразуется через регистры PAGE так же, как обращение процессора. Чтобы прочитать данные в любой кадр, его ставят в одну из страниц. Пока BUSY = 1, программа не должна менять MMU_CTRL и регистры PAGE страниц, которые перекрывает буфер: в какой кадр попадут данные, не определено.</p>
+<p><strong>Загрузка кода.</strong> Запись DMA — обычная запись данных в память. Если в буфер прочитан код, выполненный переход после ожидания служит точкой синхронизации (спецификация процессора, разд. 11), и код исполнится в новом виде.</p>
+<h3>6.3. Команды</h3>
+<table>
+<thead>
+<tr>
+<th>Код</th>
+<th>Команда</th>
+<th>Действие</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>ACK</td>
+<td>сбросить DONE и снять запрос IRQ1; ERR и ERROR не меняются</td>
+</tr>
+<tr>
+<td>1</td>
+<td>READ</td>
+<td>прочитать COUNT секторов, начиная с LBA, в память по ADDR</td>
+</tr>
+<tr>
+<td>2</td>
+<td>WRITE</td>
+<td>записать COUNT секторов из памяти по ADDR на диск, начиная с LBA</td>
+</tr>
+<tr>
+<td>3</td>
+<td>INFO</td>
+<td>записать 32-байтный блок сведений о диске в память по ADDR</td>
+</tr>
+<tr>
+<td>4</td>
+<td>FLUSH</td>
+<td>дописать на носитель данные, ещё не сохранённые при прежних WRITE</td>
+</tr>
+<tr>
+<td>5–255</td>
+<td>—</td>
+<td>ошибка BADCMD</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Команда ACK выполняется сразу и BUSY не выставляет.</li>
+<li>При COUNT = 0 команды READ и WRITE завершаются успешно, ничего не передав.</li>
+<li>INFO и FLUSH используют только DISK (INFO — ещё ADDR) и регистров параметров не меняют.</li>
+<li>После успешной WRITE данные уже видны следующим READ. FLUSH нужна только для гарантии сохранности на носителе (в эмуляторе — в файле образа).</li>
+</ul>
+<p><strong>Блок INFO (32 байта):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Смещение</th>
+<th>Размер</th>
+<th>Содержимое</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>4</td>
+<td>число секторов (32 бита, little-endian)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1</td>
+<td>флаги: бит 0 RO (защита от записи), бит 1 REMOVABLE (диск можно подключать и отключать во время работы), бит 2 SMALL (маленький диск: не более 2^16 секторов)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>11</td>
+<td>0 (резерв)</td>
+</tr>
+<tr>
+<td>16</td>
+<td>16</td>
+<td>метка диска: строка с завершающим нулём в кодировке машины, до 15 символов</td>
+</tr>
+</tbody>
+</table>
+<p>Флаг SMALL избавляет от проверки граничного случая: у диска ровно из 2^16 секторов старшее слово размера равно 1, но диск маленький.</p>
+<h3>6.4. Ошибки</h3>
+<table>
+<thead>
+<tr>
+<th>Код</th>
+<th>Имя</th>
+<th>Причина</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>OK</td>
+<td>ошибки нет</td>
+</tr>
+<tr>
+<td>1</td>
+<td>NODISK</td>
+<td>выбранный диск не подключён</td>
+</tr>
+<tr>
+<td>2</td>
+<td>BADCMD</td>
+<td>неизвестная команда</td>
+</tr>
+<tr>
+<td>3</td>
+<td>RANGE</td>
+<td>LBA + COUNT больше числа секторов диска</td>
+</tr>
+<tr>
+<td>4</td>
+<td>BADADDR</td>
+<td>буфер выходит за <code>$FF1F</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>READONLY</td>
+<td>WRITE на защищённый диск</td>
+</tr>
+<tr>
+<td>6</td>
+<td>IO</td>
+<td>ошибка носителя (в эмуляторе — ошибка файла образа или отключение диска во время команды)</td>
+</tr>
+</tbody>
+</table>
+<p>Ошибки 1–5 обнаруживаются до начала обмена, и регистры параметров при них не меняются. Ошибка 6 может возникнуть посреди обмена: регистры показывают место сбоя.</p>
+<h3>6.5. Прерывание</h3>
+<p>Запрос <strong>IRQ1</strong> держится, пока DONE = 1 и IEN = 1 (запрос по уровню, спецификация процессора, разд. 8.2). Обработчик снимает запрос командой ACK. Новая команда тоже сбрасывает DONE. Если не подтвердить завершение, после <code>IRET</code> обработчик будет вызван снова.</p>
+<p>Запрос таймера IRQ0 имеет более высокий приоритет.</p>
+<p>Команда может завершиться сразу после записи в CMD, ещё до следующей команды процессора. Поэтому ожидание через <code>STI</code> / <code>WFI</code> содержит гонку: прерывание может прийти между <code>STI</code> и <code>WFI</code>, и <code>WFI</code> заснёт навсегда. Надёжный способ — ждать при IF = 0. При IF = 0 команда <code>WFI</code> просыпается по запросу, не входя в обработчик, а следующая за ней <code>STI</code> сразу даёт обработчику выполниться (разд. 6.6, второй пример).</p>
+<h3>6.6. Примеры</h3>
+<p>Драйвер маленьких дисков с ожиданием опросом:</p>
+<pre><code class="language-asm">        .equ    DK_CMD,    $FF30
+        .equ    DK_STATUS, $FF30
+        .equ    DK_ERROR,  $FF31
+        .equ    DK_DISK,   $FF32
+        .equ    DK_COUNT,  $FF33
+        .equ    DK_ADDR,   $FF34
+        .equ    DK_LBA_LO, $FF36
+        .equ    DK_LBA_HI, $FF38
+        .equ    DK_CTRL,   $FF3A
+        .equ    DK_DRIVES, $FF3B
+        .equ    DK_ACK,    0
+        .equ    DK_READ,   1
+        .equ    DK_WRITE,  2
+        .equ    DK_INFO,   3
+        .equ    DK_FLUSH,  4
+        .equ    DK_BUSY,   $01
+
+; Вход:  R0 = диск, R1 = LBA, R2 = адрес буфера, R3 = число секторов
+; Выход: R0 = код ошибки, ZF = 1 при успехе.
+; R4 используется и сохраняется в стеке.
+disk_read:
+        PUSH    R4
+        LD      R4, #DK_READ
+        JMP     disk_io
+disk_write:
+        PUSH    R4
+        LD      R4, #DK_WRITE
+disk_io:                                ; R4 = команда, сохранённый R4 в стеке
+        STB     [DK_DISK], R0
+        STB     [DK_COUNT], R3
+        ST      [DK_ADDR], R2
+        ST      [DK_LBA_LO], R1
+        LD      R0, #0
+        ST      [DK_LBA_HI], R0          ; маленький диск: старшее слово 0
+        STB     [DK_CMD], R4
+@wait:  LDZX    R0, [DK_STATUS]
+        TEST    R0, #DK_BUSY
+        JNZ     @wait
+        LDZX    R0, [DK_ERROR]
+        POP     R4
+        CMP     R0, #0
+        RET
+</code></pre>
+<p>Примеры следуют соглашению о вызовах: аргументы и результат передаются в R0–R3, эти регистры вызов не сохраняет, остальные подпрограмма обязана сохранить.</p>
+<p>Драйвер всегда пишет LBA_HI. Регистры продвигаются, и после чтения последнего сектора диска из 2^16 секторов в LBA_HI окажется 1, поэтому полагаться на прежнее значение нельзя.</p>
+<p>Ожидание по IRQ1 без гонки. Вектор IRQ1 заполнен, IEN = 1, параметры заданы:</p>
+<pre><code class="language-asm">; Вход: R1 = код команды. Портит R0.
+disk_start_wait:
+        CLI
+        LD      R0, #0
+        STB     [dk_done], R0
+        STB     [DK_CMD], R1            ; запуск
+@wait:  LDZX    R0, [dk_done]
+        CMP     R0, #0
+        JNZ     @done
+        WFI                             ; IF = 0: проснуться по запросу, не входя в обработчик
+        STI                             ; запрос принимается сразу после STI
+        CLI
+        JMP     @wait
+@done:  STI
+        RET
+
+disk_irq:                               ; вектор IRQ1: ST [$FF00 + 2*1], ...
+        PUSH    R0
+        LD      R0, #DK_ACK
+        STB     [DK_CMD], R0            ; снять запрос
+        LD      R0, #1
+        STB     [dk_done], R0
+        POP     R0
+        IRET
+
+dk_done: .byte  0
+</code></pre>
+<p>Пока программа ждёт, <code>WFI</code> будят и тики таймера. Цикл просто проверяет флаг ещё раз.</p>
+<h2>7. Менеджер памяти</h2>
+<p>Менеджер памяти (MMU) расширяет физическую память до <strong>2 МБ</strong>. Он стоит между процессором и памятью. Процессор не меняется: он по-прежнему работает с 16-битными <strong>логическими</strong> адресами, а менеджер преобразует их в 21-битные <strong>физические</strong>.</p>
+<h3>7.1. Страницы и кадры</h3>
+<p>Логическое пространство делится на 8 <strong>страниц</strong> по 8 КБ, физическое — на 256 <strong>кадров</strong> по 8 КБ. Каждой странице соответствует регистр PAGEp, который хранит номер кадра.</p>
+<table>
+<thead>
+<tr>
+<th>Логические адреса</th>
+<th>Страница</th>
+<th>Регистр</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$0000–$1FFF</code></td>
+<td>0</td>
+<td>PAGE0</td>
+</tr>
+<tr>
+<td><code>$2000–$3FFF</code></td>
+<td>1</td>
+<td>PAGE1</td>
+</tr>
+<tr>
+<td><code>$4000–$5FFF</code></td>
+<td>2</td>
+<td>PAGE2</td>
+</tr>
+<tr>
+<td><code>$6000–$7FFF</code></td>
+<td>3</td>
+<td>PAGE3</td>
+</tr>
+<tr>
+<td><code>$8000–$9FFF</code></td>
+<td>4</td>
+<td>PAGE4</td>
+</tr>
+<tr>
+<td><code>$A000–$BFFF</code></td>
+<td>5</td>
+<td>PAGE5</td>
+</tr>
+<tr>
+<td><code>$C000–$DFFF</code></td>
+<td>6</td>
+<td>PAGE6</td>
+</tr>
+<tr>
+<td><code>$E000–$FFFF</code></td>
+<td>7</td>
+<td>PAGE7</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">логический адрес:  | p:3     | смещение:13 |
+физический адрес:  | PAGEp:8 | смещение:13 |     21 бит
+</code></pre>
+<p>Пример: при PAGE6 = 20 логический адрес <code>$C010</code> соответствует физическому 20 · <code>$2000</code> + <code>$0010</code> = <code>$28010</code>.</p>
+<ul>
+<li>Один кадр можно отобразить в несколько страниц сразу.</li>
+<li>Двухсловная команда может лежать на границе страниц: каждое слово преобразуется по своей странице.</li>
+<li>Слова выровнены, поэтому одно слово границу страниц не пересекает.</li>
+</ul>
+<h3>7.2. Регистры</h3>
+<table>
+<thead>
+<tr>
+<th>Адрес</th>
+<th>Имя</th>
+<th>Чтение</th>
+<th>Запись</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$FF40</code> + p</td>
+<td>PAGEp</td>
+<td>номер кадра страницы p</td>
+<td>номер кадра 0..255</td>
+</tr>
+<tr>
+<td><code>$FF48</code></td>
+<td>MMU_CTRL</td>
+<td>режим</td>
+<td>режим</td>
+</tr>
+<tr>
+<td><code>$FF49–$FF4F</code></td>
+<td>—</td>
+<td>зарезервированы для расширения менеджера</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>MMU_CTRL:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Бит</th>
+<th>Имя</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>EN</td>
+<td>1 — менеджер включён, 0 — выключен</td>
+</tr>
+<tr>
+<td>1–7</td>
+<td>—</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Регистры доступны байтом, а также словом по чётному адресу (разд. 1): <code>ST [$FF40], R0</code> задаёт PAGE0 и PAGE1 одной командой.</li>
+<li>Чтение побочных эффектов не имеет.</li>
+<li>Регистры PAGE можно читать и писать при любом значении EN.</li>
+</ul>
+<p><strong>Состояние после сброса:</strong></p>
+<ul>
+<li>EN = 0, менеджер выключен;</li>
+<li>значения PAGE0..PAGE7 <strong>не определены</strong>.</li>
+</ul>
+<h3>7.3. Режимы</h3>
+<p><strong>Выключен (EN = 0).</strong> Физический адрес равен логическому: процессор видит первые 64 КБ физической памяти, то есть кадры 0..7. Регистры PAGE на обращения не влияют, поэтому карту можно подготовить заранее. В этом режиме машина совпадает с машиной ревизии 2. Программе, которой менеджер не нужен, о нём знать не надо.</p>
+<p><strong>Включён (EN = 1).</strong> Обращение по логическому адресу страницы p идёт в кадр PAGEp (разд. 7.1).</p>
+<p><strong>Перед включением программа обязана записать все восемь регистров PAGE.</strong> После сброса их значения не определены, и менеджер их не инициализирует. Настройка карты — ответственность программы, которая включает менеджер.</p>
+<p>Выключение (запись EN = 0) разрешено и возвращает режим, в котором физический адрес равен логическому.</p>
+<p>DMA контроллера дисков подчиняется тем же правилам, что и процессор (разд. 6.2).</p>
+<h3>7.4. Когда изменения вступают в силу</h3>
+<ul>
+<li><strong>Данные.</strong> Запись в PAGEp или MMU_CTRL действует со следующей команды. Сама записывающая команда, включая её второе слово, исполняется по прежнему отображению.</li>
+<li><strong>Выборка команд.</strong> Изменение отображения равносильно изменению кода (спецификация процессора, разд. 11). Новое отображение гарантированно действует после точки синхронизации: выполненного перехода, <code>CALL</code>, <code>RET</code>, <code>TRAP</code>, <code>IRET</code> или входа в прерывание. До неё каждое слово команды из затронутой страницы может быть взято как по старому, так и по новому отображению.</li>
+<li><strong>Безопасное переключение.</strong> Страница, в которой исполняется код, меняющий отображение, должна отображаться на тот же кадр до и после изменения.
+<ul>
+<li>При включении это значит PAGEp = p для страницы p, где лежит код включения.</li>
+<li>Чтобы сменить содержимое собственной страницы, надо перейти в код в другой странице (трамплин).</li>
+</ul>
+</li>
+</ul>
+<h3>7.5. Что не преобразуется</h3>
+<p><strong>Окно устройств <code>$FF20–$FFFF</code></strong> выбирается по логическому адресу до преобразования. Устройства, в том числе регистры менеджера, видны при любых EN и PAGE7. Байты со смещениями <code>$1F20–$1FFF</code> кадра, стоящего в странице 7, через эту страницу недоступны, а через другую страницу доступны.</p>
+<p><strong>Таблица векторов <code>$FF00–$FF1F</code></strong> — обычная память, она преобразуется через PAGE7. Векторы, код обработчиков и их стек должны быть отображены всякий раз, когда прерывание может быть принято. ERRCMD не маскируется, поэтому вектор 8 должен быть действителен всегда.</p>
+<p>Рекомендуется общая страница 7 — векторы, стек, данные ядра — с одним и тем же кадром во всех картах.</p>
+<p><strong>Прерывание отображение не меняет.</strong> Обработчик, который меняет карту, обязан её восстановить. Вся карта читается четырьмя словами:</p>
+<pre><code class="language-asm">        .equ    MMU_PAGE, $FF40
+
+        LD      R0, [MMU_PAGE+0]         ; PAGE0, PAGE1
+        PUSH    R0
+        LD      R0, [MMU_PAGE+2]         ; PAGE2, PAGE3
+        PUSH    R0
+        LD      R0, [MMU_PAGE+4]         ; PAGE4, PAGE5
+        PUSH    R0
+        LD      R0, [MMU_PAGE+6]         ; PAGE6, PAGE7
+        PUSH    R0
+</code></pre>
+<h3>7.6. Физическая память</h3>
+<ul>
+<li>Физическое пространство — 2 МБ, кадры 0..255.</li>
+<li>При EN = 0 физические адреса <code>$00000–$0FFFF</code> образуют 64-килобайтное пространство ревизии 2.
+<ul>
+<li>В железной реализации, по рекомендации «Введения», кадры 0–3 (<code>$0000–$7FFF</code>) могут быть ПЗУ с кодом запуска, кадры 4–7 — ОЗУ.</li>
+<li>Состав остальных кадров определяет реализация.</li>
+</ul>
+</li>
+<li>В эмуляторах все 2 МБ — ОЗУ.</li>
+<li>Защиты памяти нет: менеджер только перераспределяет адреса.</li>
+</ul>
+<h3>7.7. Загрузка и включение</h3>
+<p>Предварительный сценарий для железной реализации:</p>
+<ol>
+<li><strong>Сброс.</strong> IP = 0, менеджер выключен. Процессор исполняет код запуска из ПЗУ.</li>
+<li><strong>Код ПЗУ:</strong>
+<ul>
+<li>ставит SP;</li>
+<li>записывает векторы, начиная с ERRCMD (спецификация процессора, разд. 9);</li>
+<li>читает загрузчик с диска в ОЗУ;</li>
+<li>передаёт ему управление.</li>
+</ul>
+</li>
+<li><strong>Загрузчик:</strong>
+<ul>
+<li>записывает все регистры PAGE;</li>
+<li>включает менеджер;</li>
+<li>загружает систему в нужные кадры и переходит в неё.</li>
+</ul>
+</li>
+</ol>
+<p>Программа в ПЗУ, которой менеджер не нужен, его не включает.</p>
+<p>Пример включения. Загрузчик работает в странице 4, стек и векторы лежат в странице 7. Страницы 0–3 получают ОЗУ вместо ПЗУ, страницы 4–7 отображаются на свои кадры:</p>
+<pre><code class="language-asm">        .equ    MMU_PAGE, $FF40
+        .equ    MMU_CTRL, $FF48
+        .equ    MMU_EN,   $01
+
+; Портит R0.
+mmu_init:
+        LD      R0, #9 &lt;&lt; 8 | 8          ; PAGE0 = 8, PAGE1 = 9
+        ST      [MMU_PAGE+0], R0
+        LD      R0, #11 &lt;&lt; 8 | 10        ; PAGE2 = 10, PAGE3 = 11
+        ST      [MMU_PAGE+2], R0
+        LD      R0, #5 &lt;&lt; 8 | 4          ; PAGE4 = 4 (код загрузчика), PAGE5 = 5
+        ST      [MMU_PAGE+4], R0
+        LD      R0, #7 &lt;&lt; 8 | 6          ; PAGE6 = 6, PAGE7 = 7 (векторы, стек)
+        ST      [MMU_PAGE+6], R0
+        LD      R0, #MMU_EN
+        STB     [MMU_CTRL], R0           ; менеджер включён
+        RET                              ; переход — точка синхронизации
+</code></pre>
+<p>ПЗУ после включения остаётся доступным: достаточно поставить его кадр в какую-нибудь страницу.</p>
+<h2>8. Эмуляторы</h2>
+<h3>8.1. Эмулятор командной строки <code>cpu16</code></h3>
+<table>
+<thead>
+<tr>
+<th>Что</th>
+<th>Как</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>вывод в телетайпе</td>
+<td>в stdout (UTF-8)</td>
+</tr>
+<tr>
+<td>координатный вывод</td>
+<td>в stdout не попадает; ключ <code>--screen</code> печатает содержимое экрана по завершении</td>
+</tr>
+<tr>
+<td>ввод</td>
+<td>stdin, без ожидания: если ввода нет, чтение даёт 0</td>
+</tr>
+<tr>
+<td>таймер</td>
+<td>реальные 20 мс; в <code>WFI</code> эмулятор спит до следующего тика</td>
+</tr>
+<tr>
+<td>диски</td>
+<td>ключ <code>--disk N=файл[:ro]</code>, N = 0..7; можно повторять (см. ниже)</td>
+</tr>
+<tr>
+<td>команды диска</td>
+<td>выполняются мгновенно, при записи в CMD; BUSY программа не видит</td>
+</tr>
+<tr>
+<td>завершение</td>
+<td><code>WFI</code> без запросов при выключенном таймере (разд. 3)</td>
+</tr>
+<tr>
+<td>память</td>
+<td>2 МБ ОЗУ; образ программы загружается с физического адреса 0</td>
+</tr>
+<tr>
+<td>менеджер памяти</td>
+<td>после сброса выключен, регистры PAGE равны 0 (спецификацией не определено, программы не должны на это полагаться)</td>
+</tr>
+</tbody>
+</table>
+<p>Диски командной строки:</p>
+<pre><code class="language-text">./cpu16 --disk 0=sys.img --disk 1=data.img:ro prog.bin
+</code></pre>
+<ul>
+<li><strong>Образ</strong> — плоский файл секторов, сектор n лежит со смещения 512·n. Размер файла должен быть кратен 512, иначе это ошибка запуска. Число секторов равно размеру файла, делённому на 512.</li>
+<li><strong>Суффикс <code>:ro</code></strong> защищает диск от записи. Файл, который не удаётся открыть на запись, тоже подключается только для чтения.</li>
+<li><strong>Метка</strong> — имя файла без каталога, усечённое до 15 символов. Символы, которых нет в кодировке машины, заменяются на <code>?</code>.</li>
+<li><strong>Запись</strong> идёт в файл образа. FLUSH и завершение эмулятора сбрасывают данные на носитель хоста.</li>
+<li>Флаг REMOVABLE у дисков командной строки равен 0.</li>
+</ul>
+<h3>8.2. Веб-отладчик</h3>
+<table>
+<thead>
+<tr>
+<th>Что</th>
+<th>Как</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>консоль (внизу)</td>
+<td>журнал телетайпного вывода с прокруткой назад; ввод с клавиатуры, когда консоль в фокусе</td>
+</tr>
+<tr>
+<td>дисплей</td>
+<td>кнопка «Display» рядом с консолью: отдельное окно браузера, а если окна запрещены (например, во встроенном просмотре в чате) — панель справа во всю высоту; в обоих есть полноэкранный режим</td>
+</tr>
+<tr>
+<td>программа рисует на закрытом дисплее</td>
+<td>кнопка «Display» подсвечивается</td>
+</tr>
+<tr>
+<td>клавиши в фокусе дисплея</td>
+<td>все уходят программе, кроме Pause/Break (пауза отладчика)</td>
+</tr>
+<tr>
+<td>таймер</td>
+<td>реальные 20 мс, пока программа выполняется; при паузе и пошаговом выполнении таймер стоит, пропущенные тики не накапливаются</td>
+</tr>
+<tr>
+<td>диски</td>
+<td>панель «Disks»: подключить образ с компьютера, создать пустой образ заданного числа секторов, скачать образ, включить и снять защиту от записи, отключить диск</td>
+</tr>
+<tr>
+<td>подключение во время работы</td>
+<td>разрешено, DRIVES меняется сразу; у всех дисков отладчика флаг REMOVABLE = 1; отключение во время команды завершает её ошибкой IO</td>
+</tr>
+<tr>
+<td>время команды диска</td>
+<td>настраиваемая задержка (по умолчанию 0); при паузе и пошаговом выполнении обмен стоит</td>
+</tr>
+<tr>
+<td>хранение образов</td>
+<td>в памяти страницы; изменения сохраняются только скачиванием образа</td>
+</tr>
+<tr>
+<td>менеджер памяти</td>
+<td>панель «MMU»: бит EN, регистры PAGE0..PAGE7 и физические адреса страниц; после сброса регистры PAGE равны 0</td>
+</tr>
+<tr>
+<td>просмотр памяти</td>
+<td>по логическим или по физическим (21 бит) адресам; дизассемблер и точки останова работают по логическим адресам</td>
+</tr>
+</tbody>
+</table>
+<p>В полноэкранном режиме клавишу Esc забирает браузер, чтобы выйти из него. Программам не стоит делать Esc единственным способом выхода.</p>
+<h2>9. Изменения</h2>
+<h3>Ревизия 3</h3>
+<ul>
+<li><strong>Менеджер памяти</strong> (разд. 7) — новое устройство по адресам <code>$FF40–$FF4F</code>.
+<ul>
+<li>Логическое пространство делится на 8 страниц по 8 КБ, каждая отображается на один из 256 кадров физической памяти (всего 2 МБ).</li>
+<li>Регистры PAGE0..PAGE7 и MMU_CTRL. После сброса менеджер выключен, значения PAGE не определены; программа, включающая менеджер, обязана заполнить их все.</li>
+<li>Окно устройств <code>$FF20–$FFFF</code> не преобразуется. Таблица векторов преобразуется через PAGE7.</li>
+<li>Изменение отображения для выборки команд подчиняется точке синхронизации (спецификация процессора, разд. 11).</li>
+</ul>
+</li>
+<li><strong>Карта памяти</strong> (разд. 1): адреса раздела логические; описано физическое пространство; адреса <code>$FF40–$FF4F</code> заняты менеджером, резервными остаются <code>$FF2A–$FF2F</code> и <code>$FF50–$FFFF</code>.</li>
+<li><strong>Контроллер дисков</strong> (разд. 6.2): адрес буфера логический и при включённом менеджере преобразуется через него; пока команда выполняется, отображение страниц буфера менять нельзя.</li>
+<li><strong>Сводка регистров</strong> (разд. 4) дополнена регистрами менеджера.</li>
+<li><strong>Эмуляторы</strong> (разд. 8): 2 МБ ОЗУ, панель менеджера в веб-отладчике.</li>
+<li><strong>Нумерация разделов:</strong> «Эмуляторы» стали разделом 8, «Изменения» — разделом 9. Разделы 1–6 сохранили номера.</li>
+<li><strong>Совместимость:</strong> программы ревизии 2 работают без изменений. После сброса менеджер выключен, и машина ведёт себя как в ревизии 2. Адреса <code>$FF40–$FF4F</code> в ревизии 2 были зарезервированы.</li>
+</ul>
+<h3>Ревизия 2</h3>
+<ul>
+<li><strong>Контроллер дисков</strong> (разд. 6) — новое устройство по адресам <code>$FF30–$FF3F</code>.
+<ul>
+<li>До 8 дисков, сектор 512 байт, номер сектора 32-битный (до 2^32 секторов). Диски не более 2^16 секторов называются маленькими.</li>
+<li>Обмен идёт через DMA. Команды: ACK, READ, WRITE, INFO, FLUSH. Коды ошибок — в регистре ERROR.</li>
+<li>Регистры LBA, ADDR и COUNT продвигаются по ходу обмена.</li>
+<li>Завершение команды отмечается флагом DONE и может выставлять запрос IRQ1 (по уровню, снимается командой ACK).</li>
+</ul>
+</li>
+<li><strong>Карта памяти</strong> (разд. 1): адреса <code>$FF30–$FF3F</code> заняты контроллером дисков, резервными остаются <code>$FF2A–$FF2F</code> и <code>$FF40–$FFFF</code>.</li>
+<li><strong>Словное обращение к устройствам</strong> (разд. 1) описано общим правилом: слово по чётному адресу A — одно обращение к паре регистров A и A + 1. Для консоли ничего не изменилось: по-прежнему допустимо только чтение слова по <code>$FF20</code>. Для регистров контроллера дисков допустимы чтение и запись слова.</li>
+<li><strong>Завершение программы</strong> (разд. 3): эмулятор не завершает работу на <code>WFI</code>, пока выполняется команда диска, которая выставит IRQ1 (BUSY = 1 при IEN = 1).</li>
+<li><strong>Сводка регистров</strong> (разд. 4) дополнена регистрами контроллера дисков.</li>
+<li><strong>Эмуляторы:</strong>
+<ul>
+<li>в эмуляторе командной строки появился ключ <code>--disk N=файл[:ro]</code>;</li>
+<li>в веб-отладчике появилась панель дисков.</li>
+</ul>
+</li>
+<li><strong>Нумерация разделов:</strong> «Эмуляторы» стали разделом 7, «Изменения» — разделом 8. Разделы 1–5 сохранили номера, поэтому внешние ссылки на них (например, на кодировку, разд. 5) остаются верными.</li>
+<li><strong>Совместимость:</strong> программы ревизии 1 работают без изменений. Адреса <code>$FF30–$FF3F</code> в ревизии 1 были зарезервированы, и программы не должны были их использовать.</li>
+</ul>
+<h3>Ревизия 1</h3>
+<p>Изменения относительно прежнего поведения машины (консоль на порту <code>$FF20</code> без других устройств):</p>
+<ul>
+<li><strong>Порт <code>$FF20</code>:</strong> запись и чтение байта работают как раньше. Добавлены чтение слова (символ и сканкод) и регистры <code>$FF21–$FF29</code>.</li>
+<li><strong>Таймер</strong> — новое устройство, по умолчанию выключен, существующих программ не касается.</li>
+<li><strong>Ассемблер</strong> перекодирует строковые литералы в кодировку машины. Раньше байты копировались как есть (UTF-8). Программы со строками только на ASCII не меняются.</li>
+<li><strong>Эмуляторы</strong> при включённом таймере не завершают работу на <code>WFI</code>. Стандартная остановка во «Введении» дополняется выключением таймера.</li>
+</ul>
+
+</body></html>

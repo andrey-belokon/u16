@@ -1,0 +1,2 @@
+bsvm: A:/t/rt_type2.bs:2: type mismatch: int expected, got string
+exit code 125

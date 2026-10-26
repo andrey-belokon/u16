@@ -1,0 +1,3 @@
+fn f(s: string): int { return s.len() }
+println(f("abc"))
+println(f(3))

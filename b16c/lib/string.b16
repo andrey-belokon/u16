@@ -1,0 +1,78 @@
+// string.b16 - strings (zero-terminated) and memory blocks.
+
+fn strlen(s: ptr byte): uint {
+    var p = s
+    while *p != 0 { p++ }
+    return p - s
+}
+
+fn strcpy(d, s: ptr byte): ptr byte {
+    var r = d
+    while (*d++ = *s++) != 0 {}
+    return r
+}
+
+fn strcmp(a, b: ptr byte): int {
+    loop {
+        var x = *a++
+        var y = *b++
+        if x != y { return int(x) - int(y) }
+        if x == 0 { return 0 }
+    }
+}
+
+fn memcpy(d, s: ptr byte, n: uint) {
+    while n != 0 { *d++ = *s++; n-- }
+}
+
+fn memset(d: ptr byte, v: byte, n: uint) {
+    while n != 0 { *d++ = v; n-- }
+}
+
+// Capital letters: Latin, Cyrillic (in the machine encoding the lowercase letters a..ya = $E0-$FF), yo -> capital Yo.
+fn toupper(c: byte): byte {
+    if c >= 'a' && c <= 'z' || c >= $E0 { return c - $20 }
+    if c == $A3 { return $B3 }
+    return c
+}
+
+fn isdigit(c: byte): uint { return c >= '0' && c <= '9' }
+fn isspace(c: byte): uint { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
+
+// A decimal number at the start of a string: the value and a pointer to the first character after it.
+fn atou(s: ptr byte): uint, ptr byte {
+    var v: uint = 0
+    while isdigit(*s) { v = v * 10 + (*s++ - '0') }
+    return v, s
+}
+
+// A number into a buffer (at least 6 bytes); the result is a pointer to the start of the string inside buf.
+fn utoa(v: uint, buf: ptr byte): ptr byte {
+    var p = buf + 5
+    *p = 0
+    loop {
+        *--p = byte(v % 10) + '0'
+        v /= 10
+        if v == 0 { break }
+    }
+    return p
+}
+
+// A decimal number at the start of a string as ulong: the value and a pointer to the first character after it.
+fn atoul(s: ptr byte): ulong, ptr byte {
+    var v: ulong = 0
+    while isdigit(*s) { v = (v << 3) + (v << 1) + (*s++ - '0') }
+    return v, s
+}
+
+// A number into a buffer (at least 11 bytes); the result is a pointer to the start of the string inside buf.
+fn ultoa(v: ulong, buf: ptr byte): ptr byte {
+    var p = buf + 10
+    *p = 0
+    loop {
+        *--p = byte(v % 10) + '0'
+        v /= 10
+        if v == 0 { break }
+    }
+    return p
+}

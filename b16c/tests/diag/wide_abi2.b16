@@ -1,0 +1,17 @@
+// Passing and returning long and ulong: narrowing without a cast is an error (sect. 6.2).
+fn ok2(): long, uint, uint { return 1, 2, 3 }
+fn takes(a: uint) { }
+fn narrow(a: long): uint { return a }
+fn big(): long { return 70000 }
+fn small(): int { return 70000 }
+fn main() {
+    var l: long = 3
+    var u: uint
+    var v: uint
+    var w: uint
+    u, v, w = ok2()
+    takes(l)
+    takes(70000)
+    var i: int = 1
+    i, v = ok2()
+}

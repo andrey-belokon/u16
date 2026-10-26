@@ -1,0 +1,68 @@
+// run: bs /ex/todo.bs add buy milk ; bs /ex/todo.bs add "write report" ; bs /ex/todo.bs add call Bob ; bs /ex/todo.bs done 2 ; bs /ex/todo.bs ; bs /ex/todo.bs done 9
+// todo.bs - a to-do list in the text file A:/tmp/todo.txt.
+//
+//   todo                 list
+//   todo add text ...    add
+//   todo done N          mark as done
+//   todo clear           remove the done ones
+//
+// File format: a line per item, "[ ] text" or "[x] text".
+
+const FILE = "A:/tmp/todo.txt"
+
+fn load(): array {
+    var text, err = fs.read_text(FILE)
+    if err == errors.NOENT { return [] }
+    if err != null { fail err }
+    return text.lines()
+}
+
+fn save(items: array) {
+    var f = fs.open(FILE, "w")
+    for it in items { f.write(it + "\n") }
+    f.close()
+}
+
+fn main(args: array): int {
+    var items = load()
+    var cmd = "list"
+    if args.len() > 0 { cmd = args[0] }
+    switch cmd {
+    case "list":
+        if items.len() == 0 { println("nothing to do") }
+        for i, it in items {
+            println($"{|str(i + 1).pad_left(3)|}. {|it|}")
+        }
+    case "add":
+        if args.len() < 2 {
+            eprintln("usage: todo add text ...")
+            return 2
+        }
+        items.push("[ ] " + str.join(args.slice(1), " "))
+        save(items)
+        println($"added #{|items.len()|}")
+    case "done":
+        var n = 0
+        if args.len() == 2 {
+            var v, err = args[1].to_int()
+            if err == null { n = v }
+        }
+        if n < 1 || n > items.len() {
+            eprintln("todo: no such item")
+            return 1
+        }
+        items[n - 1] = "[x]" + items[n - 1].slice(3)
+        save(items)
+    case "clear":
+        var left = []
+        for it in items {
+            if !it.starts_with("[x]") { left.push(it) }
+        }
+        save(left)
+        println($"removed {|items.len() - left.len()|}")
+    default:
+        eprintln($"todo: unknown command {|cmd|}")
+        return 2
+    }
+    return 0
+}

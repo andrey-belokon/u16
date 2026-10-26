@@ -1,0 +1,7 @@
+// run: bs /ex/hello.bs Мир
+// hello.bs - the shortest script: arguments and interpolation.
+var who = "world"
+if args.len() > 0 {
+    who = args[0]
+}
+println($"Hello, {|who|}!")

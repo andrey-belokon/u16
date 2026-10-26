@@ -1,0 +1,122 @@
+// tspawn.b16 - the spawn script (shell): SPAWN and EXIT, a chain, exit codes,
+// the parent's registers and memory, frames, the command line, standard streams.
+include "tlib.b16"
+include asm "tspawn.asm"
+
+extern fn t_spawn_regs(cmd: ptr byte): (uint, uint, uint)
+extern fn t_spawn_if0(cmd: ptr byte): (uint, uint, uint)
+
+var gmem: [64]uint
+var big: [300]byte
+
+fn main(): int {
+    var e, code, m, h: uint
+    var loc: [32]uint
+    var i: uint = 0
+    while i < 32 { loc[i] = i + 100; gmem[i] = i * 3; gmem[i + 32] = i * 5; i++ }
+
+    e, code, m = t_spawn_regs("A:/bin/tchild.cx 2")
+    check(e == 0 && code == 22, "chain: depth 3, codes 22 <- 33 <- 40")
+    check(m == 0, "chain: R4-R11, LR, SP of parent unchanged after SPAWN")
+    i = 0
+    var bad: uint = 0
+    while i < 32 { if loc[i] != i + 100 || gmem[i] != i * 3 || gmem[i + 32] != i * 5 { bad++ }; i++ }
+    check(bad == 0, "chain: memory of parent unchanged")
+
+    e, code = run("A:/bin/tchild.cx 10")
+    check(e == 0 && code == 11, "exit: child exits with IF = 0 (code 11)")
+    e, code = run("A:/bin/tchild.cx 6")
+    check(e == 0 && code == 0, "start: next child starts with IF = 1")
+    e, code, m = t_spawn_if0("A:/bin/tchild.cx 6")
+    check(e == 0 && code == 0 && m == 0, "spawn: SPAWN with IF = 0 keeps parent IF = 0")
+
+    e, code = run("A:/bin/tchild.cx 5")
+    check(e == 0 && code == EXIT_BADINSN, "fault: illegal instruction -> $8008, parent continues")
+    e, code = run("A:/bin/tchild.cx 14")
+    check(e == 0 && code == EXIT_KILLED, "fault: TRAP #10 -> $8009")
+
+    i = 0
+    bad = 0
+    while i < 40 {
+        e, code = run("A:/bin/tchild.cx 6")
+        if e != 0 || code != 0 { bad++ }
+        i++
+    }
+    check(bad == 0, "frames: 40 spawns of 7-frame processes")
+    e, code = run("A:/bin/tchild.cx 11")
+    check(e == 0 && code == 0, "memory: dirty child ran")
+    e, code = run("A:/bin/tchild.cx 12")
+    check(e == 0 && code == 0, "memory: next child sees zeroed memory")
+
+    e, code = run("A:/bin/tchild.cx 7")
+    check(e == 0 && code == 14, "chain: recursion stops at 16 processes (14 levels return)")
+
+    // the command line (CX16 format, sect. 5.2)
+    e, code = run("  A:/bin/tchild.cx\t15 \"a b\" \"\" x\"y z\"w  ")
+    check(e == 0 && code == 0, "args: quotes, empty argument, separators")
+    e, code = run("A:/bin/tchild.cx 15 \"open")
+    check(e == E_ARGS, "args: unclosed quote -> ARGS")
+    e, code = run("   ")
+    check(e == E_ARGS, "args: empty command -> ARGS")
+    i = 0
+    while i < 299 { big[i] = 'a'; i++ }
+    big[299] = 0
+    e, code = run(&big[0])
+    check(e == E_ARGS, "args: longer than 255 bytes -> ARGS")
+    e, code = run("A:/bin/tchild.cx 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32")
+    check(e == E_ARGS, "args: 33 arguments -> ARGS")
+    e, code = run("A:/bin/none.cx")
+    check(e == E_NOENT, "load: unknown program -> NOENT")
+    e, code = run("A:/bin/bad.cx")
+    check(e == E_NOEXEC, "load: not an executable -> NOEXEC")
+    e, code = run("A:/bin/badver.cx")
+    check(e == E_BADVER, "load: unsupported version -> BADVER")
+    e, code = run("A:/bin/huge.cx")
+    check(e == E_NOMEM, "load: min_free too big -> NOMEM")
+
+    // standard streams and the PIB
+    e, h = sys_open("dev:nul", O_READ | O_WRITE, 0)
+    e, code = sys_spawn("A:/bin/tchild.cx 16", SAME, SAME, SAME)
+    check(e == 0 && code == (H_CON << 4 | H_CON << 8), "std: inherited console, PIB flags 0")
+    e, code = sys_spawn("A:/bin/tchild.cx 16", h, SAME, SAME)
+    check(e == 0 && code == (1 | H_NUL << 4 | H_CON << 8), "std: stdin from dev:nul, PIB flag 0")
+    e, code = sys_spawn("A:/bin/tchild.cx 16", SAME, h, SAME)
+    check(e == 0 && code == (2 | H_CON << 4 | H_NUL << 8), "std: stdout to dev:nul, PIB flag 1")
+    e, code = sys_spawn("A:/bin/tchild.cx 16", 9, SAME, SAME)
+    check(e == E_BADF, "std: closed handle -> BADF")
+    e = sys_close(h)
+
+    // EXEC (sect. 9.2 of the calls)
+    e, code = run("A:/bin/tchild.cx 21")
+    check(e == 0 && code == 22, "exec: child replaced by another program, its code returned")
+    e, code = run("A:/bin/tchild.cx 23")
+    check(e == 0 && code == 23, "exec: error -> NOENT, old program continues")
+    e, code = run("A:/bin/tchild.cx 24")
+    check(e == 0 && code == 25, "exec: handles kept, console mode and handlers reset")
+    var mi, fr0, fr1, xx: uint
+    e, mi, fr0, xx = sys_meminfo()
+    i = 0
+    while i < 20 { e, code = run("A:/bin/tchild.cx 21"); i++ }
+    e, mi, fr1, xx = sys_meminfo()
+    check(fr1 == fr0, "exec: 20 EXECs leave no frames behind")
+
+    // an illegal instruction with a handler (sect. 7.5)
+    e, code = run("A:/bin/tchild.cx 28")
+    check(e == 0 && code == 28, "onevent: illegal instruction handler skips the instruction")
+    e, code = run("A:/bin/tchild.cx 29")
+    check(e == 0 && code == 29, "onevent: handler may call EXIT")
+    e, code = run("A:/bin/tchild.cx 31")
+    check(e == 0 && code == 31, "onevent: unknown event -> INVAL, bad address -> FAULT")
+
+    // the parent's console mode is restored
+    var md: uint
+    e, code = run("A:/bin/tchild.cx 17")
+    e, md = sys_con_mode($FFFF)
+    check(code == 17 && md == 0, "console: parent mode restored after child exit")
+
+    i = 0
+    bad = 0
+    while i < 32 { if loc[i] != i + 100 { bad++ }; i++ }
+    check(bad == 0, "memory of parent unchanged after all spawns")
+    return finish()
+}

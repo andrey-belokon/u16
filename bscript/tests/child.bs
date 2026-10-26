@@ -1,0 +1,4 @@
+// run: echo child
+println($"child {|args.len()|}: {|str.join(args, ",")|}")
+if args.len() > 0 && args[0] == "err" { eprintln("to stderr") }
+return args.len()

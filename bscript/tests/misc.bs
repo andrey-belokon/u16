@@ -1,0 +1,27 @@
+// run: bs /t/misc.bs < /t/data/in.txt
+// Miscellaneous: input, result annotations, var in a loop, return of a code
+var l1 = io.read_line()
+println($"[{|l1|}]")
+var rest = io.read_all()
+println(rest.len())
+println(io.read_line())
+var i = 0
+while i < 3 {
+    var x
+    if i == 0 { x = "set" }
+    println(x)
+    i++
+}
+fn bad(): int { return "str" }
+var r = 0
+for ch in "ab" { r = r * 256 + ch }
+println(r)
+var s: string
+println(s)
+const LOC = 5
+fn f(): int {
+    const K = LOC * 2
+    return K
+}
+println(f())
+return f()

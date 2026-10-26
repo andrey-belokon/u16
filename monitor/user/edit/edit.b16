@@ -1,0 +1,1760 @@
+// edit.b16 - a full-screen text editor for the CPU16 monitor (A:/bin/edit.cx).
+//
+//     edit [file]
+//
+// A separate program: fm calls it on F4 (Shift+F4 - without a file) through SPAWN. The text does not lie
+// in process memory but in extended-memory frames ("System Calls", sect. 7.6): each frame is
+// a block of text up to 8 KB long, the block table (frame, length) is in process memory. The frames
+// are read and changed through two windows: A is page 6 ($C000), B is page 5 ($A000).
+// An edit changes only one block (a shift inside it of at most 8 KB); a full block is split
+// in half, a small one is merged with its neighbor. The frames also hold the edit journal (undo, Ctrl+Z), the
+// clipboard and the directory list of the "Save As" window.
+//
+// The screen is direct output to the display in coordinate mode, the keyboard is CON_GETEV in raw
+// mode with NOBREAK (Ctrl+C is copy, not termination) and modifiers (MODS):
+// selection is Shift with arrows, as in Windows. The description is docs/cpu16_edit_en.md.
+include "ulib.b16"
+include "../fm/scr.b16"
+
+// ---- process memory --------------------------------------------------------------------
+// Own memory ends at PTOP: pages 5 and 6 above it are frame windows; 4 KB for the stack.
+const PTOP = $A000
+option max_top = PTOP
+option min_free = 4096
+
+// ---- layout and colors ------------------------------------------------------------------
+const RSTAT = 0                 // status line
+const TTOP = 1                  // the first text row
+const TROWS = 23                // text rows: 1..23
+const RKEY = 24                 // key hint row
+const A_TEXT = $0B              // cyan on blue, like the fm viewer
+const A_BLK = $18               // selection: black on cyan
+const A_STAT = $18
+const A_SMSG = $1D              // a status-line message: yellow on cyan
+const OBUF = 512                // the file write buffer
+
+// ---- frames and windows -----------------------------------------------------------------------
+const FRAME = 8192              // a frame; the journal and the clipboard are streams over frames
+const BLK = 8192                // the largest text block (no more than a frame)
+const FILL = 7168               // block fill on reading and copying: a reserve for editing
+const MAXBLK = 224              // at most this many text blocks (the machine has 256 frames)
+const PGA = 6                   // window A's page
+const PGB = 5                   // window B's page
+var WA at $C000: [FRAME]byte
+var WB at PTOP: [FRAME]byte
+const NONE = $FFFFFFFF          // no position
+
+var mapa: uint = $FFFF          // the frame in window A
+var mapb: uint = $FFFF          // the frame in window B
+
+fn map_a(f: uint) {
+    if mapa != f {
+        var e, old: uint
+        e, old = sys_xmap(PGA, f)
+        mapa = f
+    }
+}
+
+fn map_b(f: uint) {
+    if mapb != f {
+        var e, old: uint
+        e, old = sys_xmap(PGB, f)
+        mapb = f
+    }
+}
+
+fn drop_frame(f: uint) {
+    ign = sys_xfree(f)
+    if mapa == f { mapa = $FFFF }
+    if mapb == f { mapb = $FFFF }
+}
+
+fn free_frames(): uint {
+    var e, t, fr, xf: uint
+    e, t, fr, xf = sys_meminfo()
+    return fr
+}
+
+fn mmove(d: ptr byte, s: ptr byte, n: uint) {
+    if d < s {
+        while n != 0 { *d = *s; d++; s++; n-- }
+    } else if d > s {
+        d = d + n
+        s = s + n
+        while n != 0 { d--; s--; *d = *s; n-- }
+    }
+}
+
+// ---- text blocks -----------------------------------------------------------------------
+var bfr: [MAXBLK]byte           // the block's frame
+var blen: [MAXBLK]uint          // the block length; an empty block exists only as the sole block
+var nblk: uint
+var tl: ulong                   // the text length
+var cb: uint                    // the last found block
+var cbs: ulong                  // its start in the text
+var newf: [MAXBLK]byte          // new insertion blocks (ins_stream)
+var newl: [MAXBLK]uint
+
+// A frame for text or $FFFF. Text matters more than undo: if there are no frames, old steps leave the journal.
+fn new_frame(): uint {
+    if nblk >= MAXBLK { return $FFFF }
+    loop {
+        var e, f: uint
+        e, f = sys_xalloc()
+        if e == OK { return f }
+        if j_shrink() == 0 { return $FFFF }
+    }
+}
+
+fn tab_ins(i: uint, f: uint, l: uint) {
+    var k: uint = nblk
+    while k > i { bfr[k] = bfr[k - 1]; blen[k] = blen[k - 1]; k-- }
+    bfr[i] = byte(f)
+    blen[i] = l
+    nblk++
+}
+
+fn tab_del(i: uint) {
+    while i + 1 < nblk { bfr[i] = bfr[i + 1]; blen[i] = blen[i + 1]; i++ }
+    nblk--
+}
+
+fn cache_reset() { cb = 0; cbs = 0 }
+
+// The block at position p (p == tl - the last block); cb, cbs are it and its start.
+fn locate(p: ulong): uint {
+    while p < cbs { cb--; cbs -= blen[cb] }
+    while cb + 1 < nblk && p >= cbs + blen[cb] { cbs += blen[cb]; cb++ }
+    return cb
+}
+
+// The block at position p in window A; the result is p's offset in it.
+fn seg(p: ulong): uint {
+    var b: uint = locate(p)
+    map_a(bfr[b])
+    return uint(p - cbs)
+}
+
+// The byte at position p < tl.
+fn ch(p: ulong): uint {
+    var off: uint = seg(p)
+    return WA[off]
+}
+
+// Split block b: the bytes from off go into a new block after it. 0 - no frame.
+fn split(b: uint, off: uint): uint {
+    var f: uint = new_frame()
+    if f == $FFFF { return 0 }
+    map_a(bfr[b])
+    map_b(f)
+    var n: uint = blen[b] - off
+    mmove(&WB[0], &WA[off], n)
+    tab_ins(b + 1, f, n)
+    blen[b] = off
+    cache_reset()
+    return 1
+}
+
+// Insert n bytes (n <= BLK / 2, the source is not in the windows) at position p. 0 - no frame.
+fn ins_at(p: ulong, src: ptr byte, n: uint): uint {
+    var b: uint = locate(p)
+    var bst: ulong = cbs
+    var off: uint = uint(p - bst)
+    if off == 0 && b > 0 && blen[b - 1] + n <= BLK {
+        b--                         // at the start of a block - better to the tail of the previous one: without a shift
+        bst -= blen[b]
+        off = blen[b]
+    } else if blen[b] + n > BLK {
+        var h: uint = blen[b] / 2
+        if split(b, h) == 0 { return 0 }
+        if off > h { b++; bst += h; off -= h }
+    }
+    map_a(bfr[b])
+    mmove(&WA[off + n], &WA[off], blen[b] - off)
+    var i: uint = 0
+    while i < n { WA[off + i] = src[i]; i++ }
+    blen[b] += n
+    tl += n
+    cb = b
+    cbs = bst
+    return 1
+}
+
+// Merge block i with the next one if both together are small and one of them is small. 1 - merged.
+fn try_merge(i: uint): uint {
+    var a: uint = blen[i]
+    var c: uint = blen[i + 1]
+    if a + c > FILL { return 0 }
+    if a >= BLK / 4 && c >= BLK / 4 { return 0 }
+    map_a(bfr[i])
+    map_b(bfr[i + 1])
+    mmove(&WA[a], &WB[0], c)
+    drop_frame(bfr[i + 1])
+    tab_del(i + 1)
+    blen[i] = a + c
+    cache_reset()
+    return 1
+}
+
+// Delete [s, e) from the blocks: whole blocks are freed, in the end ones the tail is shifted.
+fn del_raw(s: ulong, e: ulong) {
+    var n: ulong = e - s
+    while n != 0 {
+        var b: uint = locate(s)
+        var off: uint = uint(s - cbs)
+        var k: uint = blen[b] - off
+        if ulong(k) > n { k = uint(n) }
+        if off == 0 && k == blen[b] && nblk > 1 {
+            drop_frame(bfr[b])
+            tab_del(b)
+        } else {
+            map_a(bfr[b])
+            mmove(&WA[off], &WA[off + k], blen[b] - off - k)
+            blen[b] -= k
+        }
+        n -= k
+        tl -= k
+        cache_reset()
+    }
+    if nblk > 1 {
+        var b2: uint = locate(s)
+        if b2 + 1 < nblk && try_merge(b2) != 0 { return }
+        if b2 > 0 { ign = try_merge(b2 - 1) }
+    }
+}
+
+// ---- insertion sources ------------------------------------------------------------------
+// An insertion from the text, the clipboard or the journal reads the source through window A: src_at puts
+// the needed frame in the window and gives the offset, and sav is how many bytes from it lie in the window in a row.
+const KTEXT = 0
+const KCLIP = 1
+const KJRN = 2
+var sav: uint
+
+// the clipboard: frames filled completely (the last one partially)
+var cfr: [MAXBLK]byte
+var cn: uint
+var clen: ulong
+
+// the edit journal (see "undo" below): a byte stream in frames jfr, jf0 is the offset of the start of jfr[0]
+const JMAXF = 32                // at most this many journal frames: 256 KB
+var jfr: [JMAXF]byte
+var jn: uint
+var jf0: ulong
+
+fn src_at(k: uint, p: ulong): uint {
+    if k == KTEXT {
+        var off: uint = seg(p)
+        sav = blen[cb] - off
+        return off
+    }
+    var q: ulong = p
+    if k == KCLIP { map_a(cfr[uint(q >> 13)]) } else { q = p - jf0; map_a(jfr[uint(q >> 13)]) }
+    var o: uint = uint(q) & (FRAME - 1)
+    sav = FRAME - o
+    return o
+}
+
+// Insert n bytes of source k from position s at the cursor position; the cursor stays before the insertion.
+// The cursor block is split at the cursor position, the insertion is assembled in new frames (window B) and then
+// goes into the table: while it is assembled the text positions do not change, so a text source
+// may lie on either side of the cursor. 0 - no memory (the text does not change).
+fn ins_stream(k: uint, s: ulong, n: ulong): uint {
+    if n == 0 { return 1 }
+    var b: uint = locate(cur)
+    var off: uint = uint(cur - cbs)
+    var ix: uint = b
+    if off >= blen[b] { ix = b + 1 }
+    else if off != 0 {
+        if split(b, off) == 0 { return 0 }
+        ix = b + 1
+    }
+    var nn: uint = 0
+    var nl: ulong = 0
+    var p: ulong = s
+    var e: ulong = s + n
+    while p < e {
+        var f: uint = $FFFF
+        if nblk + nn < MAXBLK { f = new_frame() }
+        if f == $FFFF {
+            while nn != 0 { nn--; drop_frame(newf[nn]) }
+            return 0
+        }
+        map_b(f)
+        var kk: uint = 0
+        while kk < FILL && p < e {
+            var o: uint = src_at(k, p)
+            var take: uint = sav
+            if e - p < take { take = uint(e - p) }
+            if take > FILL - kk { take = FILL - kk }
+            var i: uint = 0
+            while i < take {
+                var c: uint = WA[o + i]
+                if c == $0A { nl++ }
+                WB[kk + i] = byte(c)
+                i++
+            }
+            kk += take
+            p += take
+        }
+        newf[nn] = byte(f)
+        newl[nn] = kk
+        nn++
+    }
+    var i2: uint = 0
+    while i2 < nn { tab_ins(ix + i2, newf[i2], newl[i2]); i2++ }
+    tl += n
+    nlines += nl
+    cache_reset()
+    adj_ins(cur, n)
+    modif = 1
+    return 1
+}
+
+// Copy the text [s, e) into a stream (the clipboard or the journal) from position d; the frames already exist.
+fn text_to(k: uint, d: ulong, s: ulong, e: ulong) {
+    while s < e {
+        var o: uint = seg(s)
+        var av: uint = blen[cb] - o
+        if e - s < av { av = uint(e - s) }
+        var q: ulong = d
+        if k == KCLIP { map_b(cfr[uint(q >> 13)]) } else { q = d - jf0; map_b(jfr[uint(q >> 13)]) }
+        var od: uint = uint(q) & (FRAME - 1)
+        if FRAME - od < av { av = FRAME - od }
+        mmove(&WB[od], &WA[o], av)
+        s += av
+        d += av
+    }
+}
+
+// ---- editor state ----------------------------------------------------------------------
+var cur: ulong                  // cursor position
+var cline: ulong                // the cursor's line number, from 0
+var nlines: ulong               // the number of \n in the text
+var top: ulong                  // the start of the first screen line
+var lcol: uint                  // the first visible column
+var want: uint                  // the column held by the up and down arrows
+var sel: uint                   // there is a selection: from the anchor sa to the cursor
+var sa: ulong
+var modif: uint                 // the text changed after reading or writing
+var ovr: uint                   // overwrite mode
+var crlf: uint                  // the file's lines ended with \r\n
+var ro: uint                    // the file has the RDONLY flag
+var path: [256]byte             // the file; "" - text without a name
+var cwd0: [256]byte             // the current directory at startup
+var msg: ptr byte               // a status-line message until the next key
+var msgbuf: [48]byte
+var full: uint                  // redraw the whole text
+var sstr: [DLG_FW + 1]byte      // the search string
+var rstr: [DLG_FW + 1]byte      // the replacement string
+var obuf: [OBUF]byte
+
+// ---- lines and columns -------------------------------------------------------------------
+fn count_nl(s: ulong, e: ulong): ulong {
+    var c: ulong = 0
+    while s < e {
+        var off: uint = seg(s)
+        var base: ulong = cbs
+        var lim: uint = blen[cb]
+        if e - base < lim { lim = uint(e - base) }
+        while off < lim { if WA[off] == $0A { c++ }; off++ }
+        s = base + lim
+    }
+    return c
+}
+
+fn lstart(p: ulong): ulong {
+    while p > 0 {
+        var off: uint = seg(p - 1)
+        var base: ulong = cbs
+        loop {
+            if WA[off] == $0A { return base + off + 1 }
+            if off == 0 { break }
+            off--
+        }
+        p = base
+    }
+    return 0
+}
+
+fn lend(p: ulong): ulong {
+    while p < tl {
+        var off: uint = seg(p)
+        var base: ulong = cbs
+        var n: uint = blen[cb]
+        while off < n { if WA[off] == $0A { return base + off }; off++ }
+        p = base + n
+    }
+    return tl
+}
+
+// The width of character c at column col: a tab goes to a column that is a multiple of 8.
+fn cwidth(c: uint, col: uint): uint {
+    if c == 9 { return 8 - (col & 7) }
+    return 1
+}
+
+// The column of position p of a line that starts at ls.
+fn colof(ls: ulong, p: ulong): uint {
+    var col: uint = 0
+    while ls < p { col += cwidth(ch(ls), col); ls++ }
+    return col
+}
+
+// The position in line ls nearest on the left to column w.
+fn atcol(ls: ulong, w: uint): ulong {
+    var col: uint = 0
+    while ls < tl {
+        var c: uint = ch(ls)
+        if c == $0A { break }
+        var cw: uint = cwidth(c, col)
+        if col + cw > w { break }
+        col += cw
+        ls++
+    }
+    return ls
+}
+
+// The cursor to position p with recomputing the line number.
+fn setcur(p: ulong) {
+    if p > cur { cline += count_nl(cur, p) } else if p < cur { cline -= count_nl(p, cur) }
+    cur = p
+}
+
+// The selection [s, e); s == e - there is none.
+fn blk(): (ulong, ulong) {
+    if sel == 0 { return 0, 0 }
+    if sa < cur { return sa, cur }
+    return cur, sa
+}
+
+fn has_sel(): uint {
+    if sel != 0 && sa != cur { return 1 }
+    return 0
+}
+
+// Positions after inserting n bytes at p: the selection anchor and the first screen line.
+fn adj_ins(p: ulong, n: ulong) {
+    if top > p { top += n }
+    if sa > p { sa += n }
+}
+
+fn adj_del1(x: ulong, s: ulong, e: ulong): ulong {
+    if x >= e { return x - (e - s) }
+    if x > s { return s }
+    return x
+}
+
+// ---- editing without the journal -----------------------------------------------------------------
+// Insert n bytes of string s (n <= BLK / 2) at the cursor position; the cursor is before them.
+fn t_insb(s: ptr byte, n: uint): uint {
+    if n == 0 { return 1 }
+    if ins_at(cur, s, n) == 0 { return 0 }
+    var i: uint = 0
+    while i < n { if s[i] == $0A { nlines++ }; i++ }
+    adj_ins(cur, n)
+    modif = 1
+    return 1
+}
+
+// Delete [s, e).
+fn t_delete(s: ulong, e: ulong) {
+    if e <= s { return }
+    var nl: ulong = count_nl(s, e)
+    if cur >= e { cur -= e - s; cline -= nl }
+    else if cur > s { cline -= count_nl(s, cur); cur = s }
+    nlines -= nl
+    del_raw(s, e)
+    top = lstart(adj_del1(top, s, e))
+    sa = adj_del1(sa, s, e)
+    modif = 1
+}
+
+// ---- the edit journal and undo -------------------------------------------------------------
+// The journal is a stream of records [jbeg, jend) in frames jfr. A record: a header of RHDR bytes (kind, flags,
+// position, length, the cursor before the step), for a deletion - the deleted bytes, and a tail of RTRL bytes - the length
+// of the whole record: undo goes backward by it. An undo step is the records from a record with flag RF_STEP to
+// the next such one. At most JSTEPS steps, the journal is at most JMAXF frames and does not take a frame if
+// fewer than JRES would remain in the machine: then the oldest steps go.
+const JSTEPS = 1000
+const JRES = 16
+const RHDR = 14
+const RTRL = 4
+const R_INS = 1
+const R_DEL = 2
+const RF_STEP = 1
+const JCAP = (JMAXF - 1) * FRAME  // a longer record - cannot be undone
+var jbeg, jend: ulong
+var nsteps: uint                // steps in the journal
+var jstep: uint                 // 1 - the next record begins a step
+var jlost: uint                 // 1 - the step did not fit: its records are skipped
+var jcur: ulong                 // the cursor before the current step
+var jlast: ulong = NONE         // the start of the last record
+var gkind: uint                 // the kind of the last edit for merging steps: 1 typing, 2 Backspace, 3 Del
+var gcur: ulong                 // the cursor after it
+
+fn j_b(o: ulong): uint {        // a journal byte through window B
+    var q: ulong = o - jf0
+    map_b(jfr[uint(q >> 13)])
+    return WB[uint(q) & (FRAME - 1)]
+}
+
+fn j_setb(o: ulong, v: uint) {
+    var q: ulong = o - jf0
+    map_b(jfr[uint(q >> 13)])
+    WB[uint(q) & (FRAME - 1)] = byte(v)
+}
+
+fn j_l(o: ulong): ulong {
+    return ulong(j_b(o)) | ulong(j_b(o + 1)) << 8 | ulong(j_b(o + 2)) << 16 | ulong(j_b(o + 3)) << 24
+}
+
+fn j_setl(o: ulong, v: ulong) {
+    j_setb(o, uint(v) & $FF)
+    j_setb(o + 1, uint(v >> 8) & $FF)
+    j_setb(o + 2, uint(v >> 16) & $FF)
+    j_setb(o + 3, uint(v >> 24) & $FF)
+}
+
+fn j_reclen(o: ulong): ulong {
+    var n: ulong = RHDR + RTRL
+    if j_b(o) == R_DEL { n += j_l(o + 6) }
+    return n
+}
+
+// Free the whole journal.
+fn j_reset() {
+    while jn != 0 { jn--; drop_frame(jfr[jn]) }
+    jf0 = 0
+    jbeg = 0
+    jend = 0
+    nsteps = 0
+    jlast = NONE
+}
+
+// Remove the oldest step; frames that lie entirely before the start of the journal are freed.
+fn j_drop() {
+    var o: ulong = jbeg + j_reclen(jbeg)
+    while o < jend && j_b(o + 1) & RF_STEP == 0 { o += j_reclen(o) }
+    jbeg = o
+    nsteps--
+    if jlast < jbeg { jlast = NONE }
+    if jbeg == jend { j_reset(); return }
+    while jn != 0 && jf0 + FRAME <= jbeg {
+        drop_frame(jfr[0])
+        var i: uint = 0
+        while i + 1 < jn { jfr[i] = jfr[i + 1]; i++ }
+        jn--
+        jf0 += FRAME
+    }
+}
+
+// The steps that can be removed: all except the current one.
+fn j_old(): uint {
+    if jstep != 0 { return nsteps }
+    if nsteps == 0 { return 0 }
+    return nsteps - 1
+}
+
+// Remove old steps until a frame is freed. 1 - a frame was freed.
+fn j_shrink(): uint {
+    var n0: uint = jn
+    while jn == n0 && j_old() != 0 { j_drop() }
+    if jn < n0 { return 1 }
+    return 0
+}
+
+// The journal frames up to offset o. 0 - not enough even after the old steps leave.
+fn j_room(o: ulong): uint {
+    loop {
+        if jf0 + ulong(jn) * FRAME >= o { return 1 }
+        var ok: uint = 0
+        if jn < JMAXF && free_frames() > JRES {
+            var e, f: uint
+            e, f = sys_xalloc()
+            if e == OK { jfr[jn] = byte(f); jn++; ok = 1 }
+        }
+        if ok == 0 {
+            if j_old() == 0 { return 0 }
+            j_drop()
+        }
+    }
+}
+
+// The step did not fit: the journal is cleared, the step's records are skipped until the next step.
+fn j_lose() {
+    j_reset()
+    jlost = 1
+    jstep = 0
+    msg = "undo history lost"
+}
+
+// An edit record: kind, position, length; for a deletion the bytes [pos, pos + len) are taken from the text,
+// so the record is made before the deletion.
+fn j_rec(kind: uint, pos: ulong, len: ulong) {
+    if jlost != 0 { return }
+    var need: ulong = RHDR + RTRL
+    if kind == R_DEL { need += len }
+    if need > JCAP { j_lose(); return }
+    if jstep != 0 && nsteps >= JSTEPS { j_drop() }
+    if j_room(jend + need) == 0 { j_lose(); return }
+    var o: ulong = jend
+    j_setb(o, kind)
+    j_setb(o + 1, jstep)
+    j_setl(o + 2, pos)
+    j_setl(o + 6, len)
+    j_setl(o + 10, jcur)
+    if kind == R_DEL { text_to(KJRN, o + RHDR, pos, pos + len) }
+    j_setl(o + need - RTRL, need)
+    jlast = o
+    jend = o + need
+    if jstep != 0 { nsteps++; jstep = 0 }
+}
+
+// Insertion of n bytes at pos: text typed in a row extends the previous insertion record.
+fn j_ins(pos: ulong, n: ulong) {
+    if jstep == 0 && jlost == 0 && jlast != NONE && j_b(jlast) == R_INS {
+        var lp: ulong = j_l(jlast + 2)
+        var ll: ulong = j_l(jlast + 6)
+        if lp + ll == pos { j_setl(jlast + 6, ll + n); return }
+    }
+    j_rec(R_INS, pos, n)
+}
+
+// The start of an edit of kind kind (0 - always a new step): the same kind right after the previous edit at
+// the same place continues its step (typing a word is undone whole).
+fn ed_begin(kind: uint) {
+    if kind != 0 && kind == gprev && cur == gcur && jlost == 0 { return }
+    jstep = 1
+    jlost = 0
+    jcur = cur
+}
+
+fn ed_end(kind: uint) {
+    gkind = kind
+    gcur = cur
+}
+
+// Edits with the journal.
+fn ed_delete(s: ulong, e: ulong) {
+    if e <= s { return }
+    j_rec(R_DEL, s, e - s)
+    t_delete(s, e)
+}
+
+fn ed_insb(s: ptr byte, n: uint): uint {          // at the cursor position, the cursor is before the insertion
+    if t_insb(s, n) == 0 { return 0 }
+    j_ins(cur, n)
+    return 1
+}
+
+fn ed_stream(k: uint, s: ulong, n: ulong): uint {
+    if ins_stream(k, s, n) == 0 { return 0 }
+    j_ins(cur, n)
+    return 1
+}
+
+// A deletion of n bytes will not be undoable: ask. 1 - continue.
+fn big_ok(n: ulong): uint {
+    if n + RHDR + RTRL <= JCAP { return 1 }
+    mb_clear()
+    mb_s("Deleting ")
+    mb_ul(n)
+    mb_s(" bytes cannot be undone.")
+    var t: [MBLEN + 1]byte
+    strcpy(&t[0], &mb[0])
+    var a: uint = dlg_ask("Undo", &t[0], "Continue?", "[Y]es   [N]o", "yn", DA_NOENTER)
+    full = 1
+    if a == 'y' { return 1 }
+    return 0
+}
+
+// Ctrl+Z: undo the last step.
+fn undo() {
+    sel = 0
+    full = 1
+    jstep = 0                   // the step being undone is the last one: j_shrink will not touch it
+    if jend == jbeg { msg = "nothing to undo"; return }
+    var cb0: ulong = cur
+    loop {
+        var rl: ulong = j_l(jend - RTRL)
+        var o: ulong = jend - rl
+        var kind: uint = j_b(o)
+        var fl: uint = j_b(o + 1)
+        var pos: ulong = j_l(o + 2)
+        var len: ulong = j_l(o + 6)
+        cb0 = j_l(o + 10)
+        if kind == R_INS {
+            t_delete(pos, pos + len)
+        } else {
+            setcur(pos)
+            if ins_stream(KJRN, o + RHDR, len) == 0 { msg = "not enough memory"; break }
+        }
+        jend = o
+        if fl & RF_STEP != 0 { nsteps--; break }
+    }
+    jlast = NONE
+    gkind = 0
+    jstep = 1
+    // the frames past the end of the journal are no longer needed
+    while jn != 0 && jf0 + ulong(jn - 1) * FRAME >= jend && jend > jf0 { jn--; drop_frame(jfr[jn]) }
+    if jend == jbeg { j_reset() }
+    setcur(cb0)
+    modif = 1
+}
+
+// ---- the clipboard -----------------------------------------------------------------------
+fn clip_free() {
+    while cn != 0 { cn--; drop_frame(cfr[cn]) }
+    clen = 0
+}
+
+// The selection into the clipboard. 1 - copied.
+fn clip_copy(): uint {
+    var s, e: ulong
+    s, e = blk()
+    if s == e { return 0 }
+    clip_free()
+    var n: ulong = e - s
+    while ulong(cn) * FRAME < n {
+        var f: uint = $FFFF
+        if cn < MAXBLK { f = new_frame() }
+        if f == $FFFF { clip_free(); msg = "not enough memory"; return 0 }
+        cfr[cn] = byte(f)
+        cn++
+    }
+    text_to(KCLIP, 0, s, e)
+    clen = n
+    return 1
+}
+
+// Delete the selection (if any) in the current step. 0 - refused (the deletion cannot be undone, and
+// the user did not agree).
+fn del_sel(): uint {
+    if has_sel() == 0 { sel = 0; return 1 }
+    var s, e: ulong
+    s, e = blk()
+    if big_ok(e - s) == 0 { return 0 }
+    sel = 0
+    ed_delete(s, e)
+    full = 1
+    return 1
+}
+
+// ---- the screen ------------------------------------------------------------------------------
+// A text line from position p in screen row y: the position of its end (\n or the end of the text).
+fn draw_line(p: ulong, y: uint, s: ulong, e: ulong): ulong {
+    var col: uint = 0
+    var x: uint = 0
+    var a: uint = $FFFF
+    gotoxy(0, y)
+    while p < tl && x < COLS {
+        var c: uint = ch(p)
+        if c == $0A { break }
+        var w: uint = cwidth(c, col)
+        if c == 9 { c = ' ' }
+        if col + w > lcol {
+            var na: uint = A_TEXT
+            if p >= s && p < e { na = A_BLK }
+            if na != a { CON_ATTR = byte(na); a = na }
+            while w != 0 {
+                if col >= lcol && x < COLS { CON_DATA = byte(c); x++ }
+                col++
+                w--
+            }
+        } else {
+            col += w
+        }
+        p++
+    }
+    if x >= COLS { return lend(p) }
+    // the rest of the line; a selected \n - in the selection color up to the screen edge
+    var ra: uint = A_TEXT
+    if p < tl && p >= s && p < e { ra = A_BLK }
+    CON_ATTR = byte(ra)
+    while x < COLS { CON_DATA = ' '; x++ }
+    return p
+}
+
+fn draw_text() {
+    var s, e: ulong
+    s, e = blk()
+    var p: ulong = top
+    var more: uint = 1
+    var r: uint = 0
+    while r < TROWS {
+        if more != 0 {
+            var q: ulong = draw_line(p, TTOP + r, s, e)
+            if q < tl { p = q + 1 } else { more = 0 }
+        } else {
+            fill(0, TTOP + r, COLS, ' ', A_TEXT)
+        }
+        r++
+    }
+}
+
+// The cursor's screen row (0 .. TROWS-1).
+fn cur_row(): uint {
+    var ls: ulong = lstart(cur)
+    var p: ulong = top
+    var r: uint = 0
+    while p < ls {
+        p = lend(p) + 1
+        r++
+    }
+    return r
+}
+
+// Make the cursor visible: the first screen line and the first column.
+fn fix_view() {
+    var ls: ulong = lstart(cur)
+    if ls < top {
+        top = ls
+    } else {
+        var p: ulong = ls
+        var k: uint = 0
+        while k + 1 < TROWS && p > top { p = lstart(p - 1); k++ }
+        if p > top { top = p }
+    }
+    var cc: uint = colof(ls, cur)
+    if cc < lcol {
+        if cc > 20 { lcol = cc - 20 } else { lcol = 0 }
+    }
+    if cc >= lcol + COLS { lcol = cc - COLS + 20 }
+}
+
+fn draw_status() {
+    mb_clear()
+    if modif != 0 { mb_s(" * ") } else { mb_s("   ") }
+    mb_s("Ln ")
+    mb_ul(cline + 1)
+    mb_c('/')
+    mb_ul(nlines + 1)
+    mb_s("  Col ")
+    mb_ul(ulong(colof(lstart(cur), cur) + 1))
+    if ovr != 0 { mb_s("  Ovr") } else { mb_s("  Ins") }
+    if crlf != 0 { mb_s("  CRLF") }
+    if ro != 0 { mb_s("  RO") }
+    mb_s("  ")
+    mb_ul(tl)
+    mb_c(' ')
+    var n: uint = mbn
+    var w: uint = COLS - n - 1
+    putsn(0, RSTAT, A_STAT, " ", 1)
+    if msg != 0 {
+        putsn(1, RSTAT, A_SMSG, msg, w)
+    } else if path[0] == 0 {
+        putsn(1, RSTAT, A_STAT, "untitled", w)
+    } else {
+        var s = &path[0]
+        var l: uint = strlen(s)
+        if l > w { s = s + (l - w) }
+        putsn(1, RSTAT, A_STAT, s, w)
+    }
+    putsa(COLS - n, RSTAT, A_STAT, &mb[0])
+}
+
+var keylab: [10]ptr byte = { "Help", "Save", "Next", "Replac", "", "", "Search", "", "GoLine", "Quit" }
+
+fn draw_keys() {
+    var i: uint = 0
+    while i < 10 {
+        var x: uint = i * 8
+        gotoxy(x, RKEY)
+        CON_ATTR = A_KEYN
+        if i == 9 { CON_DATA = '1'; CON_DATA = '0' } else { CON_DATA = byte('1' + i) }
+        var lx: uint = x + 1
+        if i == 9 { lx = x + 2 }
+        putsn(lx, RKEY, A_KEYL, keylab[i], 6)
+        if i < 9 { CON_ATTR = A_KEYN; CON_DATA = ' ' }
+        i++
+    }
+}
+
+// The screen after a key press: the text (all or the cursor line), the state, the cursor.
+fn show() {
+    var otop: ulong = top
+    var ocol: uint = lcol
+    fix_view()
+    if top != otop || lcol != ocol || sel != 0 { full = 1 }
+    var row: uint = cur_row()
+    if full != 0 {
+        draw_text()
+    } else {
+        var s, e: ulong
+        s, e = blk()
+        draw_line(lstart(cur), TTOP + row, s, e)
+    }
+    full = 0
+    draw_status()
+    cursor_at(colof(lstart(cur), cur) - lcol, TTOP + row)
+}
+
+fn redraw_all() {
+    cursor_off()
+    full = 1
+    draw_keys()
+    show()
+}
+
+// A call error: a window with the object and the error text.
+fn err_box(title: ptr byte, obj: ptr byte, e: uint) {
+    mb_clear()
+    mb_err(e)
+    var t: [MBLEN + 1]byte
+    strcpy(&t[0], &mb[0])
+    dlg_msg(title, obj, &t[0], 1)
+    full = 1
+}
+
+// ---- paths -------------------------------------------------------------------------------
+// The full path (of the GETCWD kind) of name name relative to the current directory: the directory that
+// holds the name must exist. The current directory does not change.
+fn canon(name: ptr byte, out: ptr byte): uint {
+    var here: [256]byte
+    var e, n: uint
+    e, n = sys_getcwd(&here[0], 256)
+    if e != OK { return e }
+    var tmp: [256]byte
+    if strlen(name) > 255 { return E_BADPATH }
+    strcpy(&tmp[0], name)
+    n = strlen(&tmp[0])
+    var k: uint = n
+    var i: uint = 0
+    while i < n { if tmp[i] == '/' || tmp[i] == ':' { k = i }; i++ }
+    var base = &tmp[0]
+    if k != n {
+        base = &tmp[k + 1]
+        var c: uint = tmp[k]
+        var keep: uint = k
+        if c == ':' || k == 0 || tmp[k - 1] == ':' { keep = k + 1 }
+        // the name is after the separator; the directory is before it (the root - together with it)
+        var dir: [256]byte
+        i = 0
+        while i < keep { dir[i] = tmp[i]; i++ }
+        dir[keep] = 0
+        e = sys_chdir(&dir[0])
+        if e != OK { return e }
+    }
+    e, n = sys_getcwd(out, 256)
+    sys_chdir(&here[0])
+    if e != OK { return e }
+    if *base == 0 { return E_BADPATH }
+    var ol: uint = strlen(out)
+    if ol + 1 + strlen(base) > 255 { return E_BADPATH }
+    if out[ol - 1] != '/' { strcat(out, "/") }
+    strcat(out, base)
+    return OK
+}
+
+// ---- the file -------------------------------------------------------------------------------
+// Read file path. The file is read straight into window A in blocks of FILL bytes; \r\n
+// is replaced with \n (a \r at the end of a piece is decided by the next piece). 0 - cannot open (the window with
+// the error is already shown).
+fn load(): uint {
+    var e, h: uint
+    e, h = sys_open(&path[0], O_READ, 0)
+    if e == E_NOENT { msg = "new file"; return 1 }
+    if e != OK { err_box("Cannot open", &path[0], e); return 0 }
+    var st: Stat
+    e = sys_fstat(h, &st)
+    if e != OK { sys_close(h); err_box("Cannot open", &path[0], e); return 0 }
+    var fl: uint = uint(st.size >> 16)
+    if fl & A_DIR != 0 { sys_close(h); err_box("Cannot open", &path[0], E_ISDIR); return 0 }
+    if fl & A_RDONLY != 0 { ro = 1 }
+    var size: ulong = st.size & SIZE_MASK
+    var maxsz: ulong = ulong(MAXBLK - 8) * FILL
+    if size > maxsz {
+        sys_close(h)
+        mb_clear()
+        mb_s("too large: ")
+        mb_ul(size)
+        mb_s(" bytes, the editor holds ")
+        mb_ul(maxsz)
+        var t: [MBLEN + 1]byte
+        strcpy(&t[0], &mb[0])
+        dlg_msg("Cannot open", &path[0], &t[0], 1)
+        return 0
+    }
+    var pend: uint = 0
+    var b: uint = 0
+    loop {
+        var L: uint = blen[b]
+        if L + 1 >= FILL {
+            var f: uint = new_frame()
+            if f == $FFFF { sys_close(h); err_box("Cannot open", &path[0], E_NOMEM); return 0 }
+            tab_ins(nblk, f, 0)
+            b = nblk - 1
+            L = 0
+        }
+        map_a(bfr[b])
+        var r0: uint = L
+        if pend != 0 { WA[L] = $0D; L++ }
+        var k: uint
+        e, k = sys_read(h, &WA[L], FILL - L)
+        if e != OK { sys_close(h); err_box("Cannot read", &path[0], e); return 0 }
+        var end: uint = L + k
+        var i: uint = r0
+        var j: uint = r0
+        pend = 0
+        while i < end {
+            var c: uint = WA[i]
+            i++
+            if c == $0D {
+                if i == end && k != 0 { pend = 1; break }
+                if i < end && WA[i] == $0A { crlf = 1; continue }
+            }
+            if c == $0A { nlines++ }
+            WA[j] = byte(c)
+            j++
+        }
+        tl += j - r0
+        blen[b] = j
+        if k == 0 { break }
+    }
+    sys_close(h)
+    cache_reset()
+    return 1
+}
+
+// Write the text to file p. The space for the file is taken in advance (SETSIZE): if it is not enough,
+// the file's previous contents stay intact. The blocks are written straight from window A. 1 - written.
+fn save_to(p: ptr byte): uint {
+    var e, h, w: uint
+    e, h = sys_open(p, O_WRITE | O_CREATE, 0)
+    if e != OK { err_box("Cannot save", p, e); return 0 }
+    var st: Stat
+    var old: ulong = 0
+    if sys_fstat(h, &st) == OK { old = st.size & SIZE_MASK }
+    var out: ulong = tl
+    if crlf != 0 { out += nlines }
+    if out > old { e = sys_setsize(h, out, 0) }
+    if e == OK {
+        var r: ulong
+        e, r = sys_seek(h, 0, SEEK_SET)
+    }
+    var k: uint = 0
+    var b: uint = 0
+    while b < nblk && e == OK {
+        map_a(bfr[b])
+        var n: uint = blen[b]
+        if crlf == 0 {
+            if n != 0 { e, w = sys_write(h, &WA[0], n) }
+        } else {
+            var i: uint = 0
+            while i < n && e == OK {
+                var c: uint = WA[i]
+                i++
+                if c == $0A { obuf[k] = $0D; k++ }
+                obuf[k] = byte(c)
+                k++
+                if k >= OBUF - 1 { e, w = sys_write(h, &obuf[0], k); k = 0 }
+            }
+        }
+        b++
+    }
+    if e == OK && k != 0 { e, w = sys_write(h, &obuf[0], k) }
+    if e == OK && out < old { e = sys_setsize(h, out, 0) }
+    sys_close(h)
+    if e != OK { err_box("Cannot save", p, e); return 0 }
+    modif = 0
+    msg = "saved"
+    return 1
+}
+
+// F2: write; for text without a name - through "Save As".
+fn save(): uint {
+    if path[0] == 0 { return save_as() }
+    return save_to(&path[0])
+}
+
+// ---- "Save As": a browser window -------------------------------------------------
+// The list of the current directory (directories, then files, by name) and the name field. The directory entries
+// lie in a frame put into window B for the duration of the window.
+const BMAX = 200                // entries in the list, including ".."
+const BX = 4
+const BY = 1
+const BW = 72
+const BL = 16                   // list rows
+const BH = BL + 6
+var bents at $A000: [BMAX]Stat
+assert BMAX * sizeof(Stat) <= FRAME, "bents: one frame"
+var bord: [BMAX]byte
+var bn, bcur, btop, bfoc, bover: uint      // bfoc: 0 - the name field, 1 - the list
+var bdir: [256]byte
+var bname: [256]byte
+
+fn b_isdir(i: uint): uint { return uint(bents[bord[i]].size >> 16) & A_DIR }
+
+fn b_less(a: uint, b: uint): uint {         // a before b: directories first, then by name
+    var da: uint = uint(bents[a].size >> 16) & A_DIR
+    var db: uint = uint(bents[b].size >> 16) & A_DIR
+    if da != db { return da != 0 }
+    var p = &bents[a].name[0]
+    var q = &bents[b].name[0]
+    var k: uint = 0
+    while k < 32 {
+        var x: uint = lower(p[k])
+        var y: uint = lower(q[k])
+        if x != y { return x < y }
+        if x == 0 { return 0 }
+        k++
+    }
+    return 0
+}
+
+// Read the current directory. 0 - failed (the window with the error is shown).
+fn b_load(): uint {
+    var e, n: uint
+    e, n = sys_getcwd(&bdir[0], 256)
+    if e != OK { err_box("Save as", ".", e); return 0 }
+    var h, got: uint
+    e, h = sys_open(&bdir[0], O_READ, 0)
+    if e != OK { err_box("Save as", &bdir[0], e); return 0 }
+    n = 0
+    if strlen(&bdir[0]) > 3 {
+        var j: uint = 0
+        while j < 32 { bents[0].name[j] = 0; j++ }
+        bents[0].name[0] = '.'
+        bents[0].name[1] = '.'
+        bents[0].size = ulong(A_DIR) << 16
+        n = 1
+    }
+    var first: uint = n
+    bover = 0
+    loop {
+        if n == BMAX { bover = 1; break }
+        e, got = sys_readdir(h, &bents[n])
+        if e != OK || got == 0 { break }
+        n++
+    }
+    sys_close(h)
+    var i: uint = 0
+    while i < n { bord[i] = byte(i); i++ }
+    // insertion sort: directories on the machine are small
+    i = first + 1
+    while i < n {
+        var v: uint = bord[i]
+        var j2: uint = i
+        while j2 > first && b_less(v, bord[j2 - 1]) != 0 { bord[j2] = bord[j2 - 1]; j2-- }
+        bord[j2] = byte(v)
+        i++
+    }
+    bn = n
+    bcur = 0
+    btop = 0
+    return 1
+}
+
+fn b_draw() {
+    box(BX, BY, BW, BH, A_DLG)
+    putsc(BX, BY, BW, A_DLG, " Save as ")
+    var d = &bdir[0]
+    var l: uint = strlen(d)
+    if l > BW - 4 { d = d + (l - (BW - 4)) }
+    fill(BX + 1, BY + 1, BW - 2, ' ', A_DLG)
+    putsn(BX + 2, BY + 1, A_DLG, d, BW - 4)
+    if bcur < btop { btop = bcur }
+    if bcur >= btop + BL { btop = bcur - BL + 1 }
+    var r: uint = 0
+    while r < BL {
+        var i: uint = btop + r
+        var a: uint = A_DLG
+        if i == bcur && bn != 0 { a = A_CUR }
+        fill(BX + 2, BY + 2 + r, BW - 4, ' ', a)
+        if i < bn {
+            var s: ptr Stat = &bents[bord[i]]
+            var nm: [34]byte
+            var k: uint = 0
+            while k < 32 && s.name[k] != 0 { nm[k] = s.name[k]; k++ }
+            nm[k] = 0
+            putsn(BX + 3, BY + 2 + r, a, &nm[0], BW - 18)
+            mb_clear()
+            if b_isdir(i) != 0 { mb_s("<DIR>") } else { mb_ul(s.size & SIZE_MASK) }
+            putsa(BX + BW - 3 - mbn, BY + 2 + r, a, &mb[0])
+        }
+        r++
+    }
+    if bover != 0 { putsn(BX + 2, BY + BL + 2, A_DLG, "(the list is cut)", BW - 4) }
+    else { fill(BX + 1, BY + BL + 2, BW - 2, ' ', A_DLG) }
+    putsn(BX + 2, BY + BL + 3, A_DLG, "Name:", 6)
+    var fw: uint = BW - 11
+    var n: uint = strlen(&bname[0])
+    var s2 = &bname[0]
+    if n >= fw { s2 = s2 + (n - fw + 1) }
+    putsn(BX + 8, BY + BL + 3, A_DLGIN, s2, fw)
+    putsn(BX + 2, BY + BL + 4, A_DLG, "Enter - save / open   Tab - list / name   Esc - cancel", BW - 4)
+    if bfoc == 0 {
+        var cx: uint = n
+        if cx >= fw { cx = fw - 1 }
+        cursor_at(BX + 8 + cx, BY + BL + 3)
+    } else {
+        cursor_off()
+    }
+}
+
+// Put the list cursor; on a file - its name goes into the name field.
+fn b_move(i: uint) {
+    if bn == 0 { return }
+    if i >= bn { i = bn - 1 }
+    bcur = i
+    bfoc = 1
+    if b_isdir(i) == 0 {
+        var s: ptr Stat = &bents[bord[i]]
+        var k: uint = 0
+        while k < 32 && s.name[k] != 0 { bname[k] = s.name[k]; k++ }
+        bname[k] = 0
+    }
+}
+
+// The "Save As" window: the file path goes into out. 1 - chosen, 0 - cancelled.
+fn browse(out: ptr byte): uint {
+    var f: uint = $FFFF
+    var e, fx: uint
+    e, fx = sys_xalloc()
+    if e != OK { msg = "not enough memory"; return 0 }
+    f = fx
+    map_b(f)
+    // the initial directory and name are from the current file
+    bname[0] = 0
+    if path[0] != 0 {
+        var n: uint = strlen(&path[0])
+        var k: uint = n
+        while k > 0 && path[k - 1] != '/' && path[k - 1] != ':' { k-- }
+        strcpy(&bname[0], &path[k])
+        var dir: [256]byte
+        var i: uint = 0
+        while i < k { dir[i] = path[i]; i++ }
+        dir[k] = 0
+        if k > 0 { ign = sys_chdir(&dir[0]) }
+    }
+    var r: uint = 0
+    bfoc = 0
+    if b_load() == 0 { drop_frame(f); sys_chdir(&cwd0[0]); return 0 }
+    loop {
+        map_b(f)
+        b_draw()
+        var ev: uint = getkey()
+        var c: uint = ev & $FF
+        var sc: uint = ev >> 8
+        if c == C_ESC { break }
+        if c == 0 {
+            if sc == K_UP { if bcur > 0 { b_move(bcur - 1) } else { b_move(0) } }
+            else if sc == K_DOWN { b_move(bcur + 1) }
+            else if sc == K_PGUP { if bcur > BL - 1 { b_move(bcur - (BL - 1)) } else { b_move(0) } }
+            else if sc == K_PGDN { b_move(bcur + BL - 1) }
+            else if sc == K_HOME { b_move(0) }
+            else if sc == K_END { b_move($FFFF) }
+            continue
+        }
+        if c == C_TAB { bfoc ^= 1; continue }
+        if c == C_ENTER {
+            if bfoc != 0 && bn != 0 && b_isdir(bcur) != 0 {
+                var s: ptr Stat = &bents[bord[bcur]]
+                var nm: [34]byte
+                var k2: uint = 0
+                while k2 < 32 && s.name[k2] != 0 { nm[k2] = s.name[k2]; k2++ }
+                nm[k2] = 0
+                if sys_chdir(&nm[0]) == OK { ign = b_load() }
+                continue
+            }
+            if bname[0] == 0 { continue }
+            if sys_chdir(&bname[0]) == OK {     // the name is a directory (or the volume "1:"): go into it
+                bname[0] = 0
+                bfoc = 0
+                ign = b_load()
+                continue
+            }
+            var pe: uint = canon(&bname[0], out)
+            if pe != OK { err_box("Save as", &bname[0], pe); continue }
+            var st: Stat
+            if sys_stat(out, &st) == OK {
+                var a: uint = dlg_ask("Save as", out, "The file exists. Overwrite it?", "[Y]es   [N]o", "yn", DA_NOENTER)
+                if a != 'y' { continue }
+            }
+            r = 1
+            break
+        }
+        bfoc = 0
+        var n2: uint = strlen(&bname[0])
+        if c == C_BS { if n2 != 0 { bname[n2 - 1] = 0 } }
+        else if c == $15 { bname[0] = 0 }
+        else if c >= $20 && n2 < 255 { bname[n2] = byte(c); bname[n2 + 1] = 0 }
+    }
+    cursor_off()
+    drop_frame(f)
+    sys_chdir(&cwd0[0])
+    full = 1
+    return r
+}
+
+// Shift+F2, F12: write under another name; the editor then works with that file.
+fn save_as(): uint {
+    var np: [256]byte
+    if browse(&np[0]) == 0 { return 0 }
+    if save_to(&np[0]) == 0 { return 0 }
+    strcpy(&path[0], &np[0])
+    ro = 0
+    return 1
+}
+
+// ---- search and replace ---------------------------------------------------------------------
+// The first occurrence of s from position from ignoring letter case; NONE - none. A block is scanned
+// in window A; an occurrence across a block boundary is compared via ch().
+fn find(from: ulong, s: ptr byte): ulong {
+    var m: uint = strlen(s)
+    if m == 0 { return NONE }
+    var pat: [DLG_FW + 1]byte
+    var k: uint = 0
+    while k < m { pat[k] = byte(lower(s[k])); k++ }
+    var c0: uint = pat[0]
+    var c1: uint = c0
+    if c0 >= 'a' && c0 <= 'z' || c0 >= $E0 { c1 = c0 - $20 } else if c0 == $A3 { c1 = $B3 }
+    var i: ulong = from
+    while i + m <= tl {
+        var off: uint = seg(i)
+        var base: ulong = cbs
+        var n: uint = blen[cb]
+        while off < n {
+            var c: uint = WA[off]
+            if c == c0 || c == c1 {
+                if off + m <= n {
+                    k = 1
+                    while k < m {
+                        c = WA[off + k]
+                        if c >= 'A' && c <= 'Z' || c >= $C0 && c <= $DF { c += $20 } else if c == $B3 { c = $A3 }
+                        if c != pat[k] { break }
+                        k++
+                    }
+                    if k == m { return base + off }
+                } else {
+                    var hit: ulong = base + off
+                    if hit + m > tl { return NONE }
+                    k = 1
+                    while k < m && lower(ch(hit + k)) == pat[k] { k++ }
+                    if k == m { return hit }
+                    off = seg(hit)          // ch() may have put another block in the window
+                }
+            }
+            off++
+        }
+        i = base + n
+    }
+    return NONE
+}
+
+// The found text becomes the selection, the cursor goes to its end (repeating the search goes further).
+fn found(p: ulong, m: uint) {
+    setcur(p + m)
+    sel = 1
+    sa = p
+    full = 1
+}
+
+fn search(again: uint) {
+    if again == 0 || sstr[0] == 0 {
+        if dlg_input("Search", "Search for (letter case is ignored):", &sstr[0], DLG_FW) == 0 { full = 1; return }
+        full = 1
+    }
+    var p: ulong = find(cur, &sstr[0])
+    if p == NONE { msg = "not found"; return }
+    found(p, strlen(&sstr[0]))
+}
+
+// The cursor line is not under the question window (screen rows 8..14): otherwise as the third line.
+fn clear_dialog() {
+    fix_view()
+    var r: uint = TTOP + cur_row()
+    if r + 1 >= 8 && r <= 15 {
+        top = lstart(cur)
+        var k: uint = 0
+        while k < 2 && top > 0 { top = lstart(top - 1); k++ }
+    }
+}
+
+// F4: replace; the whole replacement is one undo step.
+fn replace() {
+    if dlg_input("Replace", "Search for (letter case is ignored):", &sstr[0], DLG_FW) == 0 { full = 1; return }
+    if sstr[0] == 0 { full = 1; return }
+    if dlg_input("Replace", "Replace with:", &rstr[0], DLG_FW) == 0 { full = 1; return }
+    full = 1
+    ed_begin(0)
+    var m: uint = strlen(&sstr[0])
+    var rl: uint = strlen(&rstr[0])
+    var all: uint = 0
+    var cnt: ulong = 0
+    var p: ulong = cur
+    if has_sel() != 0 { var s0, e0: ulong; s0, e0 = blk(); p = s0 }
+    loop {
+        p = find(p, &sstr[0])
+        if p == NONE { break }
+        found(p, m)
+        if all == 0 {
+            clear_dialog()
+            show()
+            var a: uint = dlg_ask("Replace", "Replace this occurrence?", 0, "[Y]es   [N]o   [A]ll   [Esc] Stop", "yna", 0)
+            full = 1
+            if a == C_ESC { break }
+            if a == 'n' { p = p + 1; continue }
+            if a == 'a' { all = 1 }
+        }
+        // insert first: if there is no memory, the found text stays in place
+        sel = 0
+        setcur(p)
+        if ed_insb(&rstr[0], rl) == 0 { msg = "not enough memory"; break }
+        ed_delete(p + rl, p + rl + m)
+        setcur(p + rl)
+        p = p + rl
+        cnt++
+    }
+    sel = 0
+    if msg == 0 {
+        mb_clear()
+        mb_ul(cnt)
+        mb_s(" replaced")
+        strcpy(&msgbuf[0], &mb[0])
+        msg = &msgbuf[0]
+    }
+}
+
+// ---- go to line ------------------------------------------------------------------------
+var gbuf: [10]byte
+
+fn goto_line() {
+    gbuf[0] = 0
+    full = 1
+    if dlg_input("Go to line", "Line number:", &gbuf[0], 7) == 0 { return }
+    var v: ulong = 0
+    var q = &gbuf[0]
+    while *q >= '0' && *q <= '9' { v = v * 10 + (*q - '0'); q++ }
+    if *q != 0 || v == 0 { msg = "bad line number"; return }
+    sel = 0                     // a jump is a movement without Shift
+    var p: ulong = 0
+    var l: ulong = 1
+    if v > cline { p = lstart(cur); l = cline + 1 }
+    while l < v && p < tl {
+        p = lend(p)
+        if p < tl { p++; l++ }
+    }
+    setcur(p)
+}
+
+// ---- help ----------------------------------------------------------------------------
+var helptext: [19]ptr byte = {
+    "Arrows PgUp PgDn Home End  move;  Ctrl+Home, Ctrl+End  text start, end",
+    "Ctrl+Left, Ctrl+Right  by words.  With Shift - select;  Ctrl+A  all",
+    "Ctrl+C / Ctrl+X / Ctrl+V  copy / cut / paste (also Ctrl+Ins, Shift+Del,",
+    "            Shift+Ins); typing replaces the selection",
+    "Ctrl+Z      undo (up to 1000 steps)",
+    "Enter       new line (keeps the indent);  Ins  insert / overwrite",
+    "Backspace Del   delete;  Ctrl+Y  delete the line",
+    "F2, Ctrl+S  save;  Shift+F2, F12  save as",
+    "F7          search;  F3, Ctrl+L  search again;  F4  replace",
+    "F9, Ctrl+G  go to a line",
+    "F10, Esc    quit (asks to save the changes)",
+    "Ctrl+B, Ctrl+E  text start, end (terminals without modifiers)",
+    "",
+    "Search ignores letter case. Files with \\r\\n line ends are",
+    "written back with \\r\\n (CRLF in the status line).",
+    "",
+    "Press any key",
+    "",
+    ""
+}
+
+fn help() {
+    var x: uint = 3
+    var y: uint = 2
+    box(x, y, 74, 19, A_DLG)
+    putsc(x, y, 74, A_DLG, " edit - text editor ")
+    var i: uint = 0
+    while i < 17 {
+        putsa(x + 3, y + 1 + i, A_DLG, helptext[i])
+        i++
+    }
+    cursor_off()
+    getkey()
+    full = 1
+}
+
+// ---- movement ---------------------------------------------------------------------------
+// The cursor k lines up or down, the column is want. The result is how many lines it moved.
+fn up(k: uint): uint {
+    var p: ulong = cur
+    var m: uint = 0
+    while m < k {
+        var ls: ulong = lstart(p)
+        if ls == 0 { break }
+        p = lstart(ls - 1)
+        m++
+    }
+    setcur(atcol(lstart(p), want))
+    return m
+}
+
+fn down(k: uint): uint {
+    var p: ulong = cur
+    var m: uint = 0
+    while m < k {
+        var le: ulong = lend(p)
+        if le >= tl { break }
+        p = le + 1
+        m++
+    }
+    setcur(atcol(lstart(p), want))
+    return m
+}
+
+// PgUp, PgDn: the text and the cursor by a page; the text does not go above the start or below the end.
+fn page_up() {
+    var m: uint = up(TROWS - 1)
+    while m != 0 && top > 0 { top = lstart(top - 1); m-- }
+    full = 1
+}
+
+fn page_down() {
+    var m: uint = down(TROWS - 1)
+    var b: ulong = top
+    var k: uint = 0
+    while k + 1 < TROWS && lend(b) < tl { b = lend(b) + 1; k++ }
+    while m != 0 && lend(b) < tl {
+        b = lend(b) + 1
+        top = lend(top) + 1
+        m--
+    }
+    full = 1
+}
+
+// A letter, digit, _ or a Cyrillic byte is part of a word (Ctrl+arrows).
+fn isword(c: uint): uint {
+    if c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '_' || c >= $80 { return 1 }
+    return 0
+}
+
+fn word_right() {
+    var p: ulong = cur
+    while p < tl && isword(ch(p)) != 0 { p++ }
+    while p < tl && (ch(p) == ' ' || ch(p) == 9) { p++ }
+    if p == cur && p < tl { p++ }
+    setcur(p)
+}
+
+fn word_left() {
+    var p: ulong = cur
+    while p > 0 && (ch(p - 1) == ' ' || ch(p - 1) == 9) { p-- }
+    while p > 0 && isword(ch(p - 1)) != 0 { p-- }
+    if p == cur && p > 0 { p-- }
+    setcur(p)
+}
+
+// Before a movement: with Shift the selection grows from the anchor, without Shift it is cleared.
+fn mv_begin(shift: uint) {
+    if shift != 0 {
+        if sel == 0 { sel = 1; sa = cur }
+    } else if sel != 0 {
+        sel = 0
+        full = 1
+    }
+}
+
+// ---- editing by keys -----------------------------------------------------------------
+var gprev: uint                 // gkind before this key press
+
+fn typed(c: uint) {
+    if has_sel() != 0 {
+        ed_begin(0)
+        if del_sel() == 0 { return }
+    } else {
+        ed_begin(1)
+    }
+    sel = 0
+    if ovr != 0 && cur < tl && ch(cur) != $0A { ed_delete(cur, cur + 1) }
+    var t: [2]byte
+    t[0] = byte(c)
+    if ed_insb(&t[0], 1) == 0 { msg = "not enough memory"; return }
+    setcur(cur + 1)
+    ed_end(1)
+}
+
+fn enter() {
+    ed_begin(0)
+    if del_sel() == 0 { return }
+    var ind: [128]byte
+    ind[0] = $0A
+    var ls: ulong = lstart(cur)
+    var n: uint = 1
+    while n < 121 && ls + (n - 1) < cur {
+        var c: uint = ch(ls + (n - 1))
+        if c != ' ' && c != 9 { break }
+        ind[n] = byte(c)
+        n++
+    }
+    if ed_insb(&ind[0], n) == 0 { msg = "not enough memory"; return }
+    setcur(cur + n)
+    full = 1
+}
+
+fn backspace() {
+    if has_sel() != 0 { ed_begin(0); ign = del_sel(); return }
+    if cur == 0 { return }
+    ed_begin(2)
+    ed_delete(cur - 1, cur)
+    ed_end(2)
+}
+
+fn delete_key() {
+    if has_sel() != 0 { ed_begin(0); ign = del_sel(); return }
+    if cur >= tl { return }
+    ed_begin(3)
+    ed_delete(cur, cur + 1)
+    ed_end(3)
+}
+
+fn del_line() {
+    sel = 0
+    var ls: ulong = lstart(cur)
+    var le: ulong = lend(cur)
+    if le < tl { le++ }
+    if le == ls { return }
+    if big_ok(le - ls) == 0 { return }
+    ed_begin(0)
+    ed_delete(ls, le)
+    full = 1
+}
+
+fn cut() {
+    if has_sel() == 0 { return }
+    if clip_copy() == 0 { return }
+    ed_begin(0)
+    ign = del_sel()
+}
+
+fn paste() {
+    if clen == 0 { msg = "the clipboard is empty"; return }
+    ed_begin(0)
+    if del_sel() == 0 { return }
+    var n: ulong = clen
+    if ed_stream(KCLIP, 0, n) == 0 { msg = "not enough memory"; full = 1; return }
+    setcur(cur + n)
+    full = 1
+}
+
+// 1 - exit.
+fn ask_quit(): uint {
+    if modif == 0 { return 1 }
+    var a: uint = dlg_ask("Quit", "The text has been changed.", "Save it?", "[Y]es   [N]o   [Esc] Cancel", "yn", 0)
+    full = 1
+    if a == 'y' { return save() }
+    if a == 'n' { return 1 }
+    return 0
+}
+
+const K_F12 = $58
+
+// A key press: 1 - exit.
+fn key(ev: uint): uint {
+    var c: uint = ev & $FF
+    var sc: uint = ev >> 8
+    var shift: uint = kmods & KM_SHIFT
+    var ctrl: uint = kmods & KM_CTRL
+    var vert: uint = 0
+    var otext: ulong = nlines
+    gprev = gkind
+    gkind = 0
+    if c == 0 {
+        if sc == K_LEFT { mv_begin(shift); if ctrl != 0 { word_left() } else if cur > 0 { setcur(cur - 1) } }
+        else if sc == K_RIGHT { mv_begin(shift); if ctrl != 0 { word_right() } else if cur < tl { setcur(cur + 1) } }
+        else if sc == K_UP { mv_begin(shift); ign = up(1); vert = 1 }
+        else if sc == K_DOWN { mv_begin(shift); ign = down(1); vert = 1 }
+        else if sc == K_PGUP { mv_begin(shift); page_up(); vert = 1 }
+        else if sc == K_PGDN { mv_begin(shift); page_down(); vert = 1 }
+        else if sc == K_HOME { mv_begin(shift); if ctrl != 0 { setcur(0) } else { setcur(lstart(cur)) } }
+        else if sc == K_END { mv_begin(shift); if ctrl != 0 { setcur(tl) } else { setcur(lend(cur)) } }
+        else if sc == K_INS {
+            if ctrl != 0 { ign = clip_copy() } else if shift != 0 { paste() } else { ovr ^= 1 }
+        }
+        else if sc == K_DEL { if shift != 0 { cut() } else { delete_key() } }
+        else if sc == K_F1 { help() }
+        else if sc == K_F2 { if shift != 0 { ign = save_as() } else { ign = save() } }
+        else if sc == K_F12 { ign = save_as() }
+        else if sc == K_F3 { search(1) }
+        else if sc == K_F4 { replace() }
+        else if sc == K_F7 { search(0) }
+        else if sc == K_F9 { goto_line() }
+        else if sc == K_F10 { return ask_quit() }
+    } else if c == C_ESC {
+        return ask_quit()
+    } else if c == C_ENTER {
+        enter()
+    } else if c == C_BS {
+        backspace()
+    } else if c == $01 {                    // Ctrl+A
+        sel = 1
+        sa = 0
+        setcur(tl)
+        full = 1
+    } else if c == $02 {                    // Ctrl+B
+        mv_begin(shift)
+        setcur(0)
+    } else if c == $03 {                    // Ctrl+C
+        ign = clip_copy()
+    } else if c == $05 {                    // Ctrl+E
+        mv_begin(shift)
+        setcur(tl)
+    } else if c == $07 {                    // Ctrl+G
+        goto_line()
+    } else if c == $0C {                    // Ctrl+L
+        search(1)
+    } else if c == $13 {                    // Ctrl+S
+        ign = save()
+    } else if c == $16 {                    // Ctrl+V
+        paste()
+    } else if c == $18 {                    // Ctrl+X
+        cut()
+    } else if c == $19 {                    // Ctrl+Y
+        del_line()
+    } else if c == $1A {                    // Ctrl+Z
+        undo()
+    } else if c == C_TAB || c >= $20 {
+        typed(c)
+    }
+    if nlines != otext { full = 1 }
+    if vert == 0 { want = colof(lstart(cur), cur) }
+    return 0
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "edit"
+    if argc > 2 { return usage("[file]") }
+    var e, n: uint
+    e, n = sys_getcwd(&cwd0[0], 256)
+    if argc == 2 {
+        if strlen(argv[1]) > 255 { fail(argv[1], E_BADPATH); return 1 }
+        if canon(argv[1], &path[0]) != OK { strcpy(&path[0], argv[1]) }
+    }
+    // the window pages must be free: process memory is not above PTOP
+    var mtop, fr, xf: uint
+    e, mtop, fr, xf = sys_meminfo()
+    if e != OK || mtop > PTOP { fail(0, E_NOMEM); return 1 }
+    var f: uint = new_frame()
+    if f == $FFFF { fail(0, E_NOMEM); return 1 }
+    tab_ins(0, f, 0)
+    var old: uint
+    e, old = sys_con_mode(CM_RAW | CM_NOBREAK)
+    scr_coord()
+    CON_ATTR = A_TEXT
+    CON_CMD = 1
+    if path[0] != 0 && load() == 0 { scr_tty(); return 1 }
+    jstep = 1
+    redraw_all()
+    loop {
+        var ev: uint = getkey()
+        msg = 0
+        if key(ev) != 0 { break }
+        cursor_off()
+        if full != 0 { draw_keys() }
+        show()
+    }
+    scr_tty()
+    return 0
+}

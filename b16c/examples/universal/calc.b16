@@ -1,0 +1,61 @@
+// calc.b16 - recursive expression parsing: several results (the value, the rest of the string).
+include "../../lib/io.b16"
+include "../../lib/string.b16"
+
+fn skip(s: ptr byte): ptr byte { while *s == ' ' { s++ }; return s }
+
+fn expr(s: ptr byte): int, ptr byte
+
+fn primary(s: ptr byte): int, ptr byte {
+    s = skip(s)
+    var v: int
+    if *s == '(' {
+        v, s = expr(s + 1)
+        s = skip(s)
+        if *s == ')' { s++ }
+        return v, s
+    }
+    if *s == '-' {
+        v, s = primary(s + 1)
+        return -v, s
+    }
+    var u: uint
+    u, s = atou(s)
+    return int(u), s
+}
+
+fn term(s: ptr byte): int, ptr byte {
+    var v, r: int
+    v, s = primary(s)
+    loop {
+        s = skip(s)
+        var op = *s
+        if op != '*' && op != '/' && op != '%' { return v, s }
+        r, s = primary(s + 1)
+        if op == '*' { v *= r } else if op == '/' { v /= r } else { v %= r }
+    }
+}
+
+fn expr(s: ptr byte): int, ptr byte {
+    var v, r: int
+    v, s = term(s)
+    loop {
+        s = skip(s)
+        var op = *s
+        if op != '+' && op != '-' { return v, s }
+        r, s = term(s + 1)
+        if op == '+' { v += r } else { v -= r }
+    }
+}
+
+var tests: [5]ptr byte = {"1 + 2 * 3", "(1 + 2) * 3", "100 / -7", "100 % 7 - -3", "2*(3+4)*(5-(6-7))"}
+
+fn main() {
+    var i: uint = 0
+    while i < 5 {
+        var v: int
+        v, _ = expr(tests[i])
+        puts(tests[i]); puts(" = "); puti(v); putnl()
+        i++
+    }
+}

@@ -1,0 +1,81 @@
+// tcon.b16 - the console script (shell): line and raw input, editing, Ctrl+Z,
+// NOECHO, NOBREAK. The keyboard is fed by the bench script tests/scripts/console.scn.
+include "tlib.b16"
+
+var b: [300]byte
+
+fn rd(n: uint): (uint, uint) {
+    var e, r: uint
+    var i: uint = 0
+    while i < 300 { b[i] = 0; i++ }
+    e, r = sys_read(STDIN, &b[0], n)
+    return e, r
+}
+
+fn main(): int {
+    var e, n, md, ev: uint
+
+    puts("L1\n")
+    e, n = rd(100)
+    check(e == 0 && n == 6 && streq(&b[0], "hello\n") != 0, "line: READ returns the line with \\n")
+
+    puts("L2\n")
+    e, n = rd(100)
+    check(e == 0 && streq(&b[0], "abc\n") != 0, "line: Backspace deletes the last character")
+
+    puts("L3\n")
+    e, n = rd(100)
+    check(e == 0 && streq(&b[0], "ok\n") != 0, "line: Ctrl+U deletes the line")
+
+    puts("L4\n")
+    e, n = rd(3)
+    check(e == 0 && n == 3 && streq(&b[0], "123") != 0, "line: partial READ, first part")
+    e, n = rd(100)
+    check(e == 0 && n == 4 && streq(&b[0], "456\n") != 0, "line: rest of the line on the next READ")
+
+    puts("L5\n")
+    e, n = rd(100)
+    check(e == 0 && n == 0, "line: Ctrl+Z at line start -> end of file")
+    e, n = rd(100)
+    check(e == 0 && streq(&b[0], "a\x1Ab\n") == 0 && streq(&b[0], "ab\n") != 0, "line: Ctrl+Z inside a line is ignored")
+
+    puts("L6\n")
+    e, md = sys_con_mode(CM_NOECHO)
+    e, n = rd(100)
+    check(e == 0 && streq(&b[0], "secret\n") != 0, "line: NOECHO reads the line")
+    e, md = sys_con_mode(0)
+    check(md == CM_NOECHO, "mode: CON_MODE returns the old mode")
+    e, md = sys_con_mode(8)
+    check(e == E_INVAL, "mode: unknown bit -> INVAL")
+
+    puts("L7\n")
+    e, md = sys_con_mode(CM_RAW)
+    e, n = rd(100)
+    check(e == 0 && n >= 1 && b[0] == 'x', "raw: READ returns available characters without Enter")
+    if n == 1 {
+        e, n = rd(100)
+        check(e == 0 && b[0] == 'y', "raw: next character")
+    } else {
+        check(b[1] == 'y', "raw: next character")
+    }
+
+    puts("L8\n")
+    e, md = sys_con_mode(CM_RAW | CM_NOBREAK)
+    e, ev = sys_con_getev(0)
+    check(e == 0 && ev & $FF == 3, "nobreak: raw mode delivers Ctrl+C as an event")
+
+    puts("L9\n")
+    e, md = sys_con_mode(CM_NOBREAK)
+    e, n = rd(100)
+    check(e == E_INTR, "nobreak: Ctrl+C cancels the line, READ -> INTR, process continues")
+    e, n = rd(100)
+    check(e == 0 && streq(&b[0], "after\n") != 0, "nobreak: next line after the cancelled one")
+
+    e, md = sys_con_mode(0)
+    puts("L10\n")
+    e = sys_sleep(5)
+    check(sys_con_flush() == 0, "flush: CON_FLUSH")
+    e, ev = sys_con_getev(EV_NOWAIT)
+    check(e == E_AGAIN, "flush: buffer is empty after CON_FLUSH")
+    return finish()
+}

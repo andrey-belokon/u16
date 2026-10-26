@@ -1,0 +1,69 @@
+// mon.b16 - common functions of the monitor examples: how the program was started, output of characters, numbers and errors.
+// Supplements the output from sys.b16 (puts, putnl, putdec, puthex - four digits); everything goes through
+// WRITE to the standard streams, so output can be redirected (prog > file).
+
+var PIB_SIG at $0006: uint      // "CXPB" at $0004 - the program was started by the monitor (CX16 format, sect. 4)
+
+// 1 - the program was started by the monitor. On a bare machine $0004 holds the "CX16" header, there is no
+// TRAP #9 handler, and the monitor cannot be called.
+fn on_monitor(): uint {
+    if PIB_SIG == $4250 { return 1 }    // 'P' | 'B' << 8
+    return 0
+}
+
+fn putc(c: byte) {
+    var b: [2]byte
+    b[0] = c
+    var e, n: uint
+    e, n = sys_write(STDOUT, &b[0], 1)
+}
+
+fn eputs(s: ptr byte) {
+    var e, n: uint
+    e, n = sys_write(STDERR, s, strlen(s))
+}
+
+// Unsigned decimal, 32 bits, to stream h.
+fn fputudec(h: uint, v: ulong) {
+    var buf: [11]byte
+    var i: uint = 10
+    buf[10] = 0
+    loop {
+        i--
+        buf[i] = byte(v % 10) + '0'
+        v /= 10
+        if v == 0 { break }
+    }
+    var e, n: uint
+    e, n = sys_write(h, &buf[i], 10 - i)
+}
+
+fn putudec(v: ulong) { fputudec(STDOUT, v) }
+fn eputdec(v: uint) { fputudec(STDERR, ulong(v)) }
+
+// The low digits (1..4) hexadecimal digits.
+fn puthexn(v: uint, digits: uint) {
+    var buf: [5]byte
+    var i = digits
+    buf[digits] = 0
+    while i != 0 {
+        i--
+        var d = v & 15
+        if d < 10 { buf[i] = byte(d) + '0' } else { buf[i] = byte(d) + ('A' - 10) }
+        v >>= 4
+    }
+    puts(&buf[0])
+}
+
+// The message "prog: object: text" to the error stream, as the utilities do ("Shell", sect. 4.3).
+fn fail(prog, obj: ptr byte, e: uint) {
+    eputs(prog); eputs(": ")
+    if obj != 0 { eputs(obj); eputs(": ") }
+    if e == E_NOENT { eputs("no such file or directory") }
+    else if e == E_ISDIR { eputs("is a directory") }
+    else if e == E_NOEXEC { eputs("not an executable") }
+    else if e == E_RDONLY { eputs("read-only") }
+    else if e == E_NOMEM { eputs("not enough memory") }
+    else { eputs("error "); eputdec(e) }
+    eputs("\n")
+}

@@ -1,0 +1,49 @@
+// df [X ...] - mounted volumes: the letter, label, total and free KB, mode.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+var vi: VolInfo
+
+fn show(d: uint): uint {
+    var e: uint = sys_volinfo(d, &vi)
+    if e != OK { return e }
+    fputdrv(STDOUT, d)
+    puts("  ")
+    var lab: [17]byte
+    var j: uint = 0
+    while j < 16 { lab[j] = vi.label[j]; j++ }
+    lab[16] = 0
+    puts(&lab[0])
+    j = strlen(&lab[0])
+    while j < 16 { puts(" "); j++ }
+    fputul(STDOUT, ulong(vi.clusters) * 2, 8)
+    puts(" KB")
+    fputul(STDOUT, ulong(vi.free) * 2, 8)
+    puts(" KB free  ")
+    if vi.flags == 0 { puts("rw") } else {
+        puts("ro")
+        if vi.flags & MNT_DIRTY != 0 { puts(" dirty") }
+        if vi.flags & MNT_PROTECT != 0 { puts(" protected") }
+    }
+    putnl()
+    return OK
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "df"
+    if argc < 2 {
+        var d: uint = 0
+        while d < 8 { ign = show(d); d++ }
+        return 0
+    }
+    var bad: uint = 0
+    var i: uint = 1
+    while i < argc {
+        var d: uint = drive_arg(argv[i])
+        if d == $FFFF { return usage("[A-H ...]") }
+        var e2: uint = show(d)
+        if e2 != OK { fail(argv[i], e2); bad = 1 }
+        i++
+    }
+    return int(bad)
+}

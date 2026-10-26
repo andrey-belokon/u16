@@ -1,0 +1,17 @@
+// rm file ... - delete files.
+include "ulib.b16"
+option max_top = $6000         // 24 KB is enough for the utility ("Shell", sect. 8.1)
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    prog = "rm"
+    if argc < 2 { return usage("file ...") }
+    var bad: uint = 0
+    var i: uint = 1
+    while i < argc {
+        var e: uint = OK
+        if is_dir(argv[i]) != 0 { e = E_ISDIR } else { e = sys_delete(argv[i]) }
+        if e != OK { fail(argv[i], e); bad = 1 }
+        i++
+    }
+    return int(bad)
+}

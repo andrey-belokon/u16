@@ -1,0 +1,17 @@
+// Far memory turnover: large structures are created and thrown away, live data is preserved
+var keep = {}
+var round = 0
+while round < 12 {
+    var tmp = []
+    var i = 0
+    while i < 2500 { tmp.push("r" + str(round) + "-" + str(i)); i++ }
+    keep["r" + str(round)] = tmp[round * 100]
+    round++
+}
+var r = 0
+var ok = 0
+while r < 12 {
+    if keep["r" + str(r)] == "r" + str(r) + "-" + str(r * 100) { ok++ }
+    r++
+}
+println($"rounds {|round|} ok {|ok|}")

@@ -1,0 +1,11 @@
+// extern errors: a body on an extern function, extern together with a B16 definition, combinations of markers.
+extern fn both(): int
+fn both(): int { return 1 }
+fn defined(): int { return 2 }
+extern fn defined(): int
+extern fn withbody() { }
+extern static fn bad1()
+static extern fn bad2()
+export extern fn bad3()
+extern var v: int
+fn main() { }

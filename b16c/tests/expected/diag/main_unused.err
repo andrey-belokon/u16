@@ -1,0 +1,2 @@
+tests/diag/main_unused.b16:4: warning: parameter a is not used
+rc 0

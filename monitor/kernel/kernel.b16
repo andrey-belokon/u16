@@ -1,0 +1,77 @@
+// kernel.b16 - the CPU16 monitor kernel ("CPU16 Monitor: Kernel Internals").
+// Build: b16c -Werror kernel.b16 -o kernel.s; the result is included by monitor.asm.
+
+// Layout ("CPU16 Monitor: Kernel Internals", sect. 8.2): at $0000 a jump to the initial code from monitor.asm,
+// kernel code from $0004 to $7FFF, data and bss from page 4 ($8000), the data image is copied by
+// __init_data. klib.asm holds the assembly functions and the call table.
+option target = kernel
+option code = $0004
+option data = $8000
+include asm "klib.asm"
+include "abi.b16"
+include "res.b16"
+include "ktypes.b16"
+include "mm.b16"
+include "console.b16"
+include "disk.b16"
+include "fsdefs.b16"
+include "fs_cache.b16"
+include "fs_volume.b16"
+include "fs_file.b16"
+include "fs_dir.b16"
+include "fs_path.b16"
+include "fsk.b16"
+include "fd.b16"
+include "proc.b16"
+include "sess.b16"
+include "time.b16"
+include "sys.b16"
+
+extern fn resume()              // resident.asm: exit from the kernel into the current process
+
+// Mounting all connected disks at startup (sect. 6.3).
+fn mount_all() {
+    var d: uint = 0
+    while d < NVOL {
+        if disk_present(d) != 0 {
+            var e, m: uint
+            e, m = vol_mount(d, 0)
+            if e == OK && m & MNT_DIRTY != 0 {
+                kputs("monitor: volume ")
+                kputc('A' + d)
+                kputs(": was not unmounted cleanly (DIRTY), mounted read-only\n")
+            }
+        }
+        d++
+    }
+}
+
+// Called by the initial code: the kernel map, SP = KF, IF = 0, the vectors are filled in.
+export fn kmain() {
+    win_idle()
+    kzero(&RES, sizeof(ResData))
+    frames_init()
+    var i: uint = 0
+    while i < MAXPROC { proc_init(&procs[i]); i++ }
+    CON_CTRL = 3
+    CON_ATTR = $07
+    DK_CTRL = 1                 // IEN: IRQ1 on command completion
+    kputs("CPU16 monitor, revision 6\n")
+    mount_all()
+    if vols[0].fl & V_MOUNT == 0 {
+        kputs("monitor: disk 0 is not mounted\n")
+        halt()
+    }
+    TIMER = 1
+    var e, s: uint
+    e, s = sess_create()        // session 0
+    if e == OK { e = shell_start(s) }
+    if e != OK {
+        kputs("monitor: cannot start the shell, error $")
+        khex(e)
+        kputc($0A)
+        halt()
+    }
+    RES.kf_set = 0
+    resume()
+}

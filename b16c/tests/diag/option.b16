@@ -1,0 +1,15 @@
+// option: image parameters in the source text (sect. 3.6) - parse errors.
+const TOP = $A000
+option max_top = TOP
+option max_top = $8000
+option min_free = 4095
+option code = $10000
+option stack = 1
+option target = rom
+option data = LATER
+const LATER = $8000
+option = 1
+include "../inc/option_lib.b16"
+// option is a contextual word: option names in functions do not interfere
+fn option(option: uint): uint { var r = option; return r }
+fn main() { option(1) }

@@ -1,0 +1,65 @@
+// run.b16 - processes under the monitor: run a command, redirect its output, get the exit code.
+//
+//     run [-o file] program [argument ...]
+//
+// SPAWN ("System Calls", sect. 7.1) loads a program and waits for it to finish; the monitor does no search through
+// directories, so the path is full: run -o A:/tmp/ls.txt A:/bin/ls.cx -l.
+// The command line is assembled from the arguments; an argument with a space is put in quotes
+// ("CPU16 Monitor: Executable File Format and Program Startup", sect. 5.2). The child gets streams 0 and 2 from run, stream 1 is
+// the file from -o (OPEN with O_CREATE | O_TRUNC) or also from run. Finally run reports the exit
+// code of the child and the time by TICKS.
+include "sys.b16"                       // monitor calls and output: puts, putnl, putdec, puthex
+include "mon.b16"                       // how the program was started, and output of numbers and errors
+option max_top = $2000
+
+var cmd: [256]byte
+var ncmd: uint
+
+// Append a word to the command line; 0 - the line is longer than 255 bytes.
+fn add(s: ptr byte): uint {
+    var q: uint = 0
+    var i: uint = 0
+    while s[i] != 0 { if s[i] == ' ' { q = 1 }; i++ }
+    if ncmd + i + 2 * q + 1 > 255 { return 0 }
+    if ncmd != 0 { cmd[ncmd] = ' '; ncmd++ }
+    if q != 0 { cmd[ncmd] = '"'; ncmd++ }
+    i = 0
+    while s[i] != 0 { cmd[ncmd] = s[i]; ncmd++; i++ }
+    if q != 0 { cmd[ncmd] = '"'; ncmd++ }
+    cmd[ncmd] = 0
+    return 1
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    if on_monitor() == 0 { return 1 }    // there are no monitor calls on a bare machine
+    var a: uint = 1
+    var out: ptr byte = 0
+    if a + 1 < argc && argv[a][0] == '-' && argv[a][1] == 'o' && argv[a][2] == 0 { out = argv[a + 1]; a += 2 }
+    if a >= argc { eputs("usage: run [-o file] program [arg ...]\n"); return 2 }
+    while a < argc {
+        if add(argv[a]) == 0 { eputs("run: command line too long\n"); return 2 }
+        a++
+    }
+    var e: uint
+    var fout: uint = SAME               // $FFFF - the same descriptor as run has
+    if out != 0 {
+        e, fout = sys_open(out, O_WRITE | O_CREATE | O_TRUNC, 0)
+        if e != OK { fail("run", out, e); return 1 }
+    }
+    var t0, t1: ulong
+    var code: uint
+    e, t0 = sys_ticks()
+    e, code = sys_spawn(&cmd[0], SAME, fout, SAME)
+    var e2: uint
+    e2, t1 = sys_ticks()
+    if out != 0 { e2 = sys_close(fout) }
+    if e != OK { fail("run", &cmd[0], e); return 1 }
+    eputs("run: ")
+    eputs(&cmd[0])
+    if out != 0 { eputs(" > "); eputs(out) }
+    eputs("\n")
+    puts("exit code "); putdec(code)
+    if code >= $8000 { puts(" ($"); puthex(code); puts(")") }
+    puts(", "); putudec((t1 - t0) * 20); puts(" ms\n")
+    return 0
+}

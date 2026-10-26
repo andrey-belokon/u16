@@ -1,0 +1,32 @@
+// t7: long and ulong in local arrays and structs (both initialization styles), static, pointers
+var OUT at $FF20: byte
+struct P { a: long; b: int; c: ulong }
+var t32: ulong
+fn putc(c: byte) { OUT = c }
+fn hex(v: uint) { var i = 0; while i < 4 { var d = (v >> 12) & 15; if d < 10 { putc(byte(d + 48)) } else { putc(byte(d + 55)) }; v <<= 4; i++ } }
+fn put32() { var pw: ptr uint = ptr uint(&t32); hex(pw[1]); hex(pw[0]); putc(10) }
+fn counter() {
+    static var n: long = 70000
+    t32 = ulong(n); put32()
+    n = long(t32) 
+}
+fn main() {
+    var x: long = -2
+    var small: [3]long = {1, x, 100000}
+    var big: [5]long = {7, 8, x, 100000, $7FFFFFFF}
+    var p: P = {-5, 3, $FFFF0000}
+    var i: uint = 0
+    while i < 3 { t32 = ulong(small[i]); put32(); i++ }
+    i = 0
+    while i < 5 { t32 = ulong(big[i]); put32(); i++ }
+    t32 = ulong(p.a); put32(); t32 = ulong(p.b); put32(); t32 = ulong(p.c); put32()
+    counter()
+    var q: ptr long = &big[2]
+    *q = 12345678
+    t32 = ulong(big[2]); put32()
+    q = q + 1
+    t32 = ulong(*q); put32()
+    var pp: ptr P = &p
+    pp.c = pp.a
+    t32 = ulong(p.c); put32()
+}

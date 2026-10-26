@@ -1,0 +1,103 @@
+// test: bare-only (its own vector table and interrupts)
+// B16 demo
+var CONSOLE at $FF20: byte          // console port: writing a byte prints the character
+
+var ticks: uint
+var VEC at $FF00: [16]ptr interrupt fn()
+var buf: [32]byte
+var table: [5]int = {10, -20, 30, -40, 50}
+var hello = "Hello, B16!\n"
+
+struct Node { next: ptr Node; val: int }
+var nodes: [3]Node
+
+fn putc(c: byte) { CONSOLE = c }
+
+fn puts(s: ptr byte) {
+    var c: byte
+    while (c = *s++) != 0 { putc(c) }
+}
+
+fn strlen(s: ptr byte): uint {
+    var p = s
+    while *p++ != 0 {}
+    return p - s - 1
+}
+
+fn memcpy(d: ptr byte, s: ptr byte, n: uint) {
+    while n != 0 { *d++ = *s++; n -= 1 }
+}
+
+fn divmod(a, b: uint): uint, uint {
+    return a / b, a % b
+}
+
+fn putu(v: uint) {
+    var tmp: [6]byte
+    var i: uint = 0
+    loop {
+        var q, r: uint
+        q, r = divmod(v, 10)
+        tmp[i] = byte(r) + '0'
+        i++
+        v = q
+        if v == 0 { break }
+    }
+    while i != 0 { i--; putc(tmp[i]) }
+}
+
+fn puti(v: int) {
+    if v < 0 { putc('-'); v = -v }
+    putu(uint(v))
+}
+
+fn sum(n: ptr Node): int {
+    var s: int = 0
+    while n != 0 { s += n.val; n = n.next }
+    return s
+}
+
+fn swap(a, b: int): int, int { return b, a }
+
+fn many(a, b, c, d, e, f: int): int {
+    return a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6
+}
+
+fn fib(n: uint): uint {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn sdiv(a, b: int): int { return a / b }
+
+interrupt fn timer_isr() { ticks += 1 }
+
+fn main() {
+    puts(hello)
+    puts("Привет, ёлка! ╔═╗\n")
+    putu(strlen(hello)); putc('\n')
+    memcpy(&buf[0], "copy ok\n", 9)
+    puts(&buf[0])
+    var x, y: int
+    x, y = swap(3, 7)
+    puti(x); putc(' '); puti(y); putc('\n')
+    var i: uint = 0
+    var t: int = 0
+    while i < 5 { t += table[i]; i++ }
+    puti(t); putc('\n')
+    nodes[0].val = 5; nodes[0].next = &nodes[1]
+    nodes[1].val = 7; nodes[1].next = &nodes[2]
+    nodes[2].val = -2; nodes[2].next = 0
+    puti(sum(&nodes[0])); putc('\n')
+    puti(many(1, 2, 3, 4, 5, 6)); putc('\n')
+    putu(fib(15)); putc('\n')
+    puti(sdiv(-17, 5)); putc(' '); puti(-17 % 5); putc('\n')
+    var a: int = -17
+    puti(a / 5); putc(' '); puti(a % 5); putc(' '); puti(a >> 2); putc('\n')
+    var u: uint = 40000
+    putu(u >> 2); putc(' '); putu(mulhu(u, 3)); putc('\n')
+    atomic { ticks = 0 }
+    VEC[0] = timer_isr
+    trap(0)
+    putu(ticks); putc(10)
+}

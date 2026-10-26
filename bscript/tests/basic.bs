@@ -1,0 +1,65 @@
+// Numbers, strings, operations (sect. 2, 4, 8)
+println(1 + 2 * 3)
+println(-32768)
+println(32767 + 1)
+println($FFFF)
+println(0x7f + 0b101)
+println(-7 / 2)
+println(-7 % 2)
+println(7 % -2)
+println(-32768 / -1)
+println(-32768 % -1)
+println(1 << 15)
+println(-16 >> 2)
+println(-16 >>> 12)
+println(1 << 16)
+println(-1 >> 20)
+println(~0)
+println(6 & 3 | 8 ^ 1)
+println('A')
+println('\n')
+println("a" + "b" + `c"d`)
+var s = "hello"
+var n = 5
+println($"{|s|} has {|n|} bytes, {|n * 2|}; {|true|} {|null|}")
+println($`{"json": "{|s|}"}`)
+println($"esc \{| not sub |} {|n|}")
+println(1 == 1)
+println(1 == "1")
+println("abc" < "abd")
+println("ab" < "abc")
+println(null == null)
+println(null ?? 5)
+println(3 ?? 5)
+println(true && false || true)
+println(!false)
+println(type(1) + type("") + type([]) + type({}) + type(null) + type(true))
+var x = 10
+x += 5
+x -= 1
+x *= 2
+x /= 3
+x %= 5
+x <<= 3
+x >>= 1
+x |= 1
+x &= 7
+x ^= 2
+println(x)
+x++
+x--
+x++
+println(x)
+var t = "ab"
+t += "cd"
+println(t)
+println(min(3, -4))
+println(max(3, -4))
+println(abs(-9))
+println(str(12) + str(false))
+println(5 in [1, 5])
+println("ell" in "hello")
+println("k" in {"k": 1})
+print("no newline")
+println()
+eprintln("to stderr")

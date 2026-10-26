@@ -1,0 +1,4 @@
+// sys.b16 - the monitor interface for B16 programs ("System Calls", sect. 10): declarations
+// (sysdefs.b16) and call wrappers (sys.asm, an assembly module in the image, B16 sect. 10.4).
+include "sysdefs.b16"
+include asm "sys.asm"

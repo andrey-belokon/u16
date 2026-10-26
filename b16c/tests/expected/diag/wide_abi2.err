@@ -1,0 +1,8 @@
+tests/diag/wide_abi2.b16:3: warning: parameter a is not used
+tests/diag/wide_abi2.b16:4: error: return value 1: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, uint expected)
+tests/diag/wide_abi2.b16:6: error: return value 1: constant 70000 does not fit in int
+tests/diag/wide_abi2.b16:12: error: result 1: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, uint expected)
+tests/diag/wide_abi2.b16:13: error: argument 1: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, uint expected)
+tests/diag/wide_abi2.b16:14: error: argument 1: constant 70000 does not fit in uint
+tests/diag/wide_abi2.b16:16: error: result 1: a 32-bit value cannot be assigned to a narrower integer: use an explicit cast (long given, int expected)
+rc 1

@@ -1,0 +1,13 @@
+1 + 2 * 3 = 7
+(1 + 2) * 3 = 9
+x = 10 = 10
+y = x * x - 1 = 99
+y / 7 = 14
+y % 7 = 1
+-(x + answer) = -52
+2 * (3 +: syntax error: unexpected end at column 9
+5 / (x - 10): division by zero
+z + 1: z: undefined variable
+99999: 99999: invalid number
+1 $ 2: syntax error: extra text at column 3
+12 lines

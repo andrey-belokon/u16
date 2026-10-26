@@ -1,0 +1,19 @@
+// echo.b16 - line input: lines up to "." (or to the end of input) are converted to upper case and
+// printed backwards. On a bare machine the lines come from the keyboard, under the monitor - from
+// standard input: from the console or from a file (echo < echo.txt).
+// Run: cpu16 echo.bin < echo.txt
+include "../../lib/io.b16"
+include "../../lib/string.b16"
+
+fn main() {
+    var line: [80]byte
+    loop {
+        puts("> ")
+        var n, ok: uint
+        n, ok = readline(&line[0], 80)
+        if ok == 0 || n == 1 && line[0] == '.' { break }
+        while n != 0 { n--; putc(toupper(line[n])) }
+        putnl()
+    }
+    puts("bye\n")
+}

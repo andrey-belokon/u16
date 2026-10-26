@@ -1,0 +1,52 @@
+echo start
+mkdir /w
+echo abc > /w/f1
+cat /w/f1
+cp /w/f1 /w/f2
+cp /w/f1 /data
+cp /w/f1 /w/f1
+mv /w/f2 /w/f3
+ls /w
+mv /w/f3 B:/f3
+ls B:/
+cat B:/f3
+rm /w
+rmdir /w
+rm /w/none
+attr +r /w/f1
+attr /w/f1
+rm /w/f1
+attr -r /w/f1
+rm /w/f1
+rmdir /w
+df A b:
+df I
+umount B
+df 1
+mount b:
+ls B:/
+date 2030-05-06 13:14:15
+date
+echo a "b c" "" d > /t1
+cat /t1
+cat < /t1 | cat | cat
+ls /data | cat
+/sys/shell.cx A:/data/s2
+echo after nested
+cat /none 2> /err ; cat /err
+ls -l /data/hello.txt
+touch -t 2031-01-02 03:04:05 /data/hello.txt /data/new
+ls -l /data/hello.txt /data/new
+touch -t 2031-13-02 03:04:05 /x
+mkdir /c
+echo x > /c/a
+cp /c/a /C/A
+mv /c/a /c/A
+mkdir /c/d
+mv /c/d /C/D
+ls /c
+CD /c
+PWD
+LS
+cd /
+exit

@@ -1,0 +1,2176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CPU16 Debugger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ------------------------------------------------------------------------
+   Theme: light by default, dark by the system setting or the toggle.
+   One accent: the amber row of the current instruction. The rest is calm.
+   ------------------------------------------------------------------------ */
+:root {
+  --bg: #E3E8EE;        /* window background */
+  --pane: #FBFCFD;      /* panel background */
+  --hdr: #EEF2F6;       /* panel header */
+  --ink: #18212B;       /* main text */
+  --muted: #66717F;     /* secondary text */
+  --faint: #9AA4B1;     /* addresses, inactive */
+  --rule: #C9D1DA;      /* borders */
+  --accent: #2456C8;    /* focus, primary buttons */
+  --ip-bg: #FFE29A;     /* the current instruction row */
+  --ip-mark: #9A5B00;   /* the current instruction marker */
+  --cur-bg: #DCE6FA;    /* the selected row (cursor) */
+  --bp: #D2312B;        /* breakpoint */
+  --bp-bg: #FBE3E1;
+  --chg: #C62828;       /* changed value */
+  --label: #7438B0;     /* labels */
+  --data: #6B7785;      /* data in the disassembler */
+  --btn: #FFFFFF;
+  --btn-hover: #F0F4F9;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --row: 20px;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111519; --pane: #181D23; --hdr: #1E242C; --ink: #D9E1EA; --muted: #8C98A8; --faint: #5E6A79;
+    --rule: #2B333E; --accent: #7AA2FF; --ip-bg: #4A3B12; --ip-mark: #FFCB55; --cur-bg: #22324F;
+    --bp: #FF5A52; --bp-bg: #3C2022; --chg: #FF7A72; --label: #C9A0FF; --data: #8592A3;
+    --btn: #1E242C; --btn-hover: #26303B; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111519; --pane: #181D23; --hdr: #1E242C; --ink: #D9E1EA; --muted: #8C98A8; --faint: #5E6A79;
+  --rule: #2B333E; --accent: #7AA2FF; --ip-bg: #4A3B12; --ip-mark: #FFCB55; --cur-bg: #22324F;
+  --bp: #FF5A52; --bp-bg: #3C2022; --chg: #FF7A72; --label: #C9A0FF; --data: #8592A3;
+  --btn: #1E242C; --btn-hover: #26303B; color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  height: 100%; margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.4 var(--font-ui); display: flex; flex-direction: column; overflow: hidden;
+}
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------------- toolbar ---------------- */
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 8px 12px; border-bottom: 1px solid var(--rule); background: var(--hdr);
+}
+.toolbar h1 { font-size: 15px; font-weight: 600; margin: 0 6px 0 0; letter-spacing: 0; }
+.group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.group + .group { padding-left: 14px; border-left: 1px solid var(--rule); }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px;
+  border: 1px solid var(--rule); border-radius: 5px; background: var(--btn); cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: var(--btn-hover); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn kbd { font: 11px var(--font-mono); color: var(--muted); }
+.btn.primary { border-color: var(--accent); color: var(--accent); font-weight: 500; }
+.irq { width: 30px; height: 28px; justify-content: center; padding: 0; font-family: var(--font-mono); }
+.irq.pending { background: var(--ip-bg); border-color: var(--ip-mark); font-weight: 600; }
+.group-label { color: var(--muted); font-size: 13px; margin-right: 2px; }
+.loadat { width: 64px; height: 30px; padding: 0 6px; border: 1px solid var(--rule); border-radius: 5px; background: var(--pane); font-family: var(--font-mono); }
+.spacer { flex: 1; }
+input[type=file] { display: none; }
+
+/* ---------------- panel grid ---------------- */
+main {
+  /* panel sizes are set by the splitters (JS) and saved in the browser */
+  --right-w: 340px; --top-fr: 3fr; --bot-fr: 2fr; --con-h: 120px; --disp-gap: 0px; --disp-w: 0px;
+  flex: 1; min-height: 0; display: grid; gap: 0; padding: 6px;
+  grid-template-columns: minmax(0, 1fr) 6px var(--right-w) var(--disp-gap) var(--disp-w);
+  grid-template-rows: minmax(0, var(--top-fr)) 6px minmax(0, var(--bot-fr)) 6px var(--con-h);
+  grid-template-areas: "dis vs regs dg disp" "hsl vs hsr dg disp" "mem vs stack dg disp" "cs cs cs dg disp" "con con con dg disp";
+}
+/* ---------------- panel splitters ---------------- */
+.split { position: relative; z-index: 2; touch-action: none; outline: none; }
+.split.v { cursor: col-resize; }
+.split.h { cursor: row-resize; }
+#sp-v { grid-area: vs; } #sp-h1 { grid-area: hsl; } #sp-h1r { grid-area: hsr; } #sp-h2 { grid-area: cs; } #sp-d { grid-area: dg; }
+/* ---------------- display ---------------- */
+#disp { grid-area: disp; }
+.disp-body { display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; outline: none; }
+.disp-body:focus-visible, .disp-body:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.disp-body:fullscreen { box-shadow: none; }
+.disp-body canvas { display: block; }
+#b-display[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#b-display.attention { border-color: var(--ip-mark); background: var(--ip-bg); font-weight: 600; }
+.split::after { content: ""; position: absolute; border-radius: 2px; background: transparent; transition: background .1s; }
+.split.v::after { top: 0; bottom: 0; left: 2px; width: 2px; }
+.split.h::after { left: 0; right: 0; top: 2px; height: 2px; }
+.split:hover::after, .split.dragging::after, .split:focus-visible::after { background: var(--accent); }
+body.resizing, body.resizing * { user-select: none; }
+.pane {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--pane); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden;
+}
+.pane.focused { border-color: var(--accent); }
+.pane-head {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px; min-height: 32px;
+  background: var(--hdr); border-bottom: 1px solid var(--rule);
+}
+.pane-head h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.pane-head .hint { color: var(--muted); font-size: 12px; }
+.pane-head .goto {
+  margin-left: auto; width: 132px; height: 24px; padding: 0 6px; border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--pane); font: 12px var(--font-mono);
+}
+.pane-body { flex: 1; min-height: 0; overflow: hidden; font: 13px/var(--row) var(--font-mono); position: relative; }
+#dis { grid-area: dis; } #regs { grid-area: regs; } #mem { grid-area: mem; } #stack { grid-area: stack; } #con { grid-area: con; }
+
+/* ---------------- disassembler ---------------- */
+.drow {
+  display: grid; grid-template-columns: 18px 14px 5ch 11ch 6ch minmax(0, 1fr);
+  height: var(--row); align-items: center; white-space: nowrap; cursor: default; padding-right: 8px;
+}
+.drow > span { overflow: hidden; text-overflow: ellipsis; }
+.drow .gut { display: flex; justify-content: center; cursor: pointer; height: 100%; align-items: center; }
+.drow .gut::before { content: ""; width: 9px; height: 9px; border-radius: 50%; }
+.drow:hover .gut::before { box-shadow: inset 0 0 0 1px var(--faint); }
+.drow.bp .gut::before { background: var(--bp); box-shadow: none; }
+.drow.bp { background: var(--bp-bg); }
+.drow .mark { color: var(--ip-mark); font-size: 11px; text-align: center; }
+.drow .addr { color: var(--faint); }
+.drow .words { color: var(--muted); }
+.drow .mn { font-weight: 500; }
+.drow.data .mn, .drow.data .ops { color: var(--data); font-weight: 400; }
+.drow.cursor { background: var(--cur-bg); }
+.drow.ip { background: var(--ip-bg); }
+.drow.ip .addr, .drow.ip .words { color: var(--ink); }
+.drow.ip.bp .gut::before { box-shadow: 0 0 0 2px var(--ip-bg), 0 0 0 3px var(--bp); }
+.lrow { height: var(--row); padding-left: calc(18px + 14px); color: var(--label); white-space: nowrap; overflow: hidden; font-weight: 500; }
+.lrow.local { padding-left: calc(18px + 14px + 2ch); font-weight: 400; }
+.ops .sym { color: var(--label); }
+.drow .note { color: var(--faint); margin-left: 2ch; }
+.drow.data .note { color: var(--chg); opacity: .8; }
+
+/* ---------------- registers and flags ---------------- */
+.regs { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; padding: 6px 12px; }
+.reg { display: flex; justify-content: space-between; height: var(--row); }
+.reg .name { color: var(--muted); }
+.reg .val { cursor: text; padding: 0 2px; border-radius: 3px; }
+.reg .val:hover { background: var(--btn-hover); }
+.chg { color: var(--chg); font-weight: 600; }
+.flags { display: flex; gap: 6px; padding: 4px 12px 10px; flex-wrap: wrap; }
+.flag {
+  display: flex; flex-direction: column; align-items: center; width: 44px; padding: 3px 0;
+  border: 1px solid var(--rule); border-radius: 4px; background: var(--btn); cursor: pointer; font: 13px var(--font-mono);
+}
+.flag .fn { font-size: 11px; color: var(--muted); }
+.flag:hover { background: var(--btn-hover); }
+.subhead { padding: 4px 12px 0; font-size: 12px; color: var(--muted); }
+.mmu { display: grid; grid-template-columns: auto auto auto 1fr; column-gap: 12px; padding: 4px 12px 10px; align-items: center; }
+.mmu .en { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+.mmu .pg { color: var(--muted); }
+.mmu .frame { cursor: text; padding: 0 2px; border-radius: 3px; }
+.mmu .frame:hover { background: var(--btn-hover); }
+.mmu .pa { color: var(--faint); }
+.mmu.off .frame, .mmu.off .pa { opacity: .55; }
+.edit {
+  width: 6ch; height: calc(var(--row) - 2px); padding: 0 2px; border: 1px solid var(--accent); border-radius: 3px;
+  background: var(--pane); font: inherit;
+}
+.edit.byte { width: 3.2ch; }
+.rtc { display: grid; grid-template-columns: auto auto 1fr; column-gap: 12px; padding: 4px 12px 10px; align-items: center; }
+.rtc .head { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
+.rtc .now { cursor: text; padding: 0 2px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+.rtc .now:hover { background: var(--btn-hover); }
+.rtc .now .edit { width: 20ch; }
+.rtc .btn { height: 22px; padding: 0 8px; font-size: 12px; }
+.rtc .pg { color: var(--muted); }
+.rtc .pa { color: var(--faint); }
+.rtc .pa.bad { color: var(--chg); }
+
+/* ---------------- stack ---------------- */
+.srow { display: grid; grid-template-columns: 14px 6ch 5ch 6ch minmax(0, 1fr); height: var(--row); padding-right: 8px; white-space: nowrap; }
+.srow .mark { color: var(--ip-mark); font-size: 11px; text-align: center; }
+.srow .off { color: var(--faint); text-align: right; padding-right: 1ch; }
+.srow .addr { color: var(--faint); }
+.srow .note { color: var(--label); overflow: hidden; text-overflow: ellipsis; }
+.srow.top { background: var(--ip-bg); }
+.srow.top .addr, .srow.top .off { color: var(--ink); }
+.srow.free { opacity: .5; }
+
+/* ---------------- memory ---------------- */
+.mrow { display: flex; height: var(--row); white-space: nowrap; padding: 0 8px; }
+.mrow .addr { color: var(--faint); width: 6ch; flex: none; }
+.mrow .bytes { display: flex; gap: 0; flex: none; }
+.mrow .b { width: 3ch; text-align: center; cursor: text; border-radius: 3px; }
+.mrow .b:nth-child(4n+1) { margin-left: .6ch; }
+.mrow .b:hover { background: var(--btn-hover); }
+.mrow .b.sp { box-shadow: inset 0 -2px 0 var(--ip-mark); }
+.mrow .ascii { margin-left: 2ch; color: var(--muted); letter-spacing: .05em; }
+.mrow.phys .addr { width: 8ch; }
+.mrow .b.io { color: var(--faint); }
+#b-memmode[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* ---------------- disks ---------------- */
+#disks-body { overflow: auto; }
+.dk-top { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 6px 12px; font-size: 13px; color: var(--muted); }
+.dk-top input { width: 6ch; font: inherit; color: var(--ink); background: var(--pane); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; }
+.dk-regs { font-family: var(--font-mono); font-size: 12px; }
+.dk-regs b { color: var(--ink); font-weight: 500; }
+.dk-table { border-collapse: collapse; margin: 0 12px 10px; font-size: 13px; }
+.dk-table th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 10px 4px 0; border-bottom: 1px solid var(--rule); }
+.dk-table td { padding: 3px 10px 3px 0; white-space: nowrap; height: 26px; }
+.dk-table td.n { font-family: var(--font-mono); color: var(--muted); }
+.dk-table td.empty { color: var(--faint); }
+.dk-table .btn { height: 24px; padding: 0 8px; font-size: 13px; }
+.dk-table input.sec { width: 9ch; font: inherit; background: var(--pane); color: var(--ink); border: 1px solid var(--accent); border-radius: 3px; padding: 0 4px; }
+.dk-table .mod { color: var(--chg); }
+tr.dk-sel td.n { color: var(--accent); font-weight: 600; }
+
+/* ---------------- console and status line ---------------- */
+#conout { margin: 0; padding: 6px 10px; height: 100%; overflow: auto; white-space: pre-wrap; font: 13px/1.45 var(--font-mono); }
+#conout:empty::before { content: "Output written to port $FF20 appears here. Click here and type to send input."; color: var(--faint); }
+#conout:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#conout:focus { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.status {
+  display: flex; align-items: center; gap: 16px; padding: 4px 12px; min-height: 28px;
+  border-top: 1px solid var(--rule); background: var(--hdr); font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden;
+}
+.status b { color: var(--ink); font-weight: 500; font-family: var(--font-mono); }
+.badge { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--rule); color: var(--ink); background: var(--pane); }
+.badge.stub { border-color: var(--ip-mark); }
+#msg { overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.dropping main { outline: 3px dashed var(--accent); outline-offset: -6px; }
+
+/* ---------------- tabs ---------------- */
+.tabs { display: flex; gap: 2px; align-self: stretch; margin: -4px 0 -5px -8px; }
+.tab {
+  border: 0; border-right: 1px solid var(--rule); background: transparent; padding: 0 14px; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent;
+}
+.tab[aria-selected="true"] { color: var(--ink); background: var(--pane); border-bottom-color: var(--accent); }
+.head-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.head-actions .btn { height: 24px; padding: 0 8px; font-size: 13px; }
+.head-actions .goto { margin-left: 0; }
+.state-tag { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.state-tag.dirty { color: var(--ip-mark); }
+.state-tag.bad { color: var(--chg); }
+[hidden] { display: none !important; }
+
+/* ---------------- source editor ---------------- */
+.editor { display: grid; grid-template-columns: auto minmax(0, 1fr); height: 100%; }
+.gutter {
+  overflow: hidden; background: var(--hdr); border-right: 1px solid var(--rule); color: var(--faint);
+  font: 13px/var(--row) var(--font-mono); padding: 4px 0; user-select: none; min-width: 7ch;
+}
+.gutter .gl { height: var(--row); display: grid; grid-template-columns: 18px 1fr; padding-right: 8px; cursor: pointer; text-align: right; }
+.gutter .gl::before { content: ""; width: 9px; height: 9px; border-radius: 50%; align-self: center; justify-self: center; }
+.gutter .gl:hover::before { box-shadow: inset 0 0 0 1px var(--faint); }
+.gutter .gl.bp::before { background: var(--bp); box-shadow: none; }
+.gutter .gl.cur { color: var(--ip-mark); font-weight: 600; }
+.gutter .gl.err { color: var(--chg); font-weight: 600; }
+.code-wrap { position: relative; min-width: 0; }
+.code-wrap pre, .code-wrap textarea {
+  position: absolute; inset: 0; margin: 0; padding: 4px 10px; border: 0;
+  font: 13px/var(--row) var(--font-mono); tab-size: 8; white-space: pre; overflow: auto;
+}
+.code-wrap pre { overflow: hidden; pointer-events: none; color: var(--ink); }
+.code-wrap textarea {
+  resize: none; background: transparent; color: transparent; caret-color: var(--ink); outline: none;
+}
+.code-wrap textarea::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: transparent; }
+.code-wrap .ln { height: var(--row); min-width: max-content; padding-right: 24px; }
+.code-wrap .ln.cur { background: var(--ip-bg); }
+.code-wrap .ln.bp { background: var(--bp-bg); }
+.code-wrap .ln.err { background: color-mix(in srgb, var(--chg) 12%, transparent); text-decoration: underline wavy var(--chg); text-underline-offset: 4px; }
+.t-com { color: var(--faint); font-style: italic; }
+.t-lab { color: var(--label); font-weight: 500; }
+.t-dir { color: var(--accent); }
+.t-mn { font-weight: 500; }
+.t-reg { color: var(--muted); }
+.t-num { color: #0F7B6C; }
+.t-str { color: #A2501A; }
+.t-sym { color: var(--label); }
+:root[data-theme="dark"] .t-num { color: #5FD3BC; }
+:root[data-theme="dark"] .t-str { color: #F0A46A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .t-num { color: #5FD3BC; } :root:not([data-theme="light"]) .t-str { color: #F0A46A; } }
+
+/* ---------------- build messages ---------------- */
+#buildout { height: 100%; overflow: auto; padding: 4px 0; font: 13px/1.5 var(--font-mono); }
+#buildout .summary { padding: 2px 10px; color: var(--muted); }
+#buildout .summary.ok { color: #0F7B6C; }
+#buildout .summary.bad { color: var(--chg); }
+#buildout .diag {
+  display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 1px 10px; cursor: pointer;
+  font: inherit; white-space: pre-wrap;
+}
+#buildout .diag:hover { background: var(--btn-hover); }
+#buildout .diag .where { color: var(--chg); }
+
+@media (max-width: 860px) {
+  body { overflow: auto; height: auto; }
+  main {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 6px;
+    grid-template-areas: "dis" "regs" "stack" "mem" "con" "disp"; grid-auto-rows: auto;
+  }
+  .split { display: none; }
+  #disp { height: 62vw; min-height: 14rem; }
+  #dis { height: 60vh; } #mem { height: 40vh; } #stack { height: 16rem; } #con { height: 8rem; }
+  .group + .group { border-left: 0; padding-left: 0; }
+  .status { flex-wrap: wrap; white-space: normal; gap: 4px 14px; padding: 6px 12px; }
+  .pane-head .hint { display: none; }
+  .btn kbd { display: none; }
+  .pane-head { flex-wrap: wrap; row-gap: 6px; padding-bottom: 6px; }
+  .tabs { margin-bottom: 0; }
+  .head-actions { margin-left: 0; flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="toolbar">
+  <h1>CPU16 Debugger</h1>
+  <div class="group">
+    <button class="btn" id="b-open" title="Load a binary image produced by cpu16asm">Open .bin</button>
+    <span class="group-label">at</span>
+    <input class="loadat" id="loadat" value="$0000" aria-label="Load address" spellcheck="false">
+    <button class="btn" id="b-map" title="Load a symbol map produced by cpu16asm -m">Open .map</button>
+    <input type="file" id="f-bin" accept=".bin,application/octet-stream">
+    <input type="file" id="f-map" accept=".map,text/plain">
+  </div>
+  <div class="group">
+    <button class="btn" id="b-boot" title="Boot from disk 0 using the built-in rom.bin">Boot</button>
+    <button class="btn" id="b-reset" title="Program reset (Ctrl+F2)">Reset <kbd>Ctrl+F2</kbd></button>
+    <button class="btn primary" id="b-step" title="Trace into (F7)">Step <kbd>F7</kbd></button>
+    <button class="btn" id="b-over" title="Step over CALL (F8)">Step over <kbd>F8</kbd></button>
+    <button class="btn" id="b-cursor" title="Run to cursor (F4)">Run to cursor <kbd>F4</kbd></button>
+    <button class="btn" id="b-run" title="Run (F9)">Run <kbd>F9</kbd></button>
+    <button class="btn" id="b-pause" title="Pause (Esc)" disabled>Pause <kbd>Esc</kbd></button>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="b-theme" title="Switch between light and dark theme">Dark theme</button>
+</header>
+
+<main>
+  <section class="pane" id="dis" tabindex="0" aria-label="Source and disassembly">
+    <div class="pane-head">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-src" aria-selected="true" aria-controls="src-body">Source</button>
+        <button class="tab" role="tab" id="tab-dis" aria-selected="false" aria-controls="dis-body">Disassembly</button>
+      </div>
+      <span class="state-tag" id="src-state"></span>
+      <span class="head-actions" id="src-actions">
+        <button class="btn primary" id="b-build" title="Assemble the source and load the program (Ctrl+B)">Build <kbd>Ctrl+B</kbd></button>
+        <button class="btn" id="b-open-asm" title="Open an assembly source file">Open .asm</button>
+        <button class="btn" id="b-zip" title="Download the source, binary, listing and symbol map as a .zip">Download .zip</button>
+        <button class="btn" id="b-demo" title="Replace the source with the demo program">Demo</button>
+        <input type="file" id="f-asm" accept=".asm,.s,.txt,text/plain">
+      </span>
+      <span class="head-actions" id="dis-actions" hidden>
+        <span class="hint">F5 breakpoint, ↑↓ cursor</span>
+        <input class="goto" id="goto-dis" placeholder="Go to (Ctrl+G)" spellcheck="false" aria-label="Go to address in disassembly">
+      </span>
+    </div>
+    <div class="pane-body" id="src-body" role="tabpanel">
+      <div class="editor">
+        <div class="gutter" id="gutter" aria-hidden="true"></div>
+        <div class="code-wrap">
+          <pre id="hl" aria-hidden="true"></pre>
+          <textarea id="code" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-label="Assembly source"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="pane-body" id="dis-body" role="tabpanel" hidden></div>
+  </section>
+
+  <section class="pane" id="regs" tabindex="0" aria-label="Registers and flags">
+    <div class="pane-head"><h2>Registers</h2><span class="hint">double-click to edit</span></div>
+    <div class="pane-body" style="overflow:auto">
+      <div class="regs" id="regs-body"></div>
+      <div class="subhead">Flags</div>
+      <div class="flags" id="flags-body"></div>
+      <div class="subhead">Interrupt requests</div>
+      <div class="flags" id="irqs"></div>
+      <div class="subhead">Memory manager</div>
+      <div class="mmu" id="mmu-body" aria-label="Memory manager: page registers"></div>
+      <div class="subhead">Clock</div>
+      <div class="rtc" id="rtc-body" aria-label="Real-time clock">
+        <div class="head"><span class="now" id="rtc-now" title="Clock value, 24-hour; double-click to set (DD.MM.YYYY HH:MM:SS)"></span>
+          <button class="btn" id="rtc-host" title="Set the clock to the host's local time">Host time</button></div>
+        <span class="pg">TIME</span><span id="rtc-time"></span><span class="pa" id="rtc-time-d"></span>
+        <span class="pg">DATE</span><span id="rtc-date"></span><span class="pa" id="rtc-date-d"></span>
+        <span class="pg">ERR</span><span id="rtc-err"></span><span class="pa" id="rtc-err-d"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane" id="mem" tabindex="0" aria-label="Memory">
+    <div class="pane-head">
+      <h2>Memory</h2>
+      <span class="hint">double-click a byte to edit</span>
+      <button class="btn" id="b-memmode" aria-pressed="false" title="Switch between logical addresses (as the processor sees them) and physical addresses (21 bits, 2 MB)">Logical</button>
+      <input class="goto" id="goto-mem" placeholder="Go to (Ctrl+G)" spellcheck="false" aria-label="Go to address in memory">
+    </div>
+    <div class="pane-body" id="mem-body"></div>
+  </section>
+
+  <section class="pane" id="stack" tabindex="0" aria-label="Stack">
+    <div class="pane-head"><h2>Stack</h2><span class="hint" id="stack-hint"></span></div>
+    <div class="pane-body" id="stack-body"></div>
+  </section>
+
+  <section class="pane" id="con" aria-label="Console output">
+    <div class="pane-head">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-con" aria-selected="true" aria-controls="con-body">Console</button>
+        <button class="tab" role="tab" id="tab-build" aria-selected="false" aria-controls="build-body">Build</button>
+        <button class="tab" role="tab" id="tab-disks" aria-selected="false" aria-controls="disks-body">Disks</button>
+      </div>
+      <span class="hint" id="con-hint">port $FF20</span>
+      <span class="head-actions">
+        <button class="btn" id="b-display" aria-pressed="false" title="Show the 80×25 display (a separate window, or a panel if windows are blocked)">Display</button>
+        <button class="btn" id="b-clear">Clear</button>
+      </span>
+    </div>
+    <div class="pane-body" id="con-body" role="tabpanel"><pre id="conout" tabindex="0" aria-label="Console output; type here to send input to port $FF20"></pre></div>
+    <div class="pane-body" id="build-body" role="tabpanel" hidden><div id="buildout"></div></div>
+    <div class="pane-body" id="disks-body" role="tabpanel" hidden>
+      <div class="dk-top">
+        <label>Time per sector <input id="dk-delay" value="1" inputmode="decimal" aria-label="Disk time per sector, milliseconds"> ms</label>
+        <span class="dk-regs" id="dk-regs"></span>
+      </div>
+      <table class="dk-table"><thead><tr><th>Disk</th><th>Image</th><th>Sectors</th><th>Label</th><th>Read-only</th><th></th></tr></thead>
+        <tbody id="dk-rows"></tbody></table>
+      <input type="file" id="f-disk" accept=".img,.dsk,.bin,application/octet-stream">
+    </div>
+  </section>
+  <section class="pane" id="disp" aria-label="Display" hidden>
+    <div class="pane-head">
+      <h2>Display</h2><span class="hint">click to type; Pause/Break pauses</span>
+      <span class="head-actions">
+        <button class="btn" id="b-disp-full" title="Full screen (Esc leaves it)">Full screen</button>
+        <button class="btn" id="b-disp-close">Close</button>
+      </span>
+    </div>
+    <div class="pane-body disp-body" id="disp-body" tabindex="0" aria-label="Display: keys typed here go to the program"><canvas id="disp-canvas"></canvas></div>
+  </section>
+  <div class="split v" id="sp-v" role="separator" aria-orientation="vertical" tabindex="0"
+       aria-label="Resize the left and right columns" title="Drag to resize, double-click to reset"></div>
+  <div class="split h" id="sp-h1" role="separator" aria-orientation="horizontal" tabindex="0"
+       aria-label="Resize the top and bottom panels" title="Drag to resize, double-click to reset"></div>
+  <div class="split h" id="sp-h1r" aria-hidden="true" title="Drag to resize, double-click to reset"></div>
+  <div class="split v" id="sp-d" role="separator" aria-orientation="vertical" tabindex="0" hidden
+       aria-label="Resize the display panel" title="Drag to resize, double-click to reset"></div>
+  <div class="split h" id="sp-h2" role="separator" aria-orientation="horizontal" tabindex="0"
+       aria-label="Resize the console" title="Drag to resize, double-click to reset"></div>
+</main>
+
+<footer class="status" role="status">
+  <span class="badge" id="engine-badge"></span>
+  <span>State <b id="st-state"></b></span>
+  <span>IP <b id="st-ip"></b></span>
+  <span>Steps <b id="st-steps"></b></span>
+  <span id="st-speed-wrap" hidden>Speed <b id="st-speed"></b></span>
+  <span id="msg"></span>
+</footer>
+
+<script>
+"use strict";
+/* ==========================================================================
+   The built-in demo program (the demo.asm source, assembled at startup)
+   and the standard library stdlib.asm (available through .include "stdlib.asm").
+   ========================================================================== */
+const DEMO = __DEMO__;
+// Box-drawing geometry for the display: lines { code: [up, down, left, right] } (0, 1 - single,
+// 2 - double) and blocks { code: kind }; derived by build.py from Unicode character names.
+const GLYPHS = __GLYPHS__;
+
+/* ==========================================================================
+   The engine contract. The JS engine (engine.js) and a future WebAssembly build of cpu16.cpp
+   implement the same object, the interface does not depend on the choice of engine.
+
+     name, isStub                      the name for the status line; a stub or not
+     reset()                           processor reset: registers, flags, IRQ requests (memory is not touched)
+     clearMemory()                     zero all memory
+     loadImage(bytes, addr) -> string  write bytes to memory from address addr; text for the status
+     step() -> Stop                    execute one instruction (or accept an interrupt)
+     runChunk(maxSteps, bps) -> Stop   execute up to maxSteps steps; stop BEFORE
+                                       an instruction at an address from the set bps (except the first)
+     getRegs() -> Uint16Array(16)      R0..R15, R15 = FLAGS
+     setReg(n, value)
+     readMem(addr, len) -> Uint8Array  logical addresses (through the memory manager), wrapping past $FFFF;
+                                       the device window $FF20..$FFFF gives register values without side
+                                       effects (a keyboard event is not taken), empty addresses give 0
+     writeMem(addr, bytes)             logical addresses; does not write into the device window
+     readPhys(addr, len), writePhys(addr, bytes)   physical memory (21 bits, 2 MB)
+     physAddr(addr) -> number          the physical address of a logical one by the current mapping
+     getMmu() -> { enabled, pages[8], phys[8] }   the memory manager: the EN bit, the PAGE registers, the pages' physical addresses
+     setMmuEnabled(b), setMmuPage(p, frame)
+     getRtc() -> { seconds, civil, text, time, date, err, msToNextSecond }   the clock: the value (text is "DD.MM.YYYY HH:MM:SS",
+                                       24-hour notation) and the exchange registers TIME, DATE, ERR; the clock runs on pause too
+     setRtc(text) -> bool              set the clock ("DD.MM.YYYY HH:MM:SS"); false - an invalid value was not accepted.
+                                       The TIME, DATE and ERR registers do not change
+     setRtcHostTime()                  set the clock to the host's local time
+     disassemble(addr, count, sym) -> Row[]
+        Row = { addr, words: number[], mnemonic, operands, isCall, isData, target, note }
+        sym(value, kind) -> a name or null; kind: "target" | "memory" | "immediate"
+        note - an explanation (the reason for an invalid encoding, the address with IP-relative addressing)
+     prevInstrAddr(addr) -> number     the best estimate of the start of the previous instruction
+                                       (an instruction is 1 or 2 words long, going backward cannot be parsed unambiguously)
+     raiseIrq(n) -> Stop               raise request IRQn
+     pendingIrqs                       the mask of pending requests IRQ0..IRQ7
+     takeConsoleOutput() -> string     the text printed in teletype mode since the last call
+                                       (\b - delete the last character of the log)
+     feedKey(ch, scan, mods), feedText(str), feedInput(bytes), clearInput()
+                                       keyboard events (a character in the machine encoding, scancode,
+                                       MODS modifiers: 1 Shift, 2 Ctrl, 4 Alt)
+     pendingInput                      the number of events in the keyboard queue
+     getScreen() -> { chars, attrs, col, row, ctrl, version }   the 80x25 screen (version grows on changes)
+     usedDisplay                       the program used the display features
+     timerEnabled, setClockFrozen(b), pollTimerNow()   the timer and disk exchange in real time
+                                       (they stand on pause and when single-stepping); pollTimerNow polls the devices
+     attachDisk(n, bytes, name, ro), detachDisk(n), setDiskReadOnly(n, b)   disks 0..7 (images in the page memory)
+     getDisks() -> (null | { n, name, sectors, readOnly, label, modified })[8]
+     getDiskImage(n) -> Uint8Array     the disk image (live, no copy)
+     diskDelayMs                       time per sector, ms (1 by default; 0 - instant)
+     diskBusy, canWake, getDiskRegs()  a command is running; WFI will still be woken by the timer or disk; the controller registers
+     state                             'stopped' | 'waiting' (WFI with no requests)
+     steps                             the number of executed steps
+
+     Stop = { reason: 'step'|'breakpoint'|'waiting'|'limit'|'irq'|'unsupported', message?, idle?, timer?, disk? }
+            idle = true: the step executed nothing (WFI with no requests); timer = true: the timer is on,
+            WFI is waiting for the next tick, not a stop; disk = true: a disk command is running,
+            which will raise IRQ1, WFI is waiting for its completion
+   ========================================================================== */
+
+// BEGIN ENGINE
+/*__ISA__*/
+/*__ENGINE__*/
+/*__ASSEMBLER__*/
+/*__FS16__*/
+// END ENGINE
+
+/* ==========================================================================
+   Interface
+   ========================================================================== */
+function hex4(v) { return "$" + (v & 0xFFFF).toString(16).toUpperCase().padStart(4, "0"); }
+function h4(v) { return (v & 0xFFFF).toString(16).toUpperCase().padStart(4, "0"); }
+function h2(v) { return (v & 0xFF).toString(16).toUpperCase().padStart(2, "0"); }
+const $ = (id) => document.getElementById(id);
+const REG_NAMES = ["R0","R1","R2","R3","R4","R5","R6","R7","R8","R9","R10","R11","LR","SP","IP","FLAGS"];
+const FLAG_BITS = [["ZF", 1], ["CF", 2], ["SF", 4], ["IF", 8], ["OF", 16]];
+
+// Boot ROM, embedded at build time. The original image lives in src/rom.bin.
+const BOOT_ROM = new Uint8Array(__ROM_BYTES__);
+const engine = new Cpu16Engine();
+const ui = {
+  symbols: new Map(),     // address -> label name
+  bps: new Set(),
+  disTop: 0,              // the address of the first shown instruction
+  cursor: 0,              // the selected instruction
+  memAddr: 0,             // the start of the dump
+  prevRegs: engine.getRegs(),
+  prevMem: engine.readMem(0, 65536),
+  running: false,
+  runTarget: null,        // a temporary breakpoint (to the cursor, step over CALL)
+  shownAddrs: [],         // addresses of instructions visible in the disassembler
+  focus: "dis",
+  program: [],            // segments of the loaded program [[address, bytes]]: Reset loads them again
+  constants: new Map(),   // value -> constant name (.equ): substituted only in memory addresses
+  view: "src",            // the top panel tab: "src" | "dis"
+  source: "",             // the text in the editor
+  progName: "demo",       // the program name (for .asm/.zip)
+  build: null,            // the last successful build the program was loaded from
+  dirty: false,           // the source changed after the build (or the program was loaded from a .bin)
+  srcErrors: new Map(),   // line number -> the error message of the last build
+  binName: "",            // the name of the loaded .bin, if the program is not from source
+  demoConfirmUntil: 0,    // a second press of Demo within 4 s replaces the source
+  memPhys: false,         // a dump by physical addresses (21 bits)
+  memAddrPhys: 0,         // the start of the physical dump
+  prevPhys: null,         // a snapshot of physical memory (only in physical mode)
+  conTab: "console",      // the bottom panel tab: "console" | "build" | "disks"
+  diskNew: -1,            // the disk for which the new image size is being entered
+  diskSlot: -1,           // the disk the chosen file is attached to
+};
+// Load a program: memory is zeroed, segments are written, the processor is reset.
+function loadProgram(segments) {
+  // First turn off the MMU: loadImage addresses are translated by the current
+  // page map. Otherwise Reset after boot would write rom.bin into kernel frames.
+  engine.reset();
+  engine.clearMemory();
+  engine.clearInput();
+  for (const [a, bytes] of segments) engine.loadImage(bytes, a);
+  ui.program = segments;
+  updateDisplay(true);
+}
+
+function loadSymbols(list) {
+  ui.symbols = new Map();
+  for (const [a, n] of list) if (!ui.symbols.has(a)) ui.symbols.set(a, n);
+}
+// The displayed name: local labels "area@name" are shown as "@name".
+function shortName(n) { const p = n.indexOf("@"); return p > 0 ? n.slice(p) : n; }
+// The name for the disassembler: labels everywhere, .equ constants only in memory addresses ([CONSOLE]).
+function symName(a, kind) {
+  const n = ui.symbols.get(a) || (kind === "memory" ? ui.constants.get(a) : null);
+  return n ? shortName(n) : null;
+}
+function rowsFit(body) { return Math.max(1, Math.floor(body.clientHeight / 20)); }
+function setMsg(t) { $("msg").textContent = t || ""; }
+
+/* ---------------- disassembler ---------------- */
+function renderDis() {
+  const body = $("dis-body");
+  const fit = rowsFit(body);
+  const regs = engine.getRegs();
+  const ip = regs[14];
+  const waiting = engine.state === "waiting";
+  const frag = document.createDocumentFragment();
+  ui.shownAddrs = [];
+  let lines = 0, a = ui.disTop;
+  while (lines < fit) {
+    const row = engine.disassemble(a, 1, symName)[0];
+    const name = ui.symbols.get(row.addr);
+    if (name && lines < fit - 1) {
+      const l = document.createElement("div");
+      l.className = "lrow" + (name.includes("@") ? " local" : "");
+      l.textContent = shortName(name) + ":";
+      frag.appendChild(l);
+      lines++;
+    }
+    const d = document.createElement("div");
+    d.className = "drow" + (row.isData ? " data" : "") + (row.addr === ip ? " ip" : "") +
+                  (row.addr === ui.cursor ? " cursor" : "") + (ui.bps.has(row.addr) ? " bp" : "");
+    d.dataset.addr = row.addr;
+    d.innerHTML = `<span class="gut" title="Toggle breakpoint"></span><span class="mark"${row.addr === ip && waiting ? ' title="Waiting for an interrupt after WFI"' : ""}>${row.addr === ip ? (waiting ? "‖" : "▶") : ""}</span>` +
+      `<span class="addr">${h4(row.addr)}</span><span class="words">${row.words.map(h4).join(" ")}</span>` +
+      `<span class="mn">${row.mnemonic}</span><span class="ops">${fmtOps(row.operands)}` +
+      `${row.note ? `<span class="note">; ${esc(row.note)}</span>` : ""}</span>`;
+    frag.appendChild(d);
+    ui.shownAddrs.push(row.addr);
+    lines++;
+    a = (row.addr + 2 * row.words.length) & 0xFFFF;
+  }
+  body.replaceChildren(frag);
+}
+// Highlighting label names in operands.
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function fmtOps(ops) {
+  const re = /(\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|\d+)|(@?[A-Za-z_]\w*(?:\.\w+)*)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(ops))) {
+    out += esc(ops.slice(last, m.index));
+    const id = m[2];
+    out += id && !/^(R\d+|LR|SP|IP|FLAGS)$/i.test(id) ? `<span class="sym">${esc(id)}</span>` : esc(m[0]);
+    last = re.lastIndex;
+  }
+  return out + esc(ops.slice(last));
+}
+function nextAddr(a) { const r = engine.disassemble(a, 1, symName)[0]; return (r.addr + 2 * r.words.length) & 0xFFFF; }
+function walkBack(a, n) { for (let i = 0; i < n; i++) a = engine.prevInstrAddr(a); return a; }
+// Keep an address on screen: if it is not visible or is at the bottom edge, scroll.
+function ensureVisible(a) {
+  const idx = ui.shownAddrs.indexOf(a);
+  if (idx < 0 || idx > ui.shownAddrs.length - 3) ui.disTop = walkBack(a, 3);
+  if (ui.disTop > a) ui.disTop = a;
+}
+
+/* ---------------- registers and flags ---------------- */
+function renderRegs() {
+  const regs = engine.getRegs(), prev = ui.prevRegs;
+  const body = $("regs-body");
+  const order = [0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15];
+  body.innerHTML = order.map((n) =>
+    `<div class="reg"><span class="name">${REG_NAMES[n]}</span>` +
+    `<span class="val${regs[n] !== prev[n] ? " chg" : ""}" data-reg="${n}" title="${regs[n]} decimal">${h4(regs[n])}</span></div>`).join("");
+  $("flags-body").innerHTML = FLAG_BITS.map(([n, m]) =>
+    `<button class="flag${(regs[15] & m) !== (prev[15] & m) ? " chg" : ""}" data-mask="${m}" title="Toggle ${n}">` +
+    `<span class="fn">${n}</span>${regs[15] & m ? 1 : 0}</button>`).join("");
+  renderMmu();
+  renderClock();
+}
+function h6(v) { return v.toString(16).toUpperCase().padStart(6, "0"); }
+function renderMmu() {
+  const m = engine.getMmu();
+  const body = $("mmu-body");
+  body.classList.toggle("off", !m.enabled);
+  let html = `<div class="en"><button class="flag" id="mmu-en" title="Toggle EN (MMU_CTRL bit 0)"><span class="fn">EN</span>${m.enabled ? 1 : 0}</button>` +
+             `<span>${m.enabled ? "pages map to the frames below" : "off: physical address = logical"}</span></div>`;
+  for (let p = 0; p < 8; p++)
+    html += `<span class="pg">PAGE${p} ${h4(p * 0x2000)}</span><span class="frame" data-page="${p}" title="Frame for page ${p}; double-click to edit">${h2(m.pages[p])}</span>` +
+            `<span class="pa">→ ${h6(m.phys[p])}</span><span></span>`;
+  body.innerHTML = html;
+}
+
+// The clock: the value runs by itself, so the panel is updated by the timer too (see below), not only after instructions.
+// The TIME and DATE registers are shown with a decoding; changes are highlighted by the window's memory snapshot.
+function rtcTimeText(t) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${t >> 12}:${p((t >> 6) & 63)}:${p(t & 63)}`;
+}
+function renderClock() {
+  const r = engine.getRtc();
+  const now = $("rtc-now");
+  if (!now.querySelector("input")) now.textContent = r.text;
+  const pm = ui.prevMem, A = MACHINE.RTC_TIME;
+  const prevT = pm[A] | (pm[A + 1] << 8), prevD = pm[A + 2] | (pm[A + 3] << 8), prevE = pm[A + 4] & 1;
+  const set = (id, text, changed) => { const el = $(id); el.textContent = text; el.classList.toggle("chg", !!changed); };
+  set("rtc-time", h4(r.time), r.time !== prevT);
+  set("rtc-date", h4(r.date), r.date !== prevD);
+  set("rtc-err", r.err ? "1" : "0", (r.err ? 1 : 0) !== prevE);
+  const tOk = Cpu16Rtc.validTime(r.time), dOk = Cpu16Rtc.validDate(r.date);
+  const y = MACHINE.RTC_BASE_YEAR + (r.date >> 10), m = (r.date >> 6) & 15, d = (r.date >> 1) & 31;
+  $("rtc-time-d").textContent = `${rtcTimeText(r.time)} ${r.date & 1 ? "PM" : "AM"}` + (tOk ? "" : " (invalid)");
+  $("rtc-time-d").classList.toggle("bad", !tOk && r.time !== 0);
+  $("rtc-date-d").textContent = `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}` + (dOk ? "" : " (invalid)");
+  $("rtc-date-d").classList.toggle("bad", !dOk && r.date !== 0);
+  $("rtc-err-d").textContent = r.err ? "last write rejected" : "";
+}
+setInterval(() => { if (!document.hidden) renderClock(); }, 200);
+
+/* ---------------- stack ---------------- */
+function renderStack() {
+  const body = $("stack-body");
+  const fit = rowsFit(body);
+  const regs = engine.getRegs();
+  const sp = regs[13];
+  $("stack-hint").textContent = `SP ${hex4(sp)}`;
+  const above = 2;
+  let html = "";
+  for (let i = -above; i < fit - above; i++) {
+    const a = (sp + 2 * i) & 0xFFFF;
+    const m = engine.readMem(a, 2), w = m[0] | (m[1] << 8);
+    const pm = ui.prevMem, pw = pm[a] | (pm[(a + 1) & 0xFFFF] << 8);
+    const name = i >= 0 && w !== 0 ? ui.symbols.get(w) : null;
+    const off = i === 0 ? "SP" : (i > 0 ? "+" : "-") + Math.abs(2 * i);
+    html += `<div class="srow${i === 0 ? " top" : ""}${i < 0 ? " free" : ""}"><span class="mark">${i === 0 ? "▶" : ""}</span>` +
+      `<span class="off">${off}</span><span class="addr">${h4(a)}</span><span class="${w !== pw ? "chg" : ""}">${h4(w)}</span>` +
+      `<span class="note">${name ? shortName(name) : ""}</span></div>`;
+  }
+  body.innerHTML = html;
+}
+
+/* ---------------- memory ---------------- */
+// Bytes in a dump row: 16 if the panel is wide enough, otherwise 8.
+function memBpr() { return $("mem-body").clientWidth >= 640 ? 16 : 8; }
+const PHYS_SIZE = MACHINE.PHYS_SIZE;
+function renderMem() {
+  if (ui.memPhys) { renderMemPhys(); return; }
+  const body = $("mem-body");
+  const fit = rowsFit(body);
+  const bpr = memBpr();
+  ui.memAddr &= 0x10000 - bpr;
+  const sp = engine.getRegs()[13];
+  let html = "";
+  for (let r = 0; r < fit; r++) {
+    const base = (ui.memAddr + bpr * r) & 0xFFFF;
+    const bytes = engine.readMem(base, bpr);
+    let hx = "", asc = "";
+    for (let i = 0; i < bpr; i++) {
+      const a = (base + i) & 0xFFFF, b = bytes[i];
+      const cls = "b" + (b !== ui.prevMem[a] ? " chg" : "") + (a === sp || a === ((sp + 1) & 0xFFFF) ? " sp" : "") + (a >= MACHINE.IO_BASE ? " io" : "");
+      hx += `<span class="${cls}" data-addr="${a}">${h2(b)}</span>`;
+      asc += b >= 32 && b < 127 ? String.fromCharCode(b).replace("&", "&amp;").replace("<", "&lt;") : "·";
+    }
+    html += `<div class="mrow"><span class="addr">${h4(base)}</span><span class="bytes">${hx}</span><span class="ascii">${asc}</span></div>`;
+  }
+  body.innerHTML = html;
+}
+
+// A physical memory dump: 21-bit addresses, changes highlighted by the prevPhys snapshot.
+function renderMemPhys() {
+  const body = $("mem-body");
+  const fit = rowsFit(body);
+  const bpr = memBpr();
+  ui.memAddrPhys = Math.min(Math.max(0, ui.memAddrPhys - ui.memAddrPhys % bpr), PHYS_SIZE - bpr);
+  const prev = ui.prevPhys;
+  let html = "";
+  for (let r = 0; r < fit; r++) {
+    const base = ui.memAddrPhys + bpr * r;
+    if (base >= PHYS_SIZE) break;
+    const bytes = engine.readPhys(base, bpr);
+    let hx = "", asc = "";
+    for (let i = 0; i < bpr; i++) {
+      const a = base + i, b = bytes[i];
+      hx += `<span class="b${prev && prev[a] !== b ? " chg" : ""}" data-phys="${a}">${h2(b)}</span>`;
+      asc += b >= 32 && b < 127 ? String.fromCharCode(b).replace("&", "&amp;").replace("<", "&lt;") : "·";
+    }
+    html += `<div class="mrow phys"><span class="addr">${h6(base)}</span><span class="bytes">${hx}</span><span class="ascii">${asc}</span></div>`;
+  }
+  body.innerHTML = html;
+}
+function setMemMode(phys) {
+  if (phys === ui.memPhys) return;
+  ui.memPhys = phys;
+  if (phys) { ui.memAddrPhys = engine.physAddr(ui.memAddr); ui.prevPhys = engine.readPhys(0, PHYS_SIZE); }
+  else ui.prevPhys = null;
+  $("b-memmode").textContent = phys ? "Physical" : "Logical";
+  $("b-memmode").setAttribute("aria-pressed", String(phys));
+  $("goto-mem").placeholder = phys ? "Go to $XXXXXX" : "Go to (Ctrl+G)";
+  renderMem();
+}
+
+/* ---------------- disks ---------------- */
+function renderDisks() {
+  if (ui.conTab !== "disks") return;
+  const M = MACHINE, r = engine.getDiskRegs();
+  const st = ["BUSY", "ERR", "DONE", "PRESENT", "RO"].filter((_, i) => r.status & (1 << i)).join(" ") || "—";
+  $("dk-regs").innerHTML = `STATUS <b>${h2(r.status)}</b> (${st}) ERROR <b>${r.error}</b> DISK <b>${r.disk}</b> COUNT <b>${r.count}</b> ` +
+    `ADDR <b>${h4(r.addr)}</b> LBA <b>${r.lba.toString(16).toUpperCase().padStart(8, "0")}</b> CTRL <b>${r.ctrl}</b>`;
+  const disks = engine.getDisks();
+  // rows are rebuilt only on changes: during execution the panel is updated every frame
+  const sig = JSON.stringify([disks, ui.diskNew, r.disk]);
+  if (sig === ui.diskSig && $("dk-rows").childElementCount) return;
+  ui.diskSig = sig;
+  let html = "";
+  for (let n = 0; n < M.DISK_COUNT; n++) {
+    const d = disks[n], sel = r.disk === n ? " class=\"dk-sel\"" : "";
+    if (ui.diskNew === n) {
+      html += `<tr${sel}><td class="n">${n}</td><td colspan="4">New empty image: <input class="sec" id="dk-sectors" value="2880" inputmode="numeric" aria-label="Number of sectors"> sectors of 512 bytes</td>` +
+              `<td><button class="btn" data-act="create" data-n="${n}">Create</button> <button class="btn" data-act="cancel" data-n="${n}">Cancel</button></td></tr>`;
+      continue;
+    }
+    if (!d) {
+      html += `<tr${sel}><td class="n">${n}</td><td class="empty" colspan="4">not connected</td>` +
+              `<td><button class="btn" data-act="attach" data-n="${n}" title="Connect an image file from your computer">Attach file…</button> ` +
+              `<button class="btn" data-act="new" data-n="${n}" title="Create an empty image">New…</button></td></tr>`;
+      continue;
+    }
+    html += `<tr${sel}><td class="n">${n}</td><td>${esc(d.name)}${d.modified ? ` <span class="mod" title="Changed since it was attached or downloaded">• modified</span>` : ""}</td>` +
+            `<td>${d.sectors.toLocaleString("en-US")}</td><td>${esc(d.label)}</td>` +
+            `<td><input type="checkbox" data-act="ro" data-n="${n}"${d.readOnly ? " checked" : ""} aria-label="Disk ${n} read-only"></td>` +
+            `<td><button class="btn" data-act="files" data-n="${n}" title="Browse FS16 filesystem and copy files">Files…</button> <button class="btn" data-act="download" data-n="${n}">Download</button> <button class="btn" data-act="detach" data-n="${n}">Detach</button></td></tr>`;
+  }
+  $("dk-rows").innerHTML = html;
+  if (ui.diskNew >= 0 && $("dk-sectors") && document.activeElement !== $("dk-sectors")) { $("dk-sectors").focus(); $("dk-sectors").select(); }
+}
+function attachDiskFile(n, file) {
+  file.arrayBuffer().then((buf) => {
+    try { engine.attachDisk(n, new Uint8Array(buf), file.name); }
+    catch (e) { setMsg(`Cannot attach ${file.name}: ${e.message}.`); return; }
+    setMsg(`Disk ${n}: ${file.name} attached (${buf.byteLength / 512} sectors).`);
+    renderDisks(); renderStatus();
+  });
+}
+async function downloadDisk(n) {
+  const d = engine.getDisks()[n];
+  if (!d) return;
+  const img = engine.getDiskImage(n);
+  const name = /\.[A-Za-z0-9]+$/.test(d.name) ? d.name : d.name + ".img";
+  // claude.ai preview serves only a .zip: the image is put into an archive
+  if (inViewer()) await offerDownload(name.replace(/\.[^.]*$/, "") + ".zip", makeZip([{ name, data: img }]));
+  else await offerDownload(name, img, "application/octet-stream");
+  engine.disk.disks[n] && (engine.disk.disks[n].modified = false);
+  renderDisks();
+}
+function onDiskAction(act, n) {
+  if (act === "files") { openFs16Manager(n); return; }
+  if (act === "attach") { ui.diskSlot = n; $("f-disk").click(); return; }
+  if (act === "new") { ui.diskNew = n; renderDisks(); return; }
+  if (act === "cancel") { ui.diskNew = -1; renderDisks(); return; }
+  if (act === "create") {
+    const v = Number(($("dk-sectors").value || "").trim());
+    if (!Number.isInteger(v) || v < 1 || v > 65536 * 16) { setMsg(`"${$("dk-sectors").value}" is not a valid number of sectors (1..1048576).`); return; }
+    engine.attachDisk(n, new Uint8Array(v * 512), `disk${n}.img`);
+    ui.diskNew = -1;
+    setMsg(`Disk ${n}: empty image of ${v} sectors created.`);
+  } else if (act === "detach") {
+    const busy = engine.diskBusy && engine.getDiskRegs().disk === n;
+    engine.detachDisk(n);
+    setMsg(`Disk ${n} detached.` + (busy ? " The running command ended with an I/O error." : ""));
+  } else if (act === "download") { downloadDisk(n); return; }
+  renderDisks(); renderStatus();
+}
+
+/* ---------------- state ---------------- */
+const STATE_TEXT = { stopped: "Stopped", waiting: "Waiting (WFI)" };
+function renderStatus() {
+  const regs = engine.getRegs();
+  $("engine-badge").textContent = engine.isStub ? `${engine.name} (stub)` : engine.name;
+  $("engine-badge").className = "badge" + (engine.isStub ? " stub" : "");
+  $("st-state").textContent = ui.running ? (ui.waitingTimer ? `Running (WFI, ${ui.waitingTimer})` : "Running") : STATE_TEXT[engine.state] || engine.state;
+  $("st-speed-wrap").hidden = !(ui.running && ui.speed && ui.speed.text);
+  if (ui.speed) $("st-speed").textContent = ui.speed.text;
+  $("st-ip").textContent = hex4(regs[14]);
+  $("st-steps").textContent = engine.steps;
+  $("b-pause").disabled = !ui.running;
+  for (const id of ["b-step", "b-over", "b-cursor", "b-run", "b-reset", "b-boot", "b-build"]) $(id).disabled = ui.running;
+  const n = engine.pendingInput || 0;
+  $("con-hint").textContent = n ? `port $FF20, ${n} key${n === 1 ? "" : "s"} waiting` : "port $FF20";
+  const p = engine.pendingIrqs || 0;
+  document.querySelectorAll("#irqs .irq").forEach((b, n) => {
+    b.classList.toggle("pending", !!(p & (1 << n)));
+    b.title = p & (1 << n) ? `IRQ${n} is pending` : `Raise IRQ${n}`;
+  });
+}
+function drainConsole() {
+  const o = engine.takeConsoleOutput();
+  if (!o) return;
+  const c = $("conout");
+  let t = c.textContent;
+  for (const ch of o) {
+    if (ch === "\b") { if (t && !t.endsWith("\n")) t = t.slice(0, -1); }
+    else t += ch;
+  }
+  if (t.length > 200000) t = t.slice(-150000);   // the log does not grow without bound
+  c.textContent = t;
+  c.scrollTop = c.scrollHeight;
+}
+function renderAll() {
+  if (ui.view === "dis") renderDis(); else renderEditor();
+  renderRegs(); renderStack(); renderMem(); renderStatus(); renderDisks();
+}
+
+/* ---------------- commands ---------------- */
+// A "before the instruction" snapshot for highlighting changes.
+function snapshot() {
+  ui.prevRegs = engine.getRegs(); ui.prevMem = engine.readMem(0, 65536);
+  if (ui.memPhys) ui.prevPhys = engine.readPhys(0, PHYS_SIZE);
+}
+function afterCommand(stop) {
+  drainConsole();
+  const ip = engine.getRegs()[14];
+  renderDis();               // update the list of visible addresses
+  ensureVisible(ip);
+  ui.cursor = ip;
+  renderAll();
+  if (ui.view === "src") revealSourceLine(currentSourceLine());
+  updateDisplay();
+  if (stop && stop.message) setMsg(stop.message);
+  else if (stop && stop.reason === "step") setMsg("");
+}
+function cmdStep() {
+  if (ui.running) return;
+  snapshot();
+  afterCommand(engine.step());
+}
+// Running in portions: the interface does not freeze, pause works.
+// Real-time execution: every frame runs portions of instructions of no more than ~12 ms, then drawing.
+// The timer runs by the real clock; at WFI with the timer on, execution does not stop
+// but waits for the next tick (the clock is checked every frame).
+function runWith(target) {
+  if (ui.running) return;
+  snapshot();
+  ui.runTarget = target;
+  ui.running = true;
+  ui.waitingTimer = false;
+  ui.speed = { t: performance.now(), steps: engine.steps, text: "" };
+  engine.setClockFrozen(false);
+  renderStatus();
+  setMsg("Running…");
+  const tick = () => {
+    if (!ui.running) { finishRun({ reason: "limit", message: "Paused." }); return; }
+    const bps = new Set(ui.bps);
+    if (ui.runTarget !== null) bps.add(ui.runTarget);
+    const t0 = performance.now();
+    let s;
+    do { s = engine.runChunk(4096, bps); } while (s.reason === "limit" && performance.now() - t0 < 12);
+    // a WFI that the timer or a disk command will still wake is a wait, not a stop
+    const wake = s.reason === "waiting" && (s.timer || s.disk);
+    if (s.reason === "limit" || wake) {
+      if (wake) engine.pollTimerNow();
+      ui.waitingTimer = wake ? (s.disk && !s.timer ? "disk" : "timer") : false;
+      drainConsole();
+      updateDisplay();
+      measureSpeed();
+      renderStatus();
+      renderDisks();
+      requestAnimationFrame(tick);
+      return;
+    }
+    finishRun(s);
+  };
+  requestAnimationFrame(tick);
+}
+function finishRun(s) {
+  ui.running = false;
+  ui.waitingTimer = false;
+  engine.setClockFrozen(true);
+  if (s.reason === "breakpoint" && ui.runTarget !== null && engine.getRegs()[14] === ui.runTarget && !ui.bps.has(ui.runTarget))
+    s.message = `Stopped at ${hex4(ui.runTarget)}.`;
+  ui.runTarget = null;
+  afterCommand(s);
+  // When the ROM (or its disk bootloader) prints an error and halts in WFI,
+  // mirror the diagnosis in the status bar as well as the visible console.
+  if (ui.binName === "rom.bin" && s.reason === "waiting") {
+    const lines = $("conout").textContent.split(/\r?\n/);
+    const error = lines.reverse().find(line => /^(ROM|boot): /.test(line));
+    if (error) setMsg(error);
+  }
+}
+// Execution speed once a second (instructions per second).
+function measureSpeed() {
+  const now = performance.now(), dt = now - ui.speed.t;
+  if (dt < 1000) return;
+  const n = engine.steps - ui.speed.steps;
+  ui.speed = { t: now, steps: engine.steps,
+               text: n >= 1e6 ? (n / dt / 1000).toFixed(1) + " MIPS" : Math.round(n / dt * 1000).toLocaleString("en-US") + " instr/s" };
+}
+// Boot is a real machine reset, even without a disk: the ROM itself checks
+// DRIVES, reads the boot sectors and writes any diagnosis to port $FF20.
+function cmdBoot() {
+  if (ui.running) return;
+  // Reboot the entire machine with the *real* ROM bytes. The ROM will load
+  // sectors 1-3 from attached disk 0 and transfer control to its boot code.
+  loadProgram([[0, BOOT_ROM]]);
+  engine.takeConsoleOutput();
+  $("conout").textContent = "";
+  ui.symbols.clear(); ui.constants.clear(); ui.bps.clear();
+  ui.build = null; ui.dirty = true; ui.binName = "rom.bin";
+  ui.prevRegs = engine.getRegs(); ui.prevMem = engine.readMem(0, 65536);
+  ui.disTop = 0; ui.cursor = 0; ui.memAddr = 0;
+  setView("dis"); showConTab("console");
+  renderAll(); updateDisplay(true); updateSrcState();
+  runWith(null);
+}
+function cmdRun() { runWith(null); }
+function cmdRunToCursor() {
+  if (ui.view === "src") {
+    const a = caretAddr();
+    if (a === null) return;
+    runWith(a);
+  } else runWith(ui.cursor);
+}
+// Step over CALL: if the current instruction is CALL, run until the instruction after it.
+function cmdStepOver() {
+  if (ui.running) return;
+  const ip = engine.getRegs()[14];
+  const row = engine.disassemble(ip, 1, symName)[0];
+  if (row.isCall) runWith((ip + 2 * row.words.length) & 0xFFFF);
+  else cmdStep();
+}
+function cmdPause() { if (ui.running) ui.running = false; }
+function cmdReset() {
+  if (ui.running) return;
+  loadProgram(ui.program);
+  engine.takeConsoleOutput();
+  $("conout").textContent = "";
+  ui.prevRegs = engine.getRegs(); ui.prevMem = engine.readMem(0, 65536);
+  ui.disTop = 0; ui.cursor = 0;
+  renderAll();
+  updateDisplay(true);
+  setMsg("Reset: program reloaded, execution starts at $0000.");
+}
+function toggleBp(a) {
+  if (ui.bps.has(a)) ui.bps.delete(a); else ui.bps.add(a);
+  renderDis();
+  setMsg(ui.bps.has(a) ? `Breakpoint set at ${hex4(a)}.` : `Breakpoint cleared at ${hex4(a)}.`);
+}
+// An IRQ request can be raised during execution too: it will be accepted at the next step.
+function cmdIrq(n) {
+  const s = engine.raiseIrq(n);
+  if (ui.running) { setMsg(s.message || ""); return; }
+  renderAll();
+  setMsg(s.message || "");
+}
+
+/* ---------------- address parsing: $1234, 0x1234, 1234 (hex), a label name ---------------- */
+function parseAddr(text) {
+  const t = text.trim();
+  if (!t) return null;
+  for (const [a, n] of ui.symbols) if (n === t || shortName(n) === t) return a;
+  const m = /^(?:\$|0x)?([0-9a-f]{1,4})$/i.exec(t);
+  return m ? parseInt(m[1], 16) : null;
+}
+function gotoIn(pane, text) {
+  if (pane !== "dis" && ui.memPhys) {
+    // a physical dump: a hexadecimal address of up to 6 digits or a label (its logical address by the current mapping)
+    const t = text.trim(), m = /^(?:\$|0x)?([0-9a-f]{1,6})$/i.exec(t);
+    const sym = [...ui.symbols].find(([, n]) => n === t || shortName(n) === t);
+    const pa = sym ? engine.physAddr(sym[0]) : m ? parseInt(m[1], 16) : null;
+    if (pa === null || pa >= PHYS_SIZE) { setMsg(`"${t}" is not a physical address ($000000..$1FFFFF) or a label.`); return; }
+    ui.memAddrPhys = pa; renderMem(); $("mem").focus(); setMsg("");
+    return;
+  }
+  const a = parseAddr(text);
+  if (a === null) { setMsg(`Unknown address or label "${text.trim()}".`); return; }
+  if (pane === "dis") { ui.disTop = a & 0xFFFE; ui.cursor = a & 0xFFFE; renderDis(); $("dis").focus(); }
+  else { ui.memAddr = a & (0x10000 - memBpr()); renderMem(); $("mem").focus(); }
+  setMsg("");
+}
+
+/* ---------------- in-place editing ---------------- */
+function inlineEdit(el, initial, isByte, commit) {
+  const inp = document.createElement("input");
+  inp.className = "edit" + (isByte ? " byte" : "");
+  inp.value = initial;
+  inp.spellcheck = false;
+  el.replaceChildren(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = (ok) => {
+    if (done) return; done = true;
+    if (ok) {
+      const v = parseInt(inp.value.replace(/^\$|^0x/i, ""), 16);
+      if (Number.isNaN(v) || v < 0 || v > (isByte ? 0xFF : 0xFFFF)) setMsg(`"${inp.value}" is not a valid ${isByte ? "byte" : "word"}.`);
+      else { snapshot(); commit(v); }
+    }
+    renderAll();
+  };
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    e.stopPropagation();
+  });
+  inp.addEventListener("blur", () => finish(false));
+}
+
+/* ---------------- source: the editor ---------------- */
+const ed = { ta: $("code"), hl: $("hl"), gutter: $("gutter") };
+const REG_RE = /^(R1[0-5]|R[0-9]|LR|SP|IP|FLAGS)$/i;
+// Highlighting one source line (the line itself does not change). Results are cached:
+// on an edit the whole text is redrawn, but only changed lines are parsed.
+const hlCache = new Map();
+function highlightLine(l) {
+  let h = hlCache.get(l);
+  if (h === undefined) {
+    h = highlightLineRaw(l);
+    if (hlCache.size > 20000) hlCache.clear();
+    hlCache.set(l, h);
+  }
+  return h;
+}
+function highlightLineRaw(l) {
+  let out = "", i = 0, first = true;
+  const n = l.length;
+  const lab = /^(\s*)(@?[A-Za-z_]\w*(?:\.\w+)*:)/.exec(l);
+  if (lab) { out += esc(lab[1]) + `<span class="t-lab">${esc(lab[2])}</span>`; i = lab[0].length; }
+  while (i < n) {
+    const c = l[i];
+    if (c === ";") { out += `<span class="t-com">${esc(l.slice(i))}</span>`; break; }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < n && l[j] !== c) j += l[j] === "\\" ? 2 : 1;
+      out += `<span class="t-str">${esc(l.slice(i, j + 1))}</span>`; i = j + 1; continue;
+    }
+    let m = /^(\$[0-9A-Fa-f]+|0[xX][0-9A-Fa-f]+|0[bB][01]+|%[01]+|\d+)/.exec(l.slice(i));
+    if (m && !(c === "$" && m[0].length === 1)) { out += `<span class="t-num">${esc(m[0])}</span>`; i += m[0].length; first = false; continue; }
+    m = /^\.[A-Za-z_]\w*/.exec(l.slice(i));
+    if (m) { out += `<span class="t-dir">${esc(m[0])}</span>`; i += m[0].length; first = false; continue; }
+    m = /^@?[A-Za-z_]\w*(?:\.\w+)*/.exec(l.slice(i));
+    if (m) {
+      const w = m[0];
+      const cls = first ? "t-mn" : REG_RE.test(w) ? "t-reg" : "t-sym";
+      out += `<span class="${cls}">${esc(w)}</span>`; i += w.length; first = false; continue;
+    }
+    out += esc(c); i++;
+  }
+  return out;
+}
+function caretLine() { return ed.ta.value.slice(0, ed.ta.selectionStart).split("\n").length; }
+// The line number of the current instruction or -1 (the source changed, IP is outside the source).
+function currentSourceLine() {
+  if (!ui.build || ui.dirty) return -1;
+  const l = ui.build.addrLine.get(engine.getRegs()[14]);
+  return l === undefined ? -1 : l;
+}
+function renderEditor() {
+  const lines = ui.source.split("\n");
+  const cur = currentSourceLine();
+  const bpLines = new Set();
+  if (ui.build) for (const a of ui.bps) { const l = ui.build.addrLine.get(a); if (l !== undefined) bpLines.add(l); }
+  let h = "", g = "";
+  for (let i = 0; i < lines.length; i++) {
+    const n = i + 1;
+    const cls = (n === cur ? " cur" : bpLines.has(n) ? " bp" : "") + (ui.srcErrors.has(n) ? " err" : "");
+    h += `<div class="ln${cls}">${highlightLine(lines[i])}</div>`;
+    g += `<div class="gl${bpLines.has(n) ? " bp" : ""}${n === cur ? " cur" : ""}${ui.srcErrors.has(n) ? " err" : ""}" data-line="${n}"` +
+         `${ui.srcErrors.has(n) ? ` title="${esc(ui.srcErrors.get(n)).replace(/"/g, "&quot;")}"` : ""}>${n}</div>`;
+  }
+  ed.hl.innerHTML = h + '<div style="height:48px"></div>';
+  ed.gutter.innerHTML = g + '<div style="height:48px"></div>';
+  syncScroll();
+}
+function syncScroll() {
+  ed.hl.scrollTop = ed.ta.scrollTop; ed.hl.scrollLeft = ed.ta.scrollLeft;
+  ed.gutter.scrollTop = ed.ta.scrollTop;
+}
+// Scroll the editor so that line n is visible (not during typing).
+function revealSourceLine(n) {
+  if (n < 1) return;
+  const top = (n - 1) * 20, h = ed.ta.clientHeight;
+  if (top < ed.ta.scrollTop + 20 || top > ed.ta.scrollTop + h - 60) { ed.ta.scrollTop = Math.max(0, top - h / 3); syncScroll(); }
+}
+function gotoLine(n) {
+  setView("src");
+  const lines = ed.ta.value.split("\n");
+  let pos = 0;
+  for (let i = 0; i < n - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+  ed.ta.focus();
+  ed.ta.setSelectionRange(pos, pos);
+  revealSourceLine(n);
+}
+// The address of the first instruction of the line under the editor cursor.
+function caretAddr() {
+  const n = caretLine();
+  if (!ui.build || ui.dirty) { setMsg("The source has changed since the last build. Build it first (Ctrl+B)."); return null; }
+  const a = ui.build.lineAddr.get(n);
+  if (a === undefined) { setMsg(`Line ${n} has no instruction.`); return null; }
+  return a;
+}
+function toggleBpAtLine(n) {
+  if (!ui.build || ui.dirty) { setMsg("The source has changed since the last build. Build it first (Ctrl+B)."); return; }
+  const a = ui.build.lineAddr.get(n);
+  if (a === undefined) { setMsg(`Line ${n} has no instruction.`); return; }
+  toggleBp(a);
+  renderEditor();
+  setMsg(ui.bps.has(a) ? `Breakpoint set at line ${n} (${hex4(a)}).` : `Breakpoint cleared at line ${n}.`);
+}
+function setSource(text, name) {
+  ui.source = text.replace(/\r\n?/g, "\n");
+  ui.progName = name;
+  ed.ta.value = ui.source;
+  ed.ta.scrollTop = 0;
+}
+let saveTimer = 0;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem("cpu16dbg.source", ui.source); localStorage.setItem("cpu16dbg.name", ui.progName); }
+    catch (e) { /* storage is unavailable: the source will not be kept between sessions */ }
+  }, 400);
+}
+function updateSrcState() {
+  const t = $("src-state");
+  const file = ui.progName + ".asm";
+  t.className = "state-tag";
+  if (ui.srcErrors.size && ui.dirty) { t.textContent = `${file} has errors`; t.classList.add("bad"); }
+  else if (!ui.build && ui.binName) { t.textContent = `running ${ui.binName}; Build runs the source again`; t.classList.add("dirty"); }
+  else if (ui.dirty) { t.textContent = `${file} (modified, Ctrl+B to build)`; t.classList.add("dirty"); }
+  else t.textContent = file;
+}
+
+/* ---------------- build ---------------- */
+function renderBuildOutput(a, ok, file) {
+  const T = Cpu16Assembler.text;
+  const out = $("buildout");
+  out.replaceChildren();
+  const sum = document.createElement("div");
+  sum.className = "summary " + (ok ? "ok" : "bad");
+  sum.textContent = ok ? `${file}: built ${a.maxAddr >= 0 ? `${a.maxAddr - a.minAddr + 1} bytes, ${hex4(a.minAddr)}..${hex4(a.maxAddr)}` : "an empty program"}.`
+                       : `${file}: ${a.diags.length} error${a.diags.length === 1 ? "" : "s"}.`;
+  out.appendChild(sum);
+  for (const d of a.diags) {
+    const b = document.createElement("button");
+    b.className = "diag";
+    // the .line location (for example, a B16 line) and the line of the assembly text itself
+    const where = T(d.file) + (d.line > 0 ? ":" + d.line : "") + (d.asmLine > 0 ? ` (${T(d.asmFile)}:${d.asmLine})` : "");
+    b.innerHTML = `<span class="where">${esc(where)}</span>: ${esc(T(d.msg))}`;
+    const [af, al] = diagAsmLine(d);
+    if (al > 0 && T(af) === file) b.onclick = () => gotoLine(al);
+    out.appendChild(b);
+  }
+}
+// The assembly text line of a message: with .line - asmFile/asmLine, otherwise file/line.
+function diagAsmLine(d) { return d.asmLine > 0 ? [d.asmFile, d.asmLine] : [d.file, d.line]; }
+// Assemble the source; on success load the program, labels and breakpoints (by line numbers).
+function buildSource(opts = {}) {
+  if (ui.running) return false;
+  const T = Cpu16Assembler.text;
+  const file = ui.progName + ".asm";
+  // There is no file system in the browser: .include finds only the built-in library stdlib.asm
+  const a = new Cpu16Assembler((p) => (p === "stdlib.asm" || p.endsWith("/stdlib.asm") ? DEMO.stdlib : null));
+  const ok = a.assembleText(file, ui.source);
+  renderBuildOutput(a, ok, file);
+  if (!ok) {
+    ui.srcErrors = new Map();
+    for (const d of a.diags) {
+      const [af, al] = diagAsmLine(d);
+      if (al > 0 && T(af) === file && !ui.srcErrors.has(al)) ui.srcErrors.set(al, T(d.msg));
+    }
+    ui.dirty = true;
+    showConTab("build");
+    renderEditor();
+    updateSrcState();
+    // show the first erroneous line (the cursor is not touched)
+    if (ui.view === "src" && ui.srcErrors.size) revealSourceLine(Math.min(...ui.srcErrors.keys()));
+    setMsg(`Build failed: ${a.diags.length} error${a.diags.length === 1 ? "" : "s"}. See the Build tab.`);
+    return false;
+  }
+  // breakpoints are carried over by line numbers of the previous build (its line-to-address mapping does not depend on edits)
+  const oldLines = ui.build ? [...ui.bps].map((b) => ui.build.addrLine.get(b)).filter((l) => l !== undefined) : [];
+  const segs = [];
+  let start = -1;
+  for (let x = 0; x <= 65536; x++) {
+    const own = x < 65536 && a.owner[x] >= 0;
+    if (own && start < 0) start = x;
+    if (!own && start >= 0) { segs.push([start, a.image.slice(start, x)]); start = -1; }
+  }
+  const addrLine = new Map(), lineAddr = new Map();
+  for (const e of a.lineMap()) {
+    if (!e.instr || T(e.file) !== file) continue;
+    addrLine.set(e.addr, e.line);
+    if (!lineAddr.has(e.line)) lineAddr.set(e.line, e.addr);
+  }
+  ui.build = { file, addrLine, lineAddr, bin: a.maxAddr >= 0 ? a.binary(0, 0) : new Uint8Array(0),
+               listing: T(a.listing()), map: T(a.memoryMap()) };
+  ui.dirty = false; ui.binName = ""; ui.srcErrors = new Map();
+  ui.symbols = new Map(); ui.constants = new Map();
+  for (const sy of a.symbols()) {
+    if (sy.value < 0 || sy.value > 0xFFFF) continue;
+    const m = sy.label ? ui.symbols : ui.constants;
+    if (!m.has(sy.value)) m.set(sy.value, T(sy.name));
+  }
+  ui.bps = new Set(oldLines.map((l) => lineAddr.get(l)).filter((x) => x !== undefined));
+  loadProgram(segs);
+  engine.takeConsoleOutput();
+  $("conout").textContent = "";
+  ui.prevRegs = engine.getRegs(); ui.prevMem = engine.readMem(0, 65536);
+  ui.disTop = 0; ui.cursor = 0;
+  showConTab("console");
+  renderAll();
+  updateSrcState();
+  if (!opts.quiet) setMsg(`Build succeeded: ${a.maxAddr >= 0 ? `${a.maxAddr - a.minAddr + 1} bytes at ${hex4(a.minAddr)}..${hex4(a.maxAddr)}` : "empty program"}. Execution starts at $0000.`);
+  return true;
+}
+function cmdBuild() { if (!ui.running) buildSource(); }
+
+/* ---------------- tabs ---------------- */
+function setView(v) {
+  ui.view = v;
+  $("tab-src").setAttribute("aria-selected", String(v === "src"));
+  $("tab-dis").setAttribute("aria-selected", String(v === "dis"));
+  $("src-body").hidden = v !== "src"; $("src-actions").hidden = v !== "src";
+  $("dis-body").hidden = v !== "dis"; $("dis-actions").hidden = v !== "dis";
+  if (v === "dis") { renderDis(); ensureVisible(engine.getRegs()[14]); renderDis(); }
+  else { renderEditor(); revealSourceLine(currentSourceLine()); }
+}
+function showConTab(t) {
+  ui.conTab = t;
+  $("tab-con").setAttribute("aria-selected", String(t === "console"));
+  $("tab-build").setAttribute("aria-selected", String(t === "build"));
+  $("tab-disks").setAttribute("aria-selected", String(t === "disks"));
+  $("con-body").hidden = t !== "console"; $("build-body").hidden = t !== "build"; $("disks-body").hidden = t !== "disks";
+  $("con-hint").hidden = t !== "console"; $("b-clear").hidden = t !== "console";
+  renderDisks();
+}
+
+/* ---------------- .zip and downloading ---------------- */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(d) { let c = 0xFFFFFFFF; for (let i = 0; i < d.length; i++) c = CRC_TABLE[(c ^ d[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+// An uncompressed ZIP ("stored" method): [{ name, data: Uint8Array }] -> Uint8Array.
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034B50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014B50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  const cdSize = central.reduce((n, p) => n + p.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054B50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  const all = [...parts, ...central, new Uint8Array(end.buffer)];
+  const out = new Uint8Array(all.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of all) { out.set(p, o); o += p.length; }
+  return out;
+}
+// Inside claude.ai the file is delivered through the downloads capability (the viewer confirms the save);
+// outside it - by an ordinary browser link.
+const inViewer = () => !!(window.claude && typeof window.claude.use === "function");
+function initDownloads() {
+  if (!inViewer()) return;
+  window.claude.use("downloads").then((dl) => { if (!dl) $("b-zip").hidden = true; }, () => { $("b-zip").hidden = true; });
+}
+async function offerDownload(filename, bytes, mime = "application/zip") {
+  if (inViewer()) {
+    const dl = await window.claude.use("downloads");
+    if (!dl) { $("b-zip").hidden = true; setMsg("Downloads are not available in this view."); return; }
+    try {
+      await dl.save({ filename, data: bytes });
+      setMsg(`Saved ${filename}.`);
+    } catch (e) {
+      const code = e && e.code;
+      setMsg(code === "declined" ? "Download cancelled." :
+             code === "rate_limited" ? "A download prompt is already open." :
+             code === "extension_not_enabled" ? ".zip downloads are not available here." :
+             `Download failed: ${(e && (e.message || code)) || e}.`);
+    }
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const link = document.createElement("a");
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  setMsg(`Saved ${filename}.`);
+}
+async function cmdZip() {
+  if (ui.dirty || !ui.build) buildSource({ quiet: true });
+  const enc = new TextEncoder();
+  const files = [{ name: ui.progName + ".asm", data: enc.encode(ui.source) }];
+  const built = ui.build && !ui.dirty;
+  if (built) files.push({ name: ui.progName + ".bin", data: ui.build.bin },
+                        { name: ui.progName + ".lst", data: enc.encode(ui.build.listing) },
+                        { name: ui.progName + ".map", data: enc.encode(ui.build.map) });
+  await offerDownload(ui.progName + ".zip", makeZip(files));
+  if (!built) setMsg(($("msg").textContent + " The source has build errors, so the archive contains only the .asm file.").trim());
+}
+
+/* ---------------- events ---------------- */
+$("b-step").onclick = cmdStep;
+$("b-over").onclick = cmdStepOver;
+$("b-cursor").onclick = cmdRunToCursor;
+$("b-run").onclick = cmdRun;
+$("b-boot").onclick = cmdBoot;
+$("b-pause").onclick = cmdPause;
+$("b-reset").onclick = cmdReset;
+$("b-clear").onclick = () => { $("conout").textContent = ""; };
+for (let n = 0; n < 8; n++) {
+  const b = document.createElement("button");
+  b.className = "btn irq"; b.textContent = n; b.title = `Raise IRQ${n}`; b.setAttribute("aria-label", `Raise IRQ${n}`);
+  b.onclick = () => cmdIrq(n);
+  $("irqs").appendChild(b);
+}
+
+$("dis-body").addEventListener("click", (e) => {
+  const row = e.target.closest(".drow");
+  if (!row) return;
+  const a = +row.dataset.addr;
+  if (e.target.closest(".gut")) toggleBp(a);
+  else { ui.cursor = a; renderDis(); }
+});
+$("dis-body").addEventListener("dblclick", (e) => {
+  const row = e.target.closest(".drow");
+  if (row && !e.target.closest(".gut")) toggleBp(+row.dataset.addr);
+});
+$("dis-body").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const n = Math.max(1, Math.round(Math.abs(e.deltaY) / 40));
+  for (let i = 0; i < n; i++) ui.disTop = e.deltaY > 0 ? nextAddr(ui.disTop) : engine.prevInstrAddr(ui.disTop);
+  renderDis();
+}, { passive: false });
+$("mem-body").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const bpr = memBpr(), d = (e.deltaY > 0 ? bpr : -bpr) * Math.max(1, Math.round(Math.abs(e.deltaY) / 40));
+  if (ui.memPhys) ui.memAddrPhys = Math.min(Math.max(0, ui.memAddrPhys + d), PHYS_SIZE - bpr);
+  else ui.memAddr = (ui.memAddr + d) & (0x10000 - bpr);
+  renderMem();
+}, { passive: false });
+$("mem-body").addEventListener("dblclick", (e) => {
+  const b = e.target.closest(".b");
+  if (!b) return;
+  if (b.dataset.phys !== undefined) {
+    const pa = +b.dataset.phys;
+    inlineEdit(b, b.textContent, true, (v) => { engine.writePhys(pa, [v]); setMsg(`Physical $${h6(pa)} = $${h2(v)}.`); });
+    return;
+  }
+  const a = +b.dataset.addr;
+  if (a >= MACHINE.IO_BASE) { setMsg(`${hex4(a)} is in the device window ($FF20..$FFFF); it is not memory.`); return; }
+  inlineEdit(b, b.textContent, true, (v) => { engine.writeMem(a, [v]); setMsg(`${hex4(a)} = $${h2(v)}.`); });
+});
+$("b-memmode").onclick = () => setMemMode(!ui.memPhys);
+$("mmu-body").addEventListener("click", (e) => {
+  if (!e.target.closest("#mmu-en")) return;
+  snapshot();
+  engine.setMmuEnabled(!engine.getMmu().enabled);
+  renderAll();
+  setMsg(`MMU ${engine.getMmu().enabled ? "enabled" : "disabled"}.`);
+});
+$("mmu-body").addEventListener("dblclick", (e) => {
+  const f = e.target.closest(".frame");
+  if (!f) return;
+  const p = +f.dataset.page;
+  inlineEdit(f, f.textContent, true, (v) => { engine.setMmuPage(p, v); setMsg(`PAGE${p} = $${h2(v)}.`); });
+});
+$("rtc-body").addEventListener("dblclick", (e) => {
+  const el = e.target.closest("#rtc-now");
+  if (!el || el.querySelector("input")) return;
+  const inp = document.createElement("input");
+  inp.className = "edit";
+  inp.value = engine.getRtc().text;
+  inp.spellcheck = false;
+  inp.setAttribute("aria-label", "Clock value, DD.MM.YYYY HH:MM:SS");
+  el.replaceChildren(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = (ok) => {
+    if (done) return; done = true;
+    if (ok) {
+      if (engine.setRtc(inp.value)) setMsg(`Clock set to ${engine.getRtc().text}.`);
+      else setMsg(`"${inp.value.trim()}" is not a valid date and time: DD.MM.YYYY HH:MM:SS, 2025..2088.`);
+    }
+    el.textContent = engine.getRtc().text;
+    renderClock();
+  };
+  inp.addEventListener("keydown", (k) => {
+    if (k.key === "Enter") { k.preventDefault(); finish(true); }
+    else if (k.key === "Escape") { k.preventDefault(); finish(false); }
+    k.stopPropagation();
+  });
+  inp.addEventListener("blur", () => finish(false));
+});
+$("rtc-host").onclick = () => { engine.setRtcHostTime(); renderClock(); setMsg(`Clock set to the host time, ${engine.getRtc().text}.`); };
+$("tab-disks").onclick = () => showConTab("disks");
+$("dk-delay").addEventListener("change", (e) => {
+  const v = Number(e.target.value.trim().replace(",", "."));
+  if (!(v >= 0 && v <= 10000)) { setMsg(`"${e.target.value}" is not a valid time per sector (0..10000 ms).`); e.target.value = engine.diskDelayMs; return; }
+  engine.diskDelayMs = v;
+  setMsg(v ? `Disk commands take ${v} ms per sector.` : "Disk commands complete instantly.");
+});
+$("dk-rows").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  if (b.dataset.act === "ro") { engine.setDiskReadOnly(+b.dataset.n, b.checked); renderDisks(); return; }
+  onDiskAction(b.dataset.act, +b.dataset.n);
+});
+$("dk-rows").addEventListener("keydown", (e) => {
+  if (e.target.id !== "dk-sectors") return;
+  if (e.key === "Enter") { e.preventDefault(); onDiskAction("create", ui.diskNew); }
+  else if (e.key === "Escape") { e.preventDefault(); onDiskAction("cancel", ui.diskNew); }
+  e.stopPropagation();
+});
+$("f-disk").onchange = (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (f && ui.diskSlot >= 0) attachDiskFile(ui.diskSlot, f);
+};
+$("regs-body").addEventListener("dblclick", (e) => {
+  const v = e.target.closest(".val");
+  if (!v) return;
+  const n = +v.dataset.reg;
+  inlineEdit(v, v.textContent, false, (x) => { engine.setReg(n, x); setMsg(`${REG_NAMES[n]} = ${hex4(engine.getRegs()[n])}.`); });
+});
+$("flags-body").addEventListener("click", (e) => {
+  const f = e.target.closest(".flag");
+  if (!f || ui.running) return;
+  snapshot();
+  const regs = engine.getRegs();
+  engine.setReg(15, regs[15] ^ +f.dataset.mask);
+  renderAll();
+});
+for (const [id, pane] of [["goto-dis", "dis"], ["goto-mem", "mem"]]) {
+  $(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { gotoIn(pane, e.target.value); e.preventDefault(); }
+    else if (e.key === "Escape") { $(pane).focus(); e.preventDefault(); }
+    if (!/^F\d+$/.test(e.key)) e.stopPropagation();
+  });
+}
+for (const id of ["dis", "regs", "mem", "stack"]) {
+  $(id).addEventListener("focusin", () => {
+    ui.focus = id;
+    for (const p of ["dis", "regs", "mem", "stack"]) $(p).classList.toggle("focused", p === id);
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) { e.preventDefault(); cmdBuild(); return; }
+  // in input fields and the editor only function keys work (they print nothing) and Esc during execution
+  const typing = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+  if (typing && !/^F\d+$/.test(e.key) && !(e.key === "Escape" && ui.running) && e.key !== "Pause") return;
+  const k = e.key;
+  let handled = true;
+  if (k === "F7") cmdStep();
+  else if (k === "F8") cmdStepOver();
+  else if (k === "F9") cmdRun();
+  else if (k === "F4") cmdRunToCursor();
+  else if (k === "F5" || k === "F2" && !e.ctrlKey) { if (ui.view === "src") toggleBpAtLine(caretLine()); else toggleBp(ui.cursor); }
+  else if (k === "F2" && e.ctrlKey) cmdReset();
+  else if (k === "Escape" || k === "Pause") cmdPause();
+  else if ((k === "g" || k === "G") && (e.ctrlKey || e.metaKey)) $(ui.focus === "mem" ? "goto-mem" : "goto-dis").focus();
+  else if (ui.focus === "dis" && ui.view === "dis" && (k === "ArrowDown" || k === "ArrowUp" || k === "PageDown" || k === "PageUp")) {
+    const step = k.startsWith("Page") ? Math.max(1, ui.shownAddrs.length - 1) : 1;
+    for (let i = 0; i < step; i++) ui.cursor = k.endsWith("Down") || k === "PageDown" ? nextAddr(ui.cursor) : engine.prevInstrAddr(ui.cursor);
+    renderDis(); ensureVisible(ui.cursor);
+    const idx = ui.shownAddrs.indexOf(ui.cursor);
+    if (idx === 0 && k.endsWith("Up")) ui.disTop = ui.cursor;
+    renderDis();
+  } else if (ui.focus === "mem" && (k === "ArrowDown" || k === "ArrowUp" || k === "PageDown" || k === "PageUp")) {
+    const bpr = memBpr();
+    const step = k.startsWith("Page") ? bpr * Math.max(1, rowsFit($("mem-body")) - 1) : bpr;
+    ui.memAddr = (ui.memAddr + (k.endsWith("Down") ? step : -step)) & (0x10000 - bpr);
+    renderMem();
+  } else handled = false;
+  if (handled) e.preventDefault();
+});
+
+/* ---------------- console input ---------------- */
+// Keys pressed in the console go to the program as keyboard events (a character and scancode);
+// function keys, Esc and Ctrl combinations stay with the debugger and the browser - except Ctrl+Enter
+// ("The Machine", sect. 2.6: an event with character 0 and the Enter scancode) and Ctrl+[, Ctrl+] (the scancodes [ and ] with Ctrl:
+// the monitor switches sessions with them).
+$("conout").addEventListener("keydown", (e) => {
+  const plainCtrl = e.ctrlKey && !e.metaKey && !e.altKey;
+  const ctrlEnter = e.key === "Enter" && plainCtrl;
+  const ctrlBracket = plainCtrl && (e.code === "BracketLeft" || e.code === "BracketRight");
+  if (/^F\d+$/.test(e.key) || e.key === "Escape" || e.key === "Pause" || ((e.ctrlKey || e.metaKey || e.altKey) && !ctrlEnter && !ctrlBracket)) return;
+  const ev = keyToEvent(domKey(e));
+  if (!ev) return;
+  e.preventDefault();
+  e.stopPropagation();
+  engine.feedKey(ev.ch, ev.scan, ev.mods);
+  renderStatus();
+});
+$("conout").addEventListener("paste", (e) => {
+  e.preventDefault();
+  const t = (e.clipboardData && e.clipboardData.getData("text")) || "";
+  if (t) { engine.feedText(t); renderStatus(); }
+});
+
+/* ---------------- editor and tab events ---------------- */
+// Redrawing the editor - at most once per frame: pasting multi-line text may
+// give an input event for each line.
+let editorQueued = false;
+ed.ta.addEventListener("input", () => {
+  ui.source = ed.ta.value;
+  ui.dirty = true;
+  scheduleSave();
+  if (editorQueued) return;
+  editorQueued = true;
+  requestAnimationFrame(() => { editorQueued = false; ui.source = ed.ta.value; renderEditor(); updateSrcState(); });
+});
+ed.ta.addEventListener("scroll", syncScroll);
+ed.ta.addEventListener("keydown", (e) => {
+  if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // Tab inserts spaces up to the next tab stop (8); Esc, then Tab - leave the editor
+    e.preventDefault();
+    const v = ed.ta.value, p = ed.ta.selectionStart;
+    const col = p - (v.lastIndexOf("\n", p - 1) + 1);
+    const pad = " ".repeat(8 - (col % 8));
+    if (!document.execCommand || !document.execCommand("insertText", false, pad)) ed.ta.setRangeText(pad, p, ed.ta.selectionEnd, "end");
+    ed.ta.dispatchEvent(new Event("input"));
+  } else if (e.key === "Escape" && !ui.running) {
+    ed.ta.blur();
+  }
+});
+$("gutter").addEventListener("click", (e) => {
+  const g = e.target.closest(".gl");
+  if (g) toggleBpAtLine(+g.dataset.line);
+});
+$("gutter").addEventListener("wheel", (e) => { ed.ta.scrollTop += e.deltaY; syncScroll(); e.preventDefault(); }, { passive: false });
+$("tab-src").onclick = () => setView("src");
+$("tab-dis").onclick = () => setView("dis");
+$("tab-con").onclick = () => showConTab("console");
+$("tab-build").onclick = () => showConTab("build");
+$("b-build").onclick = cmdBuild;
+$("b-zip").onclick = cmdZip;
+$("b-open-asm").onclick = () => $("f-asm").click();
+$("f-asm").onchange = (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  f.text().then((t) => {
+    const base = f.name.replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9_-]+/g, "_") || "program";
+    setSource(t, base);
+    scheduleSave();
+    ui.dirty = true;
+    const ok = buildSource({ quiet: true });
+    setView("src");
+    setMsg(ok ? `Opened and built ${f.name}.` : `Opened ${f.name}; it has build errors. See the Build tab.`);
+  });
+};
+$("b-demo").onclick = () => {
+  if (ui.source !== DEMO.source && Date.now() > ui.demoConfirmUntil) {
+    ui.demoConfirmUntil = Date.now() + 4000;
+    setMsg("Click Demo again within 4 seconds to replace your source with the demo program.");
+    return;
+  }
+  ui.demoConfirmUntil = 0;
+  setSource(DEMO.source, "demo");
+  scheduleSave();
+  ui.dirty = true;
+  buildSource({ quiet: true });
+  setView("src");
+  setMsg("Demo restored and built.");
+};
+
+/* ---------------- loading files ---------------- */
+function loadBin(file) {
+  const at = parseAddr($("loadat").value);
+  if (at === null) { setMsg(`Load address "${$("loadat").value}" is not valid.`); return; }
+  file.arrayBuffer().then((buf) => {
+    const bytes = new Uint8Array(buf);
+    loadProgram([[at, bytes]]);
+    engine.takeConsoleOutput();
+    const msg = `Loaded ${file.name}: ${bytes.length} bytes at ${hex4(at)}. Execution starts at $0000 after reset.`;
+    $("conout").textContent = "";
+    ui.symbols = new Map(); ui.constants = new Map(); ui.bps.clear();
+    ui.build = null; ui.dirty = true; ui.binName = file.name;
+    updateSrcState();
+    setView("dis");
+    ui.prevRegs = engine.getRegs(); ui.prevMem = engine.readMem(0, 65536);
+    ui.disTop = at & 0xFFFE; ui.cursor = engine.getRegs()[14]; ui.memAddr = at & 0xFFF8;
+    renderAll();
+    setMsg(msg);
+    $("dis").focus();
+  });
+}
+// The cpu16asm -m map format: "$XXXX  label     name" / "$XXXX  constant  name".
+function loadMap(file) {
+  file.text().then((t) => {
+    // The cpu16asm -m memory map: labels are from the "Objects by address" section (local ones are rows
+    // with an indent, the name "@x" is completed by the enclosing object), constants are from "Constants".
+    // It also understands the former map format: "$XXXX  label|constant  name".
+    const list = [];
+    ui.constants = new Map();
+    let section = "", parent = "";
+    const addConst = (a, n) => { if (!ui.constants.has(a)) ui.constants.set(a, n); };
+    for (const line of t.split(/\r?\n/)) {
+      const h = /^== (.+) ==$/.exec(line);
+      if (h) { section = h[1]; continue; }
+      const old = /^\$([0-9A-Fa-f]{4})\s+(label|constant)\s+(\S+)/.exec(line);
+      if (old) {
+        if (old[2] === "label") list.push([parseInt(old[1], 16), old[3]]);
+        else addConst(parseInt(old[1], 16), old[3]);
+        continue;
+      }
+      if (section === "Objects by address") {
+        // a name with "@" is a local label (global ones never have "@"); "@x" is inside object parent
+        const r = /^\$([0-9A-Fa-f]{4})  (?:\$[0-9A-Fa-f]{4}|     ) +\d+  \S+ +(\S+)/.exec(line);
+        if (!r) continue;
+        const a = parseInt(r[1], 16), name = r[2];
+        if (name[0] === "(") { if (name === "(no label)") parent = ""; continue; }   // (no label), (padding)
+        if (!name.includes("@")) { parent = name; list.push([a, name]); }
+        else list.push([a, name[0] === "@" && parent ? parent + name : name]);
+      } else if (section === "Constants") {
+        const m = /^\$([0-9A-Fa-f]{4})  (\S+)/.exec(line);
+        if (m) addConst(parseInt(m[1], 16), m[2]);
+      }
+    }
+    loadSymbols(list);
+    renderAll();
+    $("dis").focus();
+    setMsg(`Loaded ${list.length} label${list.length === 1 ? "" : "s"} from ${file.name}.`);
+  });
+}
+$("b-open").onclick = () => $("f-bin").click();
+$("b-map").onclick = () => $("f-map").click();
+$("f-bin").onchange = (e) => { if (e.target.files[0]) loadBin(e.target.files[0]); e.target.value = ""; };
+$("f-map").onchange = (e) => { if (e.target.files[0]) loadMap(e.target.files[0]); e.target.value = ""; };
+document.addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dropping"); });
+document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) document.body.classList.remove("dropping"); });
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  document.body.classList.remove("dropping");
+  for (const f of e.dataTransfer.files) {
+    if (/\.(asm|s)$/i.test(f.name)) { const dt = new DataTransfer(); dt.items.add(f); $("f-asm").files = dt.files; $("f-asm").onchange({ target: $("f-asm") }); }
+    else if (/\.(img|dsk)$/i.test(f.name)) {
+      const free = engine.getDisks().findIndex((d) => !d);
+      if (free < 0) setMsg("All 8 disks are connected; detach one first.");
+      else { attachDiskFile(free, f); showConTab("disks"); }
+    }
+    else (/\.map$/i.test(f.name) ? loadMap : loadBin)(f);
+  }
+});
+
+/* ---------------- theme ---------------- */
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  if (t) return t;
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $("b-theme").textContent = t === "dark" ? "Light theme" : "Dark theme";
+  try { localStorage.setItem("cpu16dbg.theme", t); } catch (e) { /* storage is unavailable */ }
+}
+$("b-theme").onclick = () => applyTheme(currentTheme() === "dark" ? "light" : "dark");
+try { const t = localStorage.getItem("cpu16dbg.theme"); if (t === "light" || t === "dark") applyTheme(t); } catch (e) { /* no storage */ }
+$("b-theme").textContent = currentTheme() === "dark" ? "Light theme" : "Dark theme";
+
+/* ---------------- display: drawing ---------------- */
+// A self-contained function: the same one works in the panel and (through toString) in a separate window.
+// D = { charset, palette, boxes, blocks, cols, rows }. A cell is 1:2, box-drawing characters are drawn with lines.
+function makeRenderer(canvas, D) {
+  const ctx = canvas.getContext("2d");
+  const FONT = '"Cascadia Mono", Consolas, "DejaVu Sans Mono", Menlo, "Liberation Mono", monospace';
+  let cw = 8, chh = 16, screen = null, blinkOn = true;
+  function fit(availW, availH) {
+    const dpr = window.devicePixelRatio || 1;
+    cw = Math.max(3, Math.floor(Math.min(availW * dpr / D.cols, availH * dpr / (D.rows * 2))));
+    chh = 2 * cw;
+    canvas.width = cw * D.cols; canvas.height = chh * D.rows;
+    canvas.style.width = canvas.width / dpr + "px"; canvas.style.height = canvas.height / dpr + "px";
+    draw();
+  }
+  function rect(x, y, w, h) { if (w > 0 && h > 0) ctx.fillRect(x, y, w, h); }
+  // box-drawing lines: arms = [up, down, left, right], 1 - single, 2 - double
+  function box(x, y, arms, t, g) {
+    const [u, d, l, r] = arms;
+    const cx = x + Math.floor(cw / 2), cy = y + Math.floor(chh / 2), h = Math.floor(t / 2);
+    const V2 = u === 2 || d === 2, H2 = l === 2 || r === 2;
+    const vseg = (X, y0, y1) => rect(X - h, Math.min(y0, y1), t, Math.abs(y1 - y0));
+    const hseg = (Y, x0, x1) => rect(Math.min(x0, x1), Y - h, Math.abs(x1 - x0), t);
+    const vRailsOpen = !(u === 2 && d === 2), hRailsOpen = !(l === 2 && r === 2);
+    for (const [arm, dir] of [[u, -1], [d, 1]]) {
+      if (!arm) continue;
+      const edge = dir < 0 ? y : y + chh;
+      if (arm === 1) {
+        const from = !H2 ? cy - dir * h : hRailsOpen ? cy - dir * g - dir * h : cy + dir * g - dir * h;
+        vseg(cx, from, edge);
+      } else {
+        let ls = cy - dir * h, rs = cy - dir * h;
+        if (H2) {
+          ls = (dir < 0 ? (l === 2 ? cy - g : cy + g) : (l === 2 ? cy + g : cy - g)) - dir * h;
+          rs = (dir < 0 ? (r === 2 ? cy - g : cy + g) : (r === 2 ? cy + g : cy - g)) - dir * h;
+        }
+        vseg(cx - g, ls, edge); vseg(cx + g, rs, edge);
+      }
+    }
+    for (const [arm, dir] of [[l, -1], [r, 1]]) {
+      if (!arm) continue;
+      const edge = dir < 0 ? x : x + cw;
+      if (arm === 1) {
+        const from = !V2 ? cx - dir * h : vRailsOpen ? cx - dir * g - dir * h : cx + dir * g - dir * h;
+        hseg(cy, from, edge);
+      } else {
+        let ts = cx - dir * h, bs = cx - dir * h;
+        if (V2) {
+          ts = (dir < 0 ? (u === 2 ? cx - g : cx + g) : (u === 2 ? cx + g : cx - g)) - dir * h;
+          bs = (dir < 0 ? (d === 2 ? cx - g : cx + g) : (d === 2 ? cx + g : cx - g)) - dir * h;
+        }
+        hseg(cy - g, ts, edge); hseg(cy + g, bs, edge);
+      }
+    }
+  }
+  function cell(i) {
+    if (!screen) return;
+    const x = (i % D.cols) * cw, y = Math.floor(i / D.cols) * chh;
+    const a = screen.attrs[i], c = screen.chars[i];
+    let fg = a & 7, bg = (a >> 3) & 7;
+    if (a & 0x80) [fg, bg] = [bg, fg];
+    ctx.fillStyle = D.palette[bg];
+    ctx.fillRect(x, y, cw, chh);
+    ctx.fillStyle = D.palette[fg];
+    const t = Math.max(1, Math.round(cw / 8)), g = Math.max(t + 1, Math.round(cw / 4));
+    const arms = D.boxes[c], blk = D.blocks[c];
+    if (arms) box(x, y, arms, t, g);
+    else if (blk) {
+      if (blk === "upper") rect(x, y, cw, chh / 2);
+      else if (blk === "lower") rect(x, y + chh / 2, cw, chh / 2);
+      else if (blk === "left") rect(x, y, cw / 2, chh);
+      else if (blk === "right") rect(x + cw / 2, y, cw / 2, chh);
+      else if (blk === "full") rect(x, y, cw, chh);
+      else { ctx.globalAlpha = blk === "shade1" ? 0.25 : blk === "shade2" ? 0.5 : 0.75; rect(x, y, cw, chh); ctx.globalAlpha = 1; }
+    } else if (c !== 0 && c !== 0x20 && D.charset[c]) {
+      ctx.fillText(String.fromCodePoint(D.charset[c]), x + cw / 2, y + chh * 0.55);
+    }
+    if (a & 0x40) rect(x, y + chh - 2 * t, cw, t);                                   // underline
+    if ((screen.ctrl & 2) && blinkOn && i === screen.row * D.cols + screen.col) {     // cursor
+      rect(x, y + chh - Math.max(2, Math.round(chh / 8)), cw, Math.max(2, Math.round(chh / 8)));
+    }
+  }
+  function draw(s) {
+    if (s) screen = s;
+    if (!screen) { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height); return; }
+    ctx.font = Math.round(chh * 0.8) + "px " + FONT;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = 0; i < D.cols * D.rows; i++) cell(i);
+  }
+  setInterval(() => {   // cursor blinking: one cell is redrawn
+    blinkOn = !blinkOn;
+    if (screen && (screen.ctrl & 2)) { ctx.font = Math.round(chh * 0.8) + "px " + FONT; cell(screen.row * D.cols + screen.col); }
+  }, 530);
+  return { fit, draw };
+}
+const DISPLAY_DATA = { charset: MACHINE.charset, palette: MACHINE.palette, boxes: GLYPHS.boxes, blocks: GLYPHS.blocks,
+                       cols: MACHINE.COLS, rows: MACHINE.ROWS };
+
+/* ---------------- display: window or panel ---------------- */
+// The page of a separate window: its own script, communication through postMessage (works from a restricted frame too).
+function displayWindowHtml() {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>CPU16 display</title><style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#bar{position:fixed;top:6px;right:8px;display:flex;gap:6px;opacity:.3;transition:opacity .2s}
+#bar:hover{opacity:1}
+button{font:12px system-ui,sans-serif;padding:3px 8px;background:#222;color:#ddd;border:1px solid #555;border-radius:4px;cursor:pointer}
+canvas{display:block}
+</style></head><body><div id="wrap"><canvas id="c"></canvas></div><div id="bar"><button id="fs">Full screen</button></div>
+<script>
+const D = ${JSON.stringify(DISPLAY_DATA)};
+const makeRenderer = ${makeRenderer.toString()};
+const R = makeRenderer(document.getElementById("c"), D);
+const fit = () => R.fit(innerWidth - 12, innerHeight - 12);
+addEventListener("resize", fit); fit();
+let frames = 0;
+addEventListener("message", (e) => {
+  const m = e.data;
+  if (m && m.type === "screen") { R.draw(m.screen); document.body.dataset.frames = ++frames; }
+});
+const toggleFs = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); };
+document.getElementById("fs").onclick = toggleFs;
+addEventListener("dblclick", toggleFs);
+addEventListener("keydown", (e) => {
+  if (e.key === "F11") return;
+  e.preventDefault();
+  if (opener) opener.postMessage({ type: "key", key: e.key, code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey }, "*");
+});
+if (opener) opener.postMessage({ type: "ready" }, "*");
+<\/script></body></html>`;
+}
+const disp = { mode: "off", win: null, renderer: null, lastVersion: -1 };
+function displayButton() {
+  const b = $("b-display");
+  b.setAttribute("aria-pressed", String(disp.mode !== "off"));
+  const attn = disp.mode === "off" && engine.usedDisplay;
+  b.classList.toggle("attention", attn);
+  b.title = attn ? "The program draws on the display: open it" : "Show the 80×25 display (a separate window, or a panel if windows are blocked)";
+}
+function openDisplay() {
+  if (disp.mode !== "off") return;
+  let w = null;
+  try {
+    const url = URL.createObjectURL(new Blob([displayWindowHtml()], { type: "text/html" }));
+    w = window.open(url, "cpu16display", "popup,width=860,height=560");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { w = null; }
+  if (w) {
+    disp.mode = "window"; disp.win = w; disp.lastVersion = -1;
+    setMsg("Display opened in a separate window. Click it to type; Pause/Break pauses the program.");
+  } else {
+    showDisplayPanel();
+    setMsg(inViewer() ? "Separate windows are blocked in this view, so the display is shown as a panel. " +
+                        "Open the debugger from its link in a separate tab to use a window."
+                      : "The browser did not open a separate window, so the display is shown as a panel.");
+  }
+  displayButton();
+  updateDisplay(true);
+}
+function closeDisplay() {
+  if (disp.mode === "window") { try { disp.win.close(); } catch (e) { /* already closed */ } disp.win = null; }
+  if (disp.mode === "panel") hideDisplayPanel();
+  disp.mode = "off";
+  displayButton();
+}
+function showDisplayPanel() {
+  disp.mode = "panel";
+  $("disp").hidden = false; $("sp-d").hidden = false;
+  layout.dispOpen = true;
+  if (!disp.renderer) disp.renderer = makeRenderer($("disp-canvas"), DISPLAY_DATA);
+  applyLayout();
+  fitDisplayPanel();
+  disp.lastVersion = -1;
+  $("disp-body").focus();
+}
+function hideDisplayPanel() {
+  $("disp").hidden = true; $("sp-d").hidden = true;
+  layout.dispOpen = false;
+  applyLayout();
+  renderAll();
+}
+function fitDisplayPanel() {
+  if (disp.mode !== "panel" || !disp.renderer) return;
+  const b = $("disp-body");
+  disp.renderer.fit(b.clientWidth - 8, b.clientHeight - 8);
+  disp.lastVersion = -1;
+}
+// Drawing the display: only if the screen changed (or force).
+function updateDisplay(force) {
+  displayButton();
+  if (disp.mode === "off") return;
+  if (disp.mode === "window" && (!disp.win || disp.win.closed)) { disp.mode = "off"; disp.win = null; displayButton(); return; }
+  const scr = engine.getScreen();
+  if (!force && scr.version === disp.lastVersion) return;
+  disp.lastVersion = scr.version;
+  const copy = { chars: scr.chars.slice(), attrs: scr.attrs.slice(), col: scr.col, row: scr.row, ctrl: scr.ctrl };
+  if (disp.mode === "panel") disp.renderer.draw(copy);
+  else disp.win.postMessage({ type: "screen", screen: copy }, "*");
+}
+setInterval(() => { if (disp.mode === "window" && (!disp.win || disp.win.closed)) updateDisplay(); }, 500);
+
+/* ---------------- keyboard ---------------- */
+// A browser keyboard event -> the machine's { ch, scan }. The scancode is the physical key (code),
+// the character is the typed sign in the machine encoding. null - send nothing.
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock", "AltGraph", "OS", "ContextMenu", "Fn"]);
+function keyToEvent(k) {
+  if (MODIFIER_KEYS.has(k.key)) return null;
+  const S = MACHINE.scancodes;
+  let scan = S[k.code] || 0;
+  if (!scan && /^Numpad/.test(k.code)) {           // the numeric keypad: by the key's action
+    if (/^[0-9]$/.test(k.key)) scan = S["Digit" + k.key];
+    else if (S[k.key]) scan = S[k.key];
+    else scan = { "+": 0x0D, "-": 0x0C, "*": 0x09, "/": 0x35, ".": 0x34, ",": 0x33 }[k.key] || 0;
+  }
+  let ch = 0;
+  if (k.ctrl && /^Key[A-Z]$/.test(k.code)) ch = k.code.charCodeAt(3) - 64;    // Ctrl + a letter: 1..26
+  else if (k.key === "Enter") ch = k.ctrl ? 0 : 10;                         // Ctrl+Enter: character 0, scancode $1C
+  else if (k.key === "Backspace") ch = 8;
+  else if (k.key === "Tab") ch = 9;
+  else if (k.key === "Escape") ch = 27;
+  else if ([...k.key].length === 1 && !k.ctrl && !k.meta) {
+    const c = Cpu16Engine.charsetCode(k.key.codePointAt(0));
+    ch = c > 0 ? c : 0;
+  }
+  if (!ch && !scan) return null;
+  const M = MACHINE;   // MODS (the machine, sect. 2.6): Shift, Ctrl, Alt
+  const mods = (k.shift ? M.MOD_SHIFT : 0) | (k.ctrl ? M.MOD_CTRL : 0) | (k.alt ? M.MOD_ALT : 0);
+  return { ch, scan, mods };
+}
+function feedKeyEvent(k) {
+  if (k.key === "Pause") { cmdPause(); return; }
+  const ev = keyToEvent(k);
+  if (ev) { engine.feedKey(ev.ch, ev.scan, ev.mods); renderStatus(); }
+}
+window.addEventListener("message", (e) => {
+  if (!disp.win || e.source !== disp.win || !e.data) return;
+  if (e.data.type === "ready") updateDisplay(true);
+  else if (e.data.type === "key") feedKeyEvent(e.data);
+});
+const domKey = (e) => ({ key: e.key, code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey });
+$("disp-body").addEventListener("keydown", (e) => {   // with the display focused all keys go to the program
+  if (e.key === "F11") return;
+  e.preventDefault();
+  e.stopPropagation();
+  feedKeyEvent(domKey(e));
+});
+$("b-display").onclick = () => (disp.mode === "off" ? openDisplay() : closeDisplay());
+$("b-disp-close").onclick = closeDisplay;
+const toggleDispFullscreen = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $("disp-body").requestFullscreen().catch((e) => setMsg(`Full screen is not available here: ${e.message}`));
+};
+$("b-disp-full").onclick = toggleDispFullscreen;
+$("disp-body").addEventListener("dblclick", toggleDispFullscreen);
+document.addEventListener("fullscreenchange", () => setTimeout(() => { fitDisplayPanelFull(); }, 50));
+function fitDisplayPanelFull() {
+  if (disp.mode !== "panel") return;
+  if (document.fullscreenElement === $("disp-body")) disp.renderer.fit(screen.width - 8, screen.height - 8);
+  else fitDisplayPanel();
+  updateDisplay(true);
+}
+
+/* ---------------- panel sizes ---------------- */
+// rightW is the right column width (px), topFrac the top row fraction, conH the console height (px).
+const LAYOUT_DEFAULT = { rightW: 340, topFrac: 0.6, conH: 120, dispW: 660 };
+const layout = { ...LAYOUT_DEFAULT };
+const mainEl = document.querySelector("main");
+function applyLayout() {
+  const r = mainEl.getBoundingClientRect();
+  const w = r.width - 12, h = r.height - 12;         // without main's inner padding
+  const dispSpace = layout.dispOpen ? 6 + Math.max(320, layout.dispW) : 0;
+  if (layout.dispOpen) layout.dispW = Math.round(Math.min(Math.max(layout.dispW, 320), Math.max(320, w - 6 - 220 - 6 - 320)));
+  layout.rightW = Math.round(Math.min(Math.max(layout.rightW, 220), Math.max(220, w - 6 - 320 - dispSpace)));
+  layout.conH = Math.round(Math.min(Math.max(layout.conH, 48), Math.max(48, h - 12 - 160)));
+  layout.topFrac = Math.min(Math.max(layout.topFrac, 0.12), 0.88);
+  mainEl.style.setProperty("--right-w", layout.rightW + "px");
+  mainEl.style.setProperty("--top-fr", layout.topFrac.toFixed(4) + "fr");
+  mainEl.style.setProperty("--bot-fr", (1 - layout.topFrac).toFixed(4) + "fr");
+  mainEl.style.setProperty("--con-h", layout.conH + "px");
+  mainEl.style.setProperty("--disp-gap", layout.dispOpen ? "6px" : "0px");
+  mainEl.style.setProperty("--disp-w", layout.dispOpen ? layout.dispW + "px" : "0px");
+  $("sp-d").setAttribute("aria-valuenow", layout.dispW);
+  $("sp-v").setAttribute("aria-valuenow", layout.rightW);
+  $("sp-h1").setAttribute("aria-valuenow", Math.round(layout.topFrac * 100));
+  $("sp-h2").setAttribute("aria-valuenow", layout.conH);
+}
+function saveLayout() {
+  const { dispOpen, ...keep } = layout;   // whether the display is open is not saved
+  try { localStorage.setItem("cpu16dbg.layout", JSON.stringify(keep)); } catch (e) { /* storage is unavailable */ }
+}
+function loadLayout() {
+  try {
+    const v = JSON.parse(localStorage.getItem("cpu16dbg.layout") || "null");
+    if (v && typeof v === "object") for (const k of Object.keys(LAYOUT_DEFAULT)) if (typeof v[k] === "number") layout[k] = v[k];
+  } catch (e) { /* no storage or a corrupted value */ }
+}
+let renderQueued = false;
+function renderSoon() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderAll(); });
+}
+// kind: "v" - between columns, "h1" - between rows, "h2" - above the console
+function setupSplitter(el, kind) {
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    el.classList.add("dragging");
+    document.body.classList.add("resizing");
+    const move = (ev) => {
+      const r = mainEl.getBoundingClientRect();
+      if (kind === "v") layout.rightW = r.right - 6 - (layout.dispOpen ? layout.dispW + 6 : 0) - ev.clientX - 3;
+      else if (kind === "d") layout.dispW = r.right - 6 - ev.clientX - 3;
+      else if (kind === "h2") layout.conH = r.bottom - 6 - ev.clientY - 3;
+      else {
+        const rows = r.height - 12 - 12 - layout.conH;   // the height of the two top rows
+        layout.topFrac = (ev.clientY - r.top - 6 - 3) / rows;
+      }
+      applyLayout();
+      if (kind === "d") fitDisplayPanel();
+      renderSoon();
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      el.classList.remove("dragging");
+      document.body.classList.remove("resizing");
+      saveLayout();
+      renderAll();
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  });
+  el.addEventListener("dblclick", () => {
+    if (kind === "v") layout.rightW = LAYOUT_DEFAULT.rightW;
+    else if (kind === "d") { layout.dispW = LAYOUT_DEFAULT.dispW; applyLayout(); fitDisplayPanel(); }
+    else if (kind === "h2") layout.conH = LAYOUT_DEFAULT.conH;
+    else layout.topFrac = LAYOUT_DEFAULT.topFrac;
+    applyLayout(); saveLayout(); renderAll();
+  });
+  el.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 64 : 16;
+    let used = true;
+    if (kind === "v" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) layout.rightW += e.key === "ArrowLeft" ? step : -step;
+    else if (kind === "d" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) layout.dispW += e.key === "ArrowLeft" ? step : -step;
+    else if (kind === "h2" && (e.key === "ArrowUp" || e.key === "ArrowDown")) layout.conH += e.key === "ArrowUp" ? step : -step;
+    else if (kind === "h1" && (e.key === "ArrowUp" || e.key === "ArrowDown")) layout.topFrac += (e.key === "ArrowUp" ? -step : step) / 400;
+    else used = false;
+    if (!used) return;
+    e.preventDefault();
+    e.stopPropagation();   // arrows must not reach navigation of the disassembler
+    applyLayout(); saveLayout(); fitDisplayPanel(); renderAll();
+  });
+}
+setupSplitter($("sp-v"), "v");
+setupSplitter($("sp-h1"), "h1");
+setupSplitter($("sp-h1r"), "h1");
+setupSplitter($("sp-h2"), "h2");
+setupSplitter($("sp-d"), "d");
+loadLayout();
+applyLayout();
+
+/* ---------------- start ---------------- */
+engine.setClockFrozen(true);   // the timer runs only during execution
+window.addEventListener("resize", () => { applyLayout(); fitDisplayPanel(); renderAll(); });
+{
+  let saved = null, savedName = null;
+  try { saved = localStorage.getItem("cpu16dbg.source"); savedName = localStorage.getItem("cpu16dbg.name"); } catch (e) { /* no storage */ }
+  setSource(saved !== null ? saved : DEMO.source, saved !== null && savedName ? savedName : "demo");
+  const ok = buildSource({ quiet: true });
+  setView("src");
+  setMsg(saved !== null ? (ok ? "Restored and built your source from the last session." : "Restored your source from the last session; it has build errors.")
+                        : "Demo built. F9 runs it, F7 steps; after it prints, IRQ 0 calls its interrupt handler.");
+  initDownloads();
+}
+$("dis").focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+// tev.b16 - the ev script (shell): keyboard events and their modifiers, Ctrl+C, TICKHOOK.
+// The keyboard is fed by the bench script tests/ev.scn.
+include "tlib.b16"
+include asm "tev.asm"
+
+extern fn t_pause(n: uint)
+
+var hook_n: uint
+
+interrupt fn hook() { hook_n++ }
+
+fn main(): int {
+    var e, e2, c, ev: uint
+    var t0, t1: ulong
+
+    // waiting for an event, ticks go on
+    puts("WAIT\n")
+    e, t0 = sys_ticks()
+    e, ev = sys_con_getev(0)
+    e2, t1 = sys_ticks()
+    check(e == 0 && ev == $1E61, "getev: returns the key (char 'a', scan $1E)")
+    check(t1 - t0 >= 3, "getev: ticks keep counting while waiting")
+    var m: uint
+    puts("WAITM\n")
+    e, ev, m = sys_con_getev(0)
+    check(e == 0 && ev == $4800 && m == 1, "getev: Shift+Up -> modifiers 1 (Shift)")
+    e, ev, m = sys_con_getev(0)
+    check(e == 0 && ev == $3E00 && m == 7, "getev: Shift+Ctrl+Alt+F4 -> modifiers 7")
+    e, ev, m = sys_con_getev(0)
+    check(e == 0 && ev == $1E61 && m == 0, "getev: a plain key -> modifiers 0")
+    e, ev = sys_con_getev(EV_NOWAIT)
+    check(e == E_AGAIN, "getev: NOWAIT with no events -> AGAIN")
+    e, ev = sys_con_getev(2)
+    check(e == E_INVAL, "getev: unknown flag -> INVAL")
+
+    // Ctrl+C
+    e, c = run("A:/bin/tchild.cx 8")
+    check(e == 0 && c == EXIT_BREAK, "break: spinning child stopped with $8001")
+    e, c = run("A:/bin/tchild.cx 13")
+    check(e == 0 && c == EXIT_BREAK, "break: during CON_GETEV")
+    e, c = run("A:/bin/tchild.cx 18")
+    check(e == 0 && c == EXIT_BREAK, "break: during SLEEP")
+    e, c = run("A:/bin/tchild.cx 19")
+    check(e == 0 && c == EXIT_BREAK, "break: during READ")
+
+    // the Ctrl+C handler (ONEVENT, sect. 7.5)
+    e, c = run("A:/bin/tchild.cx 26")
+    check(e == 0 && c == 26, "onevent: Ctrl+C handler instead of termination")
+    e, c = run("A:/bin/tchild.cx 27")
+    check(e == 0 && c == 27, "onevent: Ctrl+C during a call: INTR, then the handler")
+    e, c = run("A:/bin/tchild.cx 30")
+    check(e == 0 && c == 30, "onevent: parent handler inactive while the child runs")
+
+    // TICKHOOK
+    var old: ptr interrupt fn()
+    e, old = sys_tickhook(hook)
+    check(e == 0 && old == 0, "hook: TICKHOOK installs the handler, old = 0")
+    while hook_n < 20 { }
+    check(1, "hook: handler runs on process-mode ticks (20 calls seen)")
+    puts("WAIT3\n")
+    di()
+    var n0: uint = hook_n
+    e, t0 = sys_ticks()
+    e, ev = sys_con_getev(0)
+    var n1: uint = hook_n
+    e2, t1 = sys_ticks()
+    ei()
+    check(ev == $3062 && n1 == n0 && t1 - t0 >= 3, "hook: ticks during a call do not reach the handler")
+    di()
+    n0 = hook_n
+    e, c = run("A:/bin/tchild.cx 9")
+    n1 = hook_n
+    ei()
+    check(e == 0 && c == 9 && n1 == n0, "hook: parent handler is not called while the child runs")
+    n0 = hook_n
+    while hook_n < n0 + 5 { }
+    check(1, "hook: parent handler works again after the child exited")
+    e, old = sys_tickhook(0)
+    check(e == 0 && old == hook, "hook: TICKHOOK(0) returns the old handler")
+    n0 = hook_n
+    t_pause(3000)
+    check(hook_n == n0, "hook: no calls after TICKHOOK(0)")
+    return finish()
+}

@@ -1,0 +1,59 @@
+// Arrays and dictionaries (sect. 9.3, 9.4)
+var a = [5, 3, 9]
+a.push(1)
+a.insert(0, 7)
+a.insert(5, 8)
+println(str.join(sa(a), " "))
+println(a.pop())
+println(a.remove(1))
+println(str.join(sa(a), " "))
+var b = a.clone()
+b.reverse()
+println(str.join(sa(b), " ") + " / " + str.join(sa(a), " "))
+a.sort()
+println(str.join(sa(a), " "))
+println(a.contains(9))
+println(a.index_of(9))
+println(a.index_of(100))
+println(str.join(sa(a.slice(1, 3)), " "))
+var w = ["pear", "apple", "fig"]
+w.sort()
+println(str.join(w, ","))
+a.clear()
+println(a.len())
+fn sa(x: array): array {
+    var r = []
+    for v in x { r.push(str(v)) }
+    return r
+}
+var m = {"b": 2, "a": 1, "c": 3}
+m["d"] = 4
+m.set("a", 10)
+println(str.join(m.keys(), ","))
+println(m.delete("b"))
+println(m.delete("zz"))
+m["b"] = 20
+println(str.join(m.keys(), ","))
+println(str.join(sa(m.values()), ","))
+println($"{|m.len()|} {|m.has("a")|} {|m.has("b2")|} {|m.get("zz", -1)|} {|m.get("zz")|} {|m["nothing"]|}")
+m.set("n", null)
+println($"{|m.has("n")|} {|m["n"]|}")
+var c = m.clone()
+c["new"] = 1
+println($"{|m.len()|} {|c.len()|}")
+var big = {}
+var i = 0
+while i < 300 { big["k" + str(i)] = i; i++ }
+i = 0
+var sum = 0
+while i < 300 { sum += big["k" + str(i)]; i += 2 }
+println($"{|big.len()|} {|sum|}")
+i = 0
+while i < 300 { big.delete("k" + str(i)); i += 3 }
+println($"{|big.len()|} {|big.keys()[0]|} {|big["k299"]|}")
+var nested = {"list": [1, [2, 3]], "flags": {"v": true},}
+println(nested["list"][1][0])
+println(nested["flags"]["v"])
+println([1, "a"] == [1, "a"])
+var same = nested["list"]
+println(same == nested["list"])

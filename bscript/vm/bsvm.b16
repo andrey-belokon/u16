@@ -1,0 +1,128 @@
+// bsvm - the BScript virtual machine (the "BScript" specification, sect. 11.3, 12).
+//
+//   bsvm program.bsc [script-path] [args...]
+//
+// Exit codes: the program's code; 1 - an unhandled error; 125 - a runtime error;
+// 126 - the .bsc file is not found, is corrupted or is of another version; $8001 - Ctrl+C.
+include "sys.b16"
+include "bsdefs.b16"
+include "util.b16"
+include "types.b16"
+include "heap.b16"
+include "map.b16"
+include "value.b16"
+include "io.b16"
+include "interp.b16"
+include "ops.b16"
+include "lib.b16"
+include "libstr.b16"
+include "ovl.b16"
+include "ovl_stubs.b16"
+include "ovl_keep.b16"
+
+// Process memory ends at the overlay window (page 6, sect. 12.9): page 6 is free for an overlay.
+option max_top = OV_BASE
+
+const VSMAX = 384
+const CSTACK = 1536             // the B16 stack (measured: up to ~1000 bytes)
+
+var PIB_ARGS_END at $0012: uint
+var PIB_TOP at $0014: uint
+
+var prog_name: [40]byte
+var script_path: ptr byte
+var script_len: uint
+var ld_p, ld_kbase, ld_first: uint    // the loader's result (ov_init.b16)
+var ld_farconst: uint                 // constants are in extended-memory frames
+
+
+
+// The B16 stack is right after the argument block, not under max_top: page 5 ($A000-$BFFF) must
+// be free of the stack so that it can become the data window of extended memory (heap.b16).
+var g_argc: uint
+var g_argv: ptr ptr byte
+
+fn onstack(sp: uint, f: ptr fn()) {
+    asm {
+        MOV     SP, R0
+        CALL    R1
+    }
+}
+
+fn main(argc: uint, argv: ptr ptr byte): int {
+    g_argc = argc
+    g_argv = argv
+    onstack(((PIB_ARGS_END + 1) & $FFFE) + CSTACK, vm_main)
+    return 0
+}
+
+fn vm_main() {
+    var argc = g_argc
+    var argv = g_argv
+    io_init()
+    if argc < 2 {
+        eputs("usage: bsvm program.bsc [script-path] [args...]\n")
+        do_exit(126)
+    }
+    var e: uint
+    ovl_init(argv[0])
+    init_run()
+    if argc == $FFFF { ovl_keep_refs() }       // is not executed: functions for the overlays are in the image
+    var p = ld_p
+    var top = PIB_TOP
+    var kbase = ld_kbase
+    glob = ptr Val(p)
+    p += nglob * 4
+    konst = ptr uint(p)
+    p += nkonst * 2
+    vs = ptr Val(p)
+    vsp = vs
+    p += VSMAX * 4
+    vlim = ptr Val(p)
+    // handles: one entry per 22 bytes of heap
+    var htop = top
+    if ld_farconst != 0 { htop = W5_BASE }             // extended mode: the heap is below the data window
+    var nh: uint = (htop - p) / 22
+    heap_init(p, htop, nh)
+    if FAR_TEST != 0 {
+        // check: extended mode at once, a 2 KB near heap
+        heap_hi = heap_lo + 2048
+        if heap_hi > W5_BASE { heap_hi = W5_BASE }
+        seg_limit = 64
+        far_on = 1
+        fastpath = 0
+    }
+    var i: uint = 0
+    while i < nglob { glob[i].t = TAG_NULL; glob[i].v = 0; i++ }
+    // constants are module objects (or already in frames: then extended mode at once)
+    if ld_farconst != 0 {
+        if heap_lo + 2048 > W5_BASE { eputs("bsvm: program too large\n"); do_exit(126) }
+        far_on = 1
+        fastpath = 0
+    }
+    var a = kbase
+    i = 0
+    while i < nkonst && ld_farconst == 0 {
+        var o = ptr Obj(a)
+        konst[i] = hstatic(a)
+        a += 6 + ((o.size + 1) & $FFFE)
+        i++
+    }
+    var first = ld_first
+    // args
+    var ah = new_arr(argc)
+    glob[0].t = TAG_ARR
+    glob[0].v = ah
+    i = first
+    while i < argc {
+        var sh = str_c(argv[i])
+        arr_push(glob[0].v, TAG_STR, sh)
+        i++
+    }
+    var old: ptr interrupt fn()
+    e, old = sys_onevent(EVT_BREAK, on_break)
+    // top-level function
+    nfr = 0
+    call_fn(0, MODE_DISCARD)
+    run()
+}

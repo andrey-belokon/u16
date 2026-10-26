@@ -1,0 +1,4 @@
+checksum("CPU16") = 335
+each(show): 12 -5 40 7 -19 3 
+sum via each: 38
+min -19, max 40

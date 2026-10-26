@@ -1,0 +1,52 @@
+// Functions, several results, errors (sect. 5, 6)
+fn divmod(a: int, b: int): int, int {
+    return a / b, a % b
+}
+fn fact(n: int): int {
+    if n <= 1 { return 1 }
+    return n * fact(n - 1)
+}
+fn pass(a: int, b: int): int, int { return divmod(a, b) }
+fn later(): string { return LATE }
+const LATE = "late const"
+var q, r = divmod(17, 5)
+println($"{|q|} {|r|}")
+q, r = pass(20, 3)
+println($"{|q|} {|r|}")
+var _, rest = divmod(9, 4)
+println(rest)
+println(fact(7))
+println(later())
+var arr = [0, 0]
+var mm = {}
+arr[1], mm["k"] = divmod(7, 2)
+println($"{|arr[1]|} {|mm["k"]|}")
+
+fn check(x: int): int {
+    if x < 0 { fail "negative", str(x), 1000 }
+    if x == 0 { fail errors.NOENT, "zero" }
+    return x * 2
+}
+fn outer(x: int): int {
+    var v = check(x)
+    return v + 1
+}
+var v, err = outer(5)
+println($"{|v|} {|err|}")
+v, err = outer(-3)
+println($"{|v|} {|err|} {|err.code()|} {|err.text()|} {|err.object()|}")
+v, err = outer(0)
+println(err == errors.NOENT)
+println(err)
+println(err.where())
+var e2 = error("custom")
+println($"{|e2|} {|e2.code() == errors.FAIL.code()|} {|e2.object()|}")
+var t, e3 = fs.read_text("/nonexistent")
+println($"{|t|} {|e3|}")
+var e4 = fs.remove("/nonexistent2")
+println(e4)
+println(errors.TOOBIG)
+println(errors.FAIL.where())
+fn rec(n: int): int { return rec(n + 1) }
+var x = outer(-1)
+println("not reached")

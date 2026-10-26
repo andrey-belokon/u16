@@ -1,0 +1,33 @@
+[Hello, World] 12
+World
+Hello
+4
+8
+-1
+true
+true
+a||b
+1
+4 one/two//three
+0
+a+=b+=c
+HELLO, WORLD hello, world
+ПРИВЕТ ЁЖ
+привет ёж
+true
+ababab||
+007 [ab  ] long
+12 -> 12 null
+ -32768  -> -32768 null
++5 -> 5 null
+$FFFF -> -1 null
+0x10 -> 16 null
+0b101 -> 5 null
+32768 -> null 32768: invalid number
+abc -> null abc: invalid number
+ -> null : invalid number
+- -> null -: invalid number
+AFFFF 000A 0
+98
+<array 2><map 1>null
+100

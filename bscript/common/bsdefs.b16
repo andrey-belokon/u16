@@ -1,0 +1,227 @@
+// bsdefs.b16 - common definitions of the bsc compiler, the bsvm virtual machine and the bs loader:
+// the .bsc format, command codes, types, built-in functions and methods ("BScript Bytecode Format").
+
+// ---- the .bsc format (sect. 1 of the bytecode document) ------------------------------------------
+const BSC_VERSION = 1
+const HDR_SIZE = 32
+// offsets of the header fields
+const H_VERSION = 4
+const H_FLAGS = 6
+const H_ENTRY = 8
+const H_NGLOB = 10
+const H_NFILES = 12
+const H_SRCSZ = 14
+const H_NCONST = 16
+const H_CONSTSZ = 18
+const H_NFUNC = 20
+const H_FUNCSZ = 22
+const H_CODESZ = 24
+const H_LINESZ = 26
+const FN_ENTRY = 10             // size of a function table record
+
+// ---- value types (sect. 4.1 of the specification) and annotations -------------------------------------
+const TY_NULL = 0
+const TY_BOOL = 1
+const TY_INT = 2
+const TY_STR = 3
+const TY_ARR = 4
+const TY_MAP = 5
+const TY_FILE = 6
+const TY_ERR = 7
+const TY_VALUE = 15             // annotation value: any type
+
+// value tags (sect. 12.2): the high word of Value
+const TAG_NULL = $8000
+const TAG_BOOL = $8001
+const TAG_INT = $8002
+const TAG_STR = $8010
+const TAG_ARR = $8011
+const TAG_MAP = $8012
+const TAG_FILE = $8013
+const TAG_ERR = $8014
+
+// ---- command codes -------------------------------------------------------------------------
+const OP_NULL = $01
+const OP_TRUE = $02
+const OP_FALSE = $03
+const OP_INT8 = $04             // s8
+const OP_INT16 = $05            // u16
+const OP_STR = $06              // u16 constant number
+const OP_LDL = $07              // u8
+const OP_STL = $08              // u8
+const OP_LDG = $09              // u16
+const OP_STG = $0A              // u16
+const OP_POP = $0B
+const OP_DUP = $0C
+const OP_DUP2 = $0D
+const OP_POPN = $0E             // u8
+const OP_CHKT = $0F             // u8 annotation
+const OP_ADD = $10
+const OP_SUB = $11
+const OP_MUL = $12
+const OP_DIV = $13
+const OP_MOD = $14
+const OP_AND = $15
+const OP_OR = $16
+const OP_XOR = $17
+const OP_SHL = $18
+const OP_SHR = $19
+const OP_USHR = $1A
+const OP_NEG = $1B
+const OP_NOT = $1C
+const OP_BNOT = $1D
+const OP_POS = $1E
+const OP_EQ = $20
+const OP_NE = $21
+const OP_LT = $22
+const OP_LE = $23
+const OP_GT = $24
+const OP_GE = $25
+const OP_IN = $26
+const OP_JMP = $28              // s16 relative to the end of the command
+const OP_JF = $29
+const OP_JT = $2A
+const OP_JFK = $2B              // false - jump, the value stays; otherwise pop it
+const OP_JTK = $2C
+const OP_JNN = $2D              // not null - jump, the value stays; otherwise pop it
+const OP_CHKB = $2E             // the top must be bool
+const OP_CALL = $30             // u16 function, u8 mode
+const OP_CALLB = $31            // u8 built-in, u8 number of arguments, u8 mode
+const OP_CALLM = $32            // u8 method, u8 number of arguments, u8 mode
+const OP_RET = $33              // u8 number of values
+const OP_FAIL = $34             // u8 number of operands 1..3
+const OP_ERRC = $35             // u8 code: constant errors.*
+const OP_GETIDX = $38
+const OP_SETIDX = $39
+const OP_SETIDXD = $3A          // u8 depth
+const OP_ARR = $3B              // u16 number of elements
+const OP_MAP = $3C              // u16 number of pairs
+const OP_CONCAT = $3D           // u8 number of parts
+const OP_FORINIT = $3E          // u8 slot
+const OP_FORNEXT1 = $3F         // u8 slot, s16 exit
+const OP_FORNEXT2 = $40         // u8 slot, s16 exit
+const OP_LAST = $40
+
+// call mode (the byte after CALL/CALLB/CALLM)
+const MODE_DISCARD = $80        // a call statement: the results are discarded
+const MODE_EXACT = $40          // | n: exactly n values, without interception
+// otherwise n (1..9) - the number of targets: n = results, or n = results + 1 (error interception)
+
+// ---- built-in functions (CALLB) -------------------------------------------------------------
+const NS_NONE = 0
+const NS_IO = 1
+const NS_STR = 2
+const NS_FS = 3
+const NS_PATH = 4
+const NS_PROC = 5
+const NS_TIME = 6
+const NS_ERRORS = 7
+
+const B_TYPE = 0
+const B_STR = 1
+const B_ERROR = 2
+const B_ASSERT = 3
+const B_MIN = 4
+const B_MAX = 5
+const B_ABS = 6
+const B_PRINT = 7
+const B_PRINTLN = 8
+const B_EPRINT = 9
+const B_EPRINTLN = 10
+const B_READ_LINE = 11
+const B_READ_ALL = 12
+const B_FLUSH = 13
+const B_JOIN = 14
+const B_FROM_BYTE = 15
+const B_HEX = 16
+const B_READ_TEXT = 17
+const B_WRITE_TEXT = 18
+const B_APPEND_TEXT = 19
+const B_OPEN = 20
+const B_EXISTS = 21
+const B_IS_DIR = 22
+const B_IS_FILE = 23
+const B_LIST = 24
+const B_MKDIR = 25
+const B_REMOVE = 26
+const B_RENAME = 27
+const B_COPY = 28
+const B_CWD = 29
+const B_CHDIR = 30
+const B_PJOIN = 31
+const B_BASENAME = 32
+const B_DIRNAME = 33
+const B_EXTENSION = 34
+const B_NORMALIZE = 35
+const B_IS_ABS = 36
+const B_PEQUAL = 37
+const B_MATCH = 38
+const B_RUN = 39
+const B_CAPTURE = 40
+const B_WHICH = 41
+const B_EXIT = 42
+const B_SCRIPT = 43
+const B_NAME = 44
+const B_SLEEP = 45
+const NBUILTIN = 46
+
+// ---- methods (CALLM) ---------------------------------------------------------------------------
+const M_LEN = 0
+const M_SLICE = 1
+const M_FIND = 2
+const M_CONTAINS = 3
+const M_STARTS_WITH = 4
+const M_ENDS_WITH = 5
+const M_SPLIT = 6
+const M_LINES = 7
+const M_REPLACE = 8
+const M_TRIM = 9
+const M_UPPER = 10
+const M_LOWER = 11
+const M_EQUAL_FOLD = 12
+const M_REPEAT = 13
+const M_PAD_LEFT = 14
+const M_PAD_RIGHT = 15
+const M_TO_INT = 16
+const M_PUSH = 17
+const M_POP = 18
+const M_INSERT = 19
+const M_REMOVE = 20
+const M_CLEAR = 21
+const M_CLONE = 22
+const M_INDEX_OF = 23
+const M_REVERSE = 24
+const M_SORT = 25
+const M_HAS = 26
+const M_GET = 27
+const M_SET = 28
+const M_DELETE = 29
+const M_KEYS = 30
+const M_VALUES = 31
+const M_READ_LINE = 32
+const M_READ_ALL = 33
+const M_WRITE = 34
+const M_FLUSH = 35
+const M_CLOSE = 36
+const M_PATH = 37
+const M_CODE = 38
+const M_TEXT = 39
+const M_OBJECT = 40
+const M_WHERE = 41
+const NMETHOD = 42
+
+// method names by number (for the compiler - for lookup, for the VM - for messages)
+var method_names: [NMETHOD]ptr byte = {
+    "len", "slice", "find", "contains", "starts_with", "ends_with", "split", "lines",
+    "replace", "trim", "upper", "lower", "equal_fold", "repeat", "pad_left", "pad_right",
+    "to_int", "push", "pop", "insert", "remove", "clear", "clone", "index_of",
+    "reverse", "sort", "has", "get", "set", "delete", "keys", "values",
+    "read_line", "read_all", "write", "flush", "close", "path", "code", "text",
+    "object", "where" }
+
+// ---- errors (sect. 6.6) ---------------------------------------------------------------------
+const E_FAIL = 100
+const E_TOOBIG = 101
+const E_NUMBER = 102
+const E_SAMEFILE = 103
+const E_CLOSED = 104

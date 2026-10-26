@@ -1,0 +1,8 @@
+tests/diag/decl.b16:4: error: assertion failed: S must take 3 bytes
+tests/diag/decl.b16:5: error: assertion failed
+tests/diag/decl.b16:6: error: export and static cannot be combined
+tests/diag/decl.b16:7: error: export and static cannot be combined
+tests/diag/decl.b16:8: error: export applies only to functions
+tests/diag/decl.b16:9: error: static applies only to fn and var
+tests/diag/decl.b16:10: error: main cannot be static
+rc 1

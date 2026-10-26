@@ -1,0 +1,2 @@
+tests/diag/werror.b16:2: error: value of the expression is not used
+rc 1

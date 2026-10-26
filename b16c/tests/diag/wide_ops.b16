@@ -1,0 +1,25 @@
+// Type rules for operations on long and ulong (sect. 6.4, 6.6): signedness, narrowing, pointers.
+fn main() {
+    var l: long = 1
+    var ul: ulong = 2
+    var i: int = 3
+    var u: uint = 4
+    var p: ptr byte = 0
+    var r: long
+    r = l < ul
+    r = i < ul
+    r = l < u
+    r = ul < i
+    r = l / ul
+    r = i % ul
+    u += l
+    u = u + l
+    p = p + l
+    r = l + p
+    r = l & p
+    r = l == ul
+    r = i == ul
+    r = u + l
+    r = u + ul
+    r = ul + i
+}

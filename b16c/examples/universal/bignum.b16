@@ -1,0 +1,24 @@
+// bignum.b16 - 32-bit arithmetic with ulong types: *=, +, comparison, decimal printing putul.
+include "../../lib/io.b16"
+
+fn main() {
+    // factorials up to 12! fit in 32 bits
+    var f: ulong = 1
+    var n: uint = 1
+    while n <= 12 {
+        f *= n
+        putu(n); puts("! = "); putul(f); putnl()
+        n++
+    }
+    // Fibonacci numbers up to 2^32
+    var a: ulong = 0
+    var b: ulong = 1
+    var k: uint = 0
+    while b < $80000000 {
+        var t = a + b
+        a = b
+        b = t
+        k++
+    }
+    puts("fib("); putu(k + 1); puts(") = "); putul(b); putnl()
+}
