@@ -1,0 +1,20 @@
+# .gitattributes - git keeps the bytes of the files as they are: no CRLF <-> LF conversion on commit or
+# checkout, whatever core.autocrlf says. The project has files whose line endings are part of the tests:
+#   - CRLF on purpose: monitor/tests/scripts/crlf.txt, bscript/tests/data/* (in.txt has mixed endings),
+#     bscript/tests/procs.out (one line with \r\n, the output of cat of in.txt);
+#   - LF required: shell scripts, test references (*.out), sources with "// b16c-flags:" and
+#     "// test:" lines, bscript/examples/data/*.
+# Any conversion breaks them, so it is switched off for everything. Diffs are still shown as text.
+* -text
+
+# shell scripts: always LF (with CRLF /bin/sh does not run them); a CRLF script is normalized on commit
+*.sh text eol=lf
+
+# binaries: no conversion and no text diff
+*.img binary
+*.bin binary
+*.cx binary
+*.ovl binary
+*.ov binary
+*.png binary
+*.jpg binary
